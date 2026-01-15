@@ -1,0 +1,27 @@
+{
+  "name": "girlai2-functions",
+  "version": "1.0.0",
+  "description": "Cloud Functions for GirlAI2",
+  "main": "lib/index.js",
+  "scripts": {
+    "build:local": "tsc",
+    "serve": "npm run build:local && firebase emulators:start --only functions",
+    "shell": "npm run build:local && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "setup-keys": "node -e \"console.log('Run: firebase functions:config:set openai.api_key=YOUR_KEY')\""
+  },
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.0",
+    "firebase-functions": "^4.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0"
+  },
+  "private": true
+}

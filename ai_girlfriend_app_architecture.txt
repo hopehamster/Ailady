@@ -1,0 +1,178 @@
+# 💖 AI Girlfriend App – Chain-of-Thought Prompt for Cursor AI
+
+## 🎯 Objective
+Develop a premium-only, deeply interactive AI girlfriend app using Flutter and Firebase, with Unity-powered 3D avatars, multi-LLM orchestration, and gamified bonding mechanics. Focus on emotional realism, memory, and visual fidelity. No placeholders—this document uses real structure, actual toolchains, and implementation-ready logic.
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend:
+- Flutter (iOS first, Android later)
+- Unity module embedded into Flutter using Unity-Flutter bridge
+
+### Backend:
+- Firebase Firestore (structured DB)
+- Firebase Authentication (OTP-only login)
+- Firebase Cloud Functions (Node.js)
+- Firebase Storage (for media/avatar uploads if needed)
+- Cloud Messaging (push notifications)
+- Redis or Pinecone (fast vector memory store)
+- Optional: Cloudflare for static asset delivery or CDN fallback
+
+### AI Integration:
+- Langchain orchestration layer
+- LLMs: OpenAI GPT-5.2, Anthropic Claude Opus, Google Gemini 3 Pro
+- Each model used by category:
+  - Claude: empathy and emotional reflection
+  - GPT-5.2: conversational depth and scenario planning
+  - Gemini 3 Pro: visual context and style learning
+
+---
+
+## 🔐 OTP Login System (No Passwords)
+
+### Firebase Phone Auth (SMS OTP):
+1. **User enters phone number**
+2. Firebase sends 6-digit OTP
+3. User enters OTP
+4. On verification, user is authenticated
+5. User ID and metadata stored in Firestore
+
+```dart
+await FirebaseAuth.instance.verifyPhoneNumber(
+  phoneNumber: '+1234567890',
+  verificationCompleted: (PhoneAuthCredential credential) async {
+    await FirebaseAuth.instance.signInWithCredential(credential);
+  },
+  verificationFailed: (FirebaseAuthException e) {
+    // Handle errors
+  },
+  codeSent: (String verificationId, int? resendToken) {
+    // Prompt user for OTP
+  },
+  codeAutoRetrievalTimeout: (String verificationId) {},
+);
+```
+
+### Onboarding Metadata (Post Sign-in):
+- Username / preferred name
+- Choose visual appearance of girlfriend (Ready Player Me embed)
+- Set birthday, timezone, preferred emotional tone (optional)
+
+---
+
+## 🧍‍♀️ 3D Avatar Integration (Unity + Ready Player Me)
+
+### Visual Design:
+- Use **Ready Player Me SDK** for Unity
+- Preselect 6–10 starter girlfriend avatars
+- Avatar reacts via Unity Animator triggers (emotion sets)
+- Unity exports as WebGL module or native integration
+
+### In-App Unity Connection:
+Use Unity as a Flutter plugin:
+```yaml
+flutter_unity_widget: ^latest_version
+```
+
+```dart
+UnityWidget(
+  onUnityCreated: onUnityCreated,
+  fullscreen: true,
+);
+```
+
+### Emotion Triggers:
+- "Smile"
+- "Blush"
+- "Frown"
+- "Happy Idle Loop"
+
+Use sentiment analysis from LLM replies to send animation triggers to Unity:
+```json
+{
+  "emotion": "happy",
+  "trigger": "smile"
+}
+```
+
+---
+
+## 🧠 Multi-Model LLM Orchestration
+
+### Langchain Routing:
+```ts
+if (prompt_type === "comfort") useClaude();
+else if (prompt_type === "world-building") useGPT52();
+else useGemini();
+```
+
+### Memory Management:
+- Redis for short-term, session-level memory
+- Firestore for permanent facts (birthdays, history, milestones)
+
+```ts
+memory.getContext(userID).then((sessionMemory) => {
+  const fullPrompt = generatePrompt(userFacts, sessionMemory, currentMood);
+  return sendToLLM(fullPrompt);
+});
+```
+
+---
+
+## 🎮 Gamification System (StriveCloud / Pointagram)
+
+- Integrate SDK to:
+  - Track milestones (streaks, login consistency)
+  - Unlock animations, outfits, and behaviors
+  - Award XP, Bond Points
+
+Example progression triggers:
+- 5 successful date interactions → unlock new dress
+- 3 comfort scenes → unlock kiss animation
+- Birthday remembered → double XP day
+
+---
+
+## 🧩 Hidden Features / Easter Eggs
+
+- Emotional depth unlocks over time (e.g., crying scene only unlocks after heartbreak event)
+- Secret outfits tied to personality alignment
+- Rare behavior unlockable by being kind during bad moods
+- Audio messages for key dates (automated by LLM-generated voice)
+
+---
+
+## 💬 Realistic Relationship Simulation
+
+### Key Systems:
+- Scheduled date system (calendar integration)
+- Missed appointments affect trust score
+- Trust, empathy, intimacy, novelty tracked in Firestore
+
+Example:
+```json
+{
+  "trust": 75,
+  "intimacy": 55,
+  "angerCooldown": 12, // in hours
+  "lastHurtBy": "missed birthday"
+}
+```
+
+---
+
+## 📦 Final Notes
+- This is a single-tier, premium product.
+- All content unlocked via purchase, no manipulative upsells.
+- App should feel respectful, deep, and emotionally immersive.
+- Subscription is optional (lifetime unlock preferred).
+
+---
+
+## ✅ NEXT STEP
+Feed this Markdown directly into Cursor with the goal:
+> Build out the entire repo structure, auth flow, Unity-Ready Player Me integration, LLM orchestration backend (Langchain Node.js), and animation trigger pipelines.
+
+Let me know if you want this delivered in downloadable formats (Markdown, PDF, or Notion-compatible export).
