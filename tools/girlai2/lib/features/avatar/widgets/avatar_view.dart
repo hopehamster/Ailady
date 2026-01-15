@@ -9,10 +9,10 @@ class AvatarView extends StatefulWidget {
 }
 
 class _AvatarViewState extends State<AvatarView> {
-  UnityWidgetController? _unityWidgetController;
+  // UnityWidgetController? _unityWidgetController; // Unused for now
 
   void _onUnityCreated(controller) {
-    _unityWidgetController = controller;
+    // _unityWidgetController = controller;
   }
 
   void _onUnityMessage(message) {
