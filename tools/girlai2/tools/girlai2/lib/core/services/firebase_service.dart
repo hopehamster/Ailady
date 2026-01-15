@@ -1,4 +1,3 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -20,11 +19,6 @@ class FirebaseService {
   FirebaseAuth get auth => _auth;
   FirebaseFirestore get firestore => _firestore;
   FirebaseFunctions get functions => _functions;
-
-  /// Initialize Firebase
-  static Future<void> initialize() async {
-    await Firebase.initializeApp();
-  }
 
   /// Call the Chat Cloud Function
   Future<Map<String, dynamic>> generateResponse(String message) async {

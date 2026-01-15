@@ -49,5 +49,7 @@
 	<string>We need access to your photo library to select avatar images.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>We need access to your camera to take photos for your avatar.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need access to your microphone for voice conversations with your AI companion.</string>
 </dict>
 </plist>
