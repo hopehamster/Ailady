@@ -16,8 +16,8 @@ service cloud.firestore {
     
     // Conversations collection
     match /conversations/{conversationId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read, write: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
     }
     
     // Memories collection
@@ -31,20 +31,14 @@ service cloud.firestore {
     
     // Milestones collection
     match /milestones/{milestoneId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read, write: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
     }
     
     // Scheduled dates collection
     match /scheduled_dates/{dateId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
-    }
-    
-    // Scenes collection (Added)
-    match /scenes/{sceneId} {
-      allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read, write: if request.auth != null && 
+        resource.data.userId == request.auth.uid;
     }
   }
 }

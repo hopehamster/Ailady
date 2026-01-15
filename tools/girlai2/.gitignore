@@ -5,9 +5,11 @@
 *.swp
 .DS_Store
 .atom/
+.build/
 .buildlog/
 .history
 .svn/
+.swiftpm/
 migrate_working_dir/
 
 # IntelliJ related
@@ -27,7 +29,6 @@ migrate_working_dir/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
-.packages
 .pub-cache/
 .pub/
 /build/
@@ -42,80 +43,3 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
-
-# iOS related
-**/ios/**/*.mode1v3
-**/ios/**/*.mode2v3
-**/ios/**/*.moved-aside
-**/ios/**/*.pbxuser
-**/ios/**/*.perspectivev3
-**/ios/**/*sync/
-**/ios/**/.sconsign.dblite
-**/ios/**/.tags*
-**/ios/**/.vagrant/
-**/ios/**/DerivedData/
-**/ios/**/Icon?
-**/ios/**/Pods/
-**/ios/**/.symlinks/
-**/ios/**/profile
-**/ios/**/xcuserdata
-**/ios/.generated/
-**/ios/Flutter/App.framework
-**/ios/Flutter/Flutter.framework
-**/ios/Flutter/Flutter.podspec
-**/ios/GeniesAvatarSDK.framework
-**/ios/ServiceDefinitions.json
-**/ios/Flutter/flutter_export_environment.sh
-**/ios/Flutter/.last_build_id
-
-# Exceptions to above rules.
-!**/ios/**/default.mode1v3
-!**/ios/**/default.mode2v3
-!**/ios/**/default.pbxuser
-!**/ios/**/default.perspectivev3
-
-# Environment variables and secrets
-.env
-.env.local
-.env.*.local
-*.env
-
-# API Keys and credentials (keep config files but not actual secrets)
-# Note: GeniesConfig.dart contains credentials - consider moving to .env in production
-
-# Firebase
-**/ios/Runner/GoogleService-Info.plist
-**/android/app/google-services.json
-firebase_options.dart
-
-# Unity
-unity/Build/
-unity/Library/
-unity/Temp/
-unity/Obj/
-unity/*.csproj
-unity/*.unityproj
-unity/*.sln
-unity/*.suo
-unity/*.user
-unity/*.userprefs
-unity/*.pidb
-unity/*.booproj
-unity/*.svd
-unity/*.pdb
-unity/*.mdb
-unity/*.opendb
-unity/*.VC.db
-
-# Exclude Unity meta files but keep scripts
-unity/Assets/**/*.meta
-!unity/Assets/Scripts/**/*.cs
-
-# Node modules
-functions/node_modules/
-functions/.env
-functions/.env.local
-
-# Build outputs
-functions/lib/
-functions/dist/
