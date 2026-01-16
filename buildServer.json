@@ -1,0 +1,19 @@
+{
+	"name": "xcode build server",
+	"version": "1.3.0",
+	"bspVersion": "2.2.0",
+	"languages": [
+		"c",
+		"cpp",
+		"objective-c",
+		"objective-cpp",
+		"swift"
+	],
+	"argv": [
+		"/opt/homebrew/bin/xcode-build-server"
+	],
+	"workspace": "/Users/mikesm4/Documents/Mikes work/Github/Ailady/tools/girlai2/ios/Runner.xcodeproj/project.xcworkspace",
+	"build_root": "/Users/mikesm4/Library/Developer/Xcode/DerivedData/Runner-hfuxpjhflqocnofqhyuvgpbvimzb",
+	"scheme": "Runner",
+	"kind": "xcode"
+}

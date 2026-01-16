@@ -2,6 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../auth_service.dart';
 import 'otp_screen.dart';
+import 'dart:io';
+
+// #region agent log
+void _logLoginScreen(String message, String hypothesisId, {Map<String, dynamic>? data}) {
+  final logEntry = {
+    'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
+    'timestamp': DateTime.now().millisecondsSinceEpoch,
+    'location': 'login_screen.dart',
+    'message': message,
+    'data': data ?? {},
+    'sessionId': 'debug-session',
+    'runId': 'run1',
+    'hypothesisId': hypothesisId,
+  };
+  // Output to console (visible in Xcode Debug Console)
+  print("AGENT_LOG_JSON: ${logEntry.toString().replaceAll(RegExp(r"'"), '"')}");
+  // Also try to write to file (works on simulator, may fail on device)
+  try {
+    final logPath = '/Users/mikesm4/Documents/Mikes work/Github/Ailady/.cursor/debug.log';
+    File(logPath).writeAsStringSync('${File(logPath).existsSync() ? "\n" : ""}${logEntry.toString().replaceAll(RegExp(r"'"), '"')}', mode: FileMode.append);
+  } catch (e) {
+    // File write failed (expected on physical device), console output is primary
+  }
+}
+// #endregion
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,7 +67,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // #region agent log
+    _logLoginScreen("DART: LoginScreen.build() started", "H5", data: {'step': 'loginscreen_build_entry'});
+    // #endregion
+    try {
+      return Scaffold(
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -88,5 +117,15 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+    } catch (e, stack) {
+      // #region agent log
+      _logLoginScreen("DART: LoginScreen.build() FAILED: $e", "H5", data: {'error': e.toString(), 'stack': stack.toString()});
+      // #endregion
+      return Scaffold(
+        body: Center(
+          child: Text('Error: $e'),
+        ),
+      );
+    }
   }
 }

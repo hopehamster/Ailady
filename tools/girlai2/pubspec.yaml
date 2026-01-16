@@ -20,7 +20,7 @@ dependencies:
   dio: ^5.4.1
   shared_preferences: ^2.2.3
   table_calendar: ^3.1.1
-  flutter_unity_widget: ^2022.2.0
+  # flutter_unity_widget: ^2022.2.0
   flutter_launcher_icons: ^0.13.1
   in_app_purchase: ^3.1.11
   intl: ^0.19.0
@@ -62,3 +62,4 @@ flutter_launcher_icons:
   macos:
     generate: true
     image_path: "assets/images/icon_premium.png"
+

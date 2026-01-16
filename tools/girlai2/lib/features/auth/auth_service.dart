@@ -1,6 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/services/firebase_service.dart';
+import 'dart:io';
+
+// #region agent log
+void _logAuthService(String message, String hypothesisId, {Map<String, dynamic>? data}) {
+  final logEntry = {
+    'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
+    'timestamp': DateTime.now().millisecondsSinceEpoch,
+    'location': 'auth_service.dart',
+    'message': message,
+    'data': data ?? {},
+    'sessionId': 'debug-session',
+    'runId': 'run1',
+    'hypothesisId': hypothesisId,
+  };
+  // Output to console (visible in Xcode Debug Console)
+  print("AGENT_LOG_JSON: ${logEntry.toString().replaceAll(RegExp(r"'"), '"')}");
+  // Also try to write to file (works on simulator, may fail on device)
+  try {
+    final logPath = '/Users/mikesm4/Documents/Mikes work/Github/Ailady/.cursor/debug.log';
+    File(logPath).writeAsStringSync('${File(logPath).existsSync() ? "\n" : ""}${logEntry.toString().replaceAll(RegExp(r"'"), '"')}', mode: FileMode.append);
+  } catch (e) {
+    // File write failed (expected on physical device), console output is primary
+  }
+}
+// #endregion
 
 class AuthService extends ChangeNotifier {
   final FirebaseService _firebaseService;
@@ -8,10 +33,33 @@ class AuthService extends ChangeNotifier {
   String? _verificationId;
 
   AuthService(this._firebaseService) {
-    _firebaseService.auth.authStateChanges().listen((User? user) {
-      _user = user;
-      notifyListeners();
-    });
+    // #region agent log
+    _logAuthService("DART: AuthService constructor started", "H2", data: {'step': 'authservice_ctor_entry'});
+    // #endregion
+    try {
+      // #region agent log
+      _logAuthService("DART: Accessing _firebaseService.auth", "H2", data: {'step': 'before_auth_access'});
+      // #endregion
+      final auth = _firebaseService.auth;
+      // #region agent log
+      _logAuthService("DART: Got auth instance, calling authStateChanges()", "H2", data: {'step': 'before_authstatechanges'});
+      // #endregion
+      auth.authStateChanges().listen((User? user) {
+        // #region agent log
+        _logAuthService("DART: authStateChanges callback fired", "H2", data: {'hasUser': user != null, 'userId': user?.uid});
+        // #endregion
+        _user = user;
+        notifyListeners();
+      });
+      // #region agent log
+      _logAuthService("DART: AuthService constructor completed", "H2", data: {'step': 'authservice_ctor_success'});
+      // #endregion
+    } catch (e, stack) {
+      // #region agent log
+      _logAuthService("DART: AuthService constructor FAILED: $e", "H2", data: {'error': e.toString(), 'stack': stack.toString()});
+      // #endregion
+      rethrow;
+    }
   }
 
   User? get user => _user;

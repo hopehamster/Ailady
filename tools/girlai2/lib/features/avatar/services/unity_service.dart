@@ -9,12 +9,13 @@ class UnityService {
   /// Send an emotion trigger to Unity
   /// [triggerName] corresponds to the Trigger parameter in the Unity Animator
   static void triggerAnimation(dynamic unityController, String triggerName) {
-    if (unityController != null) {
-      unityController.postMessage(
-        unityObjectName,
-        unityMethodName,
-        triggerName,
-      );
-    }
+    // Unity is currently disabled for build stability.
+    // if (unityController != null) {
+    //   unityController.postMessage(
+    //     unityObjectName,
+    //     unityMethodName,
+    //     triggerName,
+    //   );
+    // }
   }
 }
