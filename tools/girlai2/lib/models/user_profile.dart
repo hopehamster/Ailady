@@ -7,6 +7,7 @@ class UserProfile {
   final DateTime createdAt;
   final DateTime lastLoginAt;
   final bool isPremium;
+  final bool onboardingCompleted;
 
   UserProfile({
     required this.id,
@@ -15,6 +16,7 @@ class UserProfile {
     required this.createdAt,
     required this.lastLoginAt,
     this.isPremium = false,
+    this.onboardingCompleted = false,
   });
 
   factory UserProfile.fromFirestore(DocumentSnapshot doc) {
@@ -24,8 +26,10 @@ class UserProfile {
       phoneNumber: data['phoneNumber'],
       displayName: data['displayName'],
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      lastLoginAt: (data['lastLoginAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      lastLoginAt:
+          (data['lastLoginAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isPremium: data['isPremium'] ?? false,
+      onboardingCompleted: data['onboardingCompleted'] ?? false,
     );
   }
 
@@ -36,6 +40,7 @@ class UserProfile {
       'createdAt': Timestamp.fromDate(createdAt),
       'lastLoginAt': Timestamp.fromDate(lastLoginAt),
       'isPremium': isPremium,
+      'onboardingCompleted': onboardingCompleted,
     };
   }
 }

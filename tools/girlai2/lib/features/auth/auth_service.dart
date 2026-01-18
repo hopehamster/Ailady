@@ -1,63 +1,27 @@
-import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/services/firebase_service.dart';
-import 'dart:io';
-
-// #region agent log
-void _logAuthService(String message, String hypothesisId, {Map<String, dynamic>? data}) {
-  final logEntry = {
-    'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
-    'timestamp': DateTime.now().millisecondsSinceEpoch,
-    'location': 'auth_service.dart',
-    'message': message,
-    'data': data ?? {},
-    'sessionId': 'debug-session',
-    'runId': 'run1',
-    'hypothesisId': hypothesisId,
-  };
-  // Output to console (visible in Xcode Debug Console)
-  print("AGENT_LOG_JSON: ${logEntry.toString().replaceAll(RegExp(r"'"), '"')}");
-  // Also try to write to file (works on simulator, may fail on device)
-  try {
-    final logPath = '/Users/mikesm4/Documents/Mikes work/Github/Ailady/.cursor/debug.log';
-    File(logPath).writeAsStringSync('${File(logPath).existsSync() ? "\n" : ""}${logEntry.toString().replaceAll(RegExp(r"'"), '"')}', mode: FileMode.append);
-  } catch (e) {
-    // File write failed (expected on physical device), console output is primary
-  }
-}
-// #endregion
+import '../../core/utils/auth_error_handler.dart';
+import '../../core/utils/debug_logger.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseService _firebaseService;
   User? _user;
   String? _verificationId;
+  int? _resendToken;
+  String? _lastPhoneNumber;
+  StreamSubscription<User?>? _authStateSubscription;
 
   AuthService(this._firebaseService) {
-    // #region agent log
-    _logAuthService("DART: AuthService constructor started", "H2", data: {'step': 'authservice_ctor_entry'});
-    // #endregion
     try {
-      // #region agent log
-      _logAuthService("DART: Accessing _firebaseService.auth", "H2", data: {'step': 'before_auth_access'});
-      // #endregion
       final auth = _firebaseService.auth;
-      // #region agent log
-      _logAuthService("DART: Got auth instance, calling authStateChanges()", "H2", data: {'step': 'before_authstatechanges'});
-      // #endregion
-      auth.authStateChanges().listen((User? user) {
-        // #region agent log
-        _logAuthService("DART: authStateChanges callback fired", "H2", data: {'hasUser': user != null, 'userId': user?.uid});
-        // #endregion
+      _authStateSubscription = auth.authStateChanges().listen((User? user) {
         _user = user;
         notifyListeners();
       });
-      // #region agent log
-      _logAuthService("DART: AuthService constructor completed", "H2", data: {'step': 'authservice_ctor_success'});
-      // #endregion
     } catch (e, stack) {
-      // #region agent log
-      _logAuthService("DART: AuthService constructor FAILED: $e", "H2", data: {'error': e.toString(), 'stack': stack.toString()});
-      // #endregion
+      DebugLogger.logError('AuthService', e, stackTrace: stack);
       rethrow;
     }
   }
@@ -72,41 +36,151 @@ class AuthService extends ChangeNotifier {
     required Function(String) onError,
   }) async {
     try {
-      await _firebaseService.auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          await _firebaseService.auth.signInWithCredential(credential);
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          onError(e.message ?? 'Verification Failed');
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          _verificationId = verificationId;
-          onCodeSent(verificationId);
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          _verificationId = verificationId;
-        },
-      );
-    } catch (e) {
-      onError(e.toString());
+      final auth = _firebaseService.auth;
+      bool callbackFired = false;
+      final startTime = DateTime.now();
+
+      try {
+        await auth.verifyPhoneNumber(
+          phoneNumber: phoneNumber,
+          verificationCompleted: (PhoneAuthCredential credential) async {
+            callbackFired = true;
+            try {
+              await auth.signInWithCredential(credential);
+            } catch (e, stack) {
+              DebugLogger.logError('AuthService.verifyPhoneNumber', e,
+                  stackTrace: stack);
+              onError('Sign in failed: ${AuthErrorHandler.getErrorMessage(e)}');
+            }
+          },
+          verificationFailed: (FirebaseAuthException e) {
+            callbackFired = true;
+            DebugLogger.logError('AuthService.verifyPhoneNumber', e,
+                data: {'code': e.code});
+            onError(AuthErrorHandler.getErrorMessageFromCode(e.code));
+          },
+          codeSent: (String verificationId, int? resendToken) {
+            callbackFired = true;
+            _verificationId = verificationId;
+            _resendToken = resendToken;
+            _lastPhoneNumber = phoneNumber;
+            onCodeSent(verificationId);
+          },
+          codeAutoRetrievalTimeout: (String verificationId) {
+            callbackFired = true;
+            _verificationId = verificationId;
+          },
+          timeout: const Duration(seconds: 60),
+        );
+      } catch (e, stack) {
+        DebugLogger.logError('AuthService.verifyPhoneNumber', e,
+            stackTrace: stack);
+        onError(
+            'Exception during verification: ${AuthErrorHandler.getErrorMessage(e)}');
+        return;
+      }
+
+      // Wait a moment to see if callbacks fire
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (!callbackFired) {
+        final elapsed = DateTime.now().difference(startTime);
+        onError(
+            'Phone verification did not respond after ${elapsed.inSeconds}s.\n\nPlease verify:\n1. Phone Auth is ENABLED in Firebase Console (Authentication → Sign-in method)\n2. APNs key is properly uploaded to Firebase\n3. Your app has Push Notifications capability enabled in Xcode');
+      }
+    } catch (e, stack) {
+      DebugLogger.logError('AuthService.verifyPhoneNumber', e,
+          stackTrace: stack);
+      onError('Unexpected error: ${AuthErrorHandler.getErrorMessage(e)}');
     }
   }
 
   /// Verify OTP and Sign In
-  Future<void> signInWithOTP(String smsCode) async {
+  /// Returns true if this is a new user (first time login)
+  Future<bool> signInWithOTP(String smsCode) async {
     if (_verificationId == null) throw Exception('Verification ID is missing');
-    
+
     final credential = PhoneAuthProvider.credential(
       verificationId: _verificationId!,
       smsCode: smsCode,
     );
-    
-    await _firebaseService.auth.signInWithCredential(credential);
+
+    // Check if user exists before signing in
+    final userCredential =
+        await _firebaseService.auth.signInWithCredential(credential);
+    final isNewUser = userCredential.additionalUserInfo?.isNewUser ?? false;
+
+    return isNewUser;
+  }
+
+  /// Resend OTP verification code
+  Future<void> resendOTP({
+    required Function(String) onCodeSent,
+    required Function(String) onError,
+  }) async {
+    if (_lastPhoneNumber == null) {
+      onError('No phone number available. Please start a new verification.');
+      return;
+    }
+
+    try {
+      final auth = _firebaseService.auth;
+      bool callbackFired = false;
+
+      await auth.verifyPhoneNumber(
+        phoneNumber: _lastPhoneNumber!,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          callbackFired = true;
+          try {
+            await auth.signInWithCredential(credential);
+          } catch (e, stack) {
+            DebugLogger.logError('AuthService.resendOTP', e, stackTrace: stack);
+            onError('Sign in failed: ${AuthErrorHandler.getErrorMessage(e)}');
+          }
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          callbackFired = true;
+          DebugLogger.logError('AuthService.resendOTP', e,
+              data: {'code': e.code});
+          onError(AuthErrorHandler.getErrorMessageFromCode(e.code));
+        },
+        codeSent: (String verificationId, int? resendToken) {
+          callbackFired = true;
+          _verificationId = verificationId;
+          _resendToken = resendToken;
+          onCodeSent(verificationId);
+        },
+        codeAutoRetrievalTimeout: (String verificationId) {
+          callbackFired = true;
+          _verificationId = verificationId;
+        },
+        forceResendingToken: _resendToken,
+        timeout: const Duration(seconds: 60),
+      );
+
+      // Wait to see if callbacks fire
+      await Future.delayed(const Duration(seconds: 2));
+
+      if (!callbackFired) {
+        onError('Resend verification did not respond. Please try again.');
+      }
+    } catch (e, stack) {
+      DebugLogger.logError('AuthService.resendOTP', e, stackTrace: stack);
+      onError('Unexpected error: ${AuthErrorHandler.getErrorMessage(e)}');
+    }
   }
 
   /// Sign Out
   Future<void> signOut() async {
     await _firebaseService.auth.signOut();
+    _verificationId = null;
+    _resendToken = null;
+    _lastPhoneNumber = null;
+  }
+
+  @override
+  void dispose() {
+    _authStateSubscription?.cancel();
+    super.dispose();
   }
 }

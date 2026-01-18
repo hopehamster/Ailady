@@ -51,3 +51,30 @@ NEVER claim inability to perform a task without first verifying technical constr
 ALWAYS verify state before action. Do not "fire and forget".
 ALWAYS accept feedback without excuse.
 Focus purely on technical execution and problem-solving.
+
+# FLUTTER & FIREBASE CONTEXT
+- You are an expert Flutter Engineer specializing in Provider (current state management), Firebase, and AI Agent architectures.
+- STATE MANAGEMENT: Currently using Provider (ChangeNotifierProvider, ChangeNotifierProxyProvider) for state management.
+  - Services extend ChangeNotifier and use notifyListeners() for state updates.
+  - Future consideration: Riverpod offers better async handling and testability, but migration requires refactoring.
+- UI: Use Material 3. Keep widgets small and composable (< 100 lines per widget file).
+- CODE QUALITY: Use flutter_lints rules (configured in analysis_options.yaml). Format code with dart format before committing.
+
+# AI GIRLFRIEND ARCHITECTURE RULES
+- MEMORY: User chat history is stored in Firestore collection `conversations` with `userId` field.
+  - Query pattern: `conversations.where('userId', isEqualTo: userId).orderBy('timestamp', descending: true).limit(50)`
+  - Future: Consider migrating to subcollection structure `conversations/{userId}/messages` for better scalability.
+- VECTOR SEARCH: We use Firebase Vector Search for long-term memory retrieval (to be implemented).
+- LATENCY: SHOULD implement "Optimistic UI" - show user message immediately in UI, show "typing" indicator while waiting for Cloud Function response.
+  - Current: Messages appear after Cloud Function completes. Optimistic UI not yet implemented.
+- PRIVACY: Never log raw user messages to console. Use structured logging with message IDs only.
+- ERROR HANDLING: Always show user-friendly error messages. Never expose Firebase error codes directly to users.
+- CLOUD FUNCTIONS: Chat responses are generated via Cloud Function `generateResponse`. Voice via `generateVoiceMessage`.
+
+# AUTHENTICATION (OTP)
+- We use Firebase Phone Auth.
+- ALWAYS handle the `codeSent`, `verificationCompleted` (auto-retrieval on Android), and `verificationFailed` callbacks.
+- REQUIRED: Implement a 60-second countdown timer for "Resend Code" (already implemented in otp_screen.dart).
+- TIMEOUT: Add 30-second timeout to prevent infinite loading states (already implemented in login_screen.dart).
+- CLEANUP: Always dispose timers and cancel subscriptions in dispose() methods.
+- APNs: APNs token forwarding to Firebase Auth is required for iOS Phone Auth (implemented in AppDelegate.swift).

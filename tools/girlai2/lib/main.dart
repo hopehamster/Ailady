@@ -1,75 +1,50 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/firebase_service.dart';
+import 'core/services/user_service.dart';
+import 'core/utils/debug_logger.dart';
 import 'features/auth/auth_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/chat/chat_service.dart';
 import 'features/chat/screens/chat_screen.dart';
-import 'dart:io';
-
-// #region agent log
-void logToDebugFile(String message, String hypothesisId, {Map<String, dynamic>? data}) {
-  final logEntry = {
-    'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
-    'timestamp': DateTime.now().millisecondsSinceEpoch,
-    'location': 'main.dart',
-    'message': message,
-    'data': data ?? {},
-    'sessionId': 'debug-session',
-    'runId': 'run1',
-    'hypothesisId': hypothesisId,
-  };
-  // Output to console (visible in Xcode Debug Console)
-  print("AGENT_LOG_JSON: ${logEntry.toString().replaceAll(RegExp(r"'"), '"')}");
-  // Also try to write to file (works on simulator, may fail on device)
-  try {
-    final logPath = '/Users/mikesm4/Documents/Mikes work/Github/Ailady/.cursor/debug.log';
-    File(logPath).writeAsStringSync('${File(logPath).existsSync() ? "\n" : ""}${logEntry.toString().replaceAll(RegExp(r"'"), '"')}', mode: FileMode.append);
-  } catch (e) {
-    // File write failed (expected on physical device), console output is primary
-  }
-}
-// #endregion
+import 'features/onboarding/screens/onboarding_screen.dart';
 
 void main() async {
-  // #region agent log
-  logToDebugFile("DART: main() started", "H7", data: {'step': 'entry'});
-  // #endregion
   WidgetsFlutterBinding.ensureInitialized();
-  // #region agent log
-  logToDebugFile("DART: WidgetsFlutterBinding initialized", "H7", data: {'step': 'binding_done'});
-  // #endregion
-  
+
   try {
-    // #region agent log
-    logToDebugFile("DART: Attempting Firebase.initializeApp", "H1", data: {'step': 'before_firebase_init'});
-    // #endregion
+    // Use debugPrint so logs are visible in Xcode console
+    debugPrint('🔥 DART: Starting Firebase initialization...');
+    debugPrint('🔥 DART: Platform: $defaultTargetPlatform');
+    debugPrint('🔥 DART: iOS appId: ${DefaultFirebaseOptions.ios.appId}');
+    debugPrint('🔥 DART: iOS bundleId: ${DefaultFirebaseOptions.ios.iosBundleId}');
+    
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    // #region agent log
-    logToDebugFile("DART: Firebase.initializeApp success", "H1", data: {'step': 'firebase_init_success'});
-    // #endregion
+    
+    debugPrint('✅ DART: Firebase initialized successfully!');
+    debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
+    
+    if (kDebugMode) {
+      DebugLogger.log('main', 'Firebase initialized', data: {
+        'appId': DefaultFirebaseOptions.ios.appId,
+        'bundleId': DefaultFirebaseOptions.ios.iosBundleId,
+      });
+    }
   } catch (e, stack) {
-    // #region agent log
-    logToDebugFile("DART: Firebase init FAILED: $e", "H1", data: {'error': e.toString(), 'stack': stack.toString()});
-    // #endregion
-    debugPrint("Failed to initialize Firebase: $e");
-    debugPrint(stack.toString());
+    debugPrint('❌ FIREBASE INIT ERROR: $e');
+    debugPrint('❌ STACK: $stack');
+    DebugLogger.logError('main', e, stackTrace: stack);
     runApp(ErrorApp(error: e.toString()));
     return;
   }
 
-  // #region agent log
-  logToDebugFile("DART: Calling runApp(MyApp)", "H7", data: {'step': 'before_runapp'});
-  // #endregion
   runApp(const MyApp());
-  // #region agent log
-  logToDebugFile("DART: runApp(MyApp) called", "H7", data: {'step': 'after_runapp'});
-  // #endregion
 }
 
 class ErrorApp extends StatelessWidget {
@@ -88,16 +63,21 @@ class ErrorApp extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.white, size: 64),
+                  const Icon(Icons.error_outline,
+                      color: Colors.white, size: 64),
                   const SizedBox(height: 16),
                   const Text(
                     "Initialization Failed",
-                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     error,
-                    style: const TextStyle(color: Colors.white70, fontFamily: 'Courier'),
+                    style: const TextStyle(
+                        color: Colors.white70, fontFamily: 'Courier'),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -115,36 +95,21 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // #region agent log
-    logToDebugFile("DART: MyApp.build() started", "H3", data: {'step': 'myapp_build_entry'});
-    // #endregion
     try {
-      // #region agent log
-      logToDebugFile("DART: Creating FirebaseService", "H3", data: {'step': 'before_firebase_service'});
-      // #endregion
       final firebaseService = FirebaseService();
-      // #region agent log
-      logToDebugFile("DART: FirebaseService created", "H3", data: {'step': 'firebase_service_created'});
-      // #endregion
-      
+
       return MultiProvider(
         providers: [
           Provider<FirebaseService>(create: (_) => firebaseService),
+          Provider<UserService>(
+            create: (context) => UserService(context.read<FirebaseService>()),
+          ),
           ChangeNotifierProvider<AuthService>(
             create: (context) {
-              // #region agent log
-              logToDebugFile("DART: Creating AuthService", "H2", data: {'step': 'before_auth_service'});
-              // #endregion
               try {
-                final authService = AuthService(context.read<FirebaseService>());
-                // #region agent log
-                logToDebugFile("DART: AuthService created successfully", "H2", data: {'step': 'auth_service_created'});
-                // #endregion
-                return authService;
+                return AuthService(context.read<FirebaseService>());
               } catch (e, stack) {
-                // #region agent log
-                logToDebugFile("DART: AuthService creation FAILED: $e", "H2", data: {'error': e.toString(), 'stack': stack.toString()});
-                // #endregion
+                DebugLogger.logError('MyApp.build', e, stackTrace: stack);
                 rethrow;
               }
             },
@@ -154,10 +119,16 @@ class MyApp extends StatelessWidget {
               context.read<FirebaseService>(),
               null, // UserId initially null
             ),
-            update: (context, auth, previous) => ChatService(
-              context.read<FirebaseService>(),
-              auth.user?.uid,
-            ),
+            update: (context, auth, previous) {
+              // Only recreate if userId changed
+              if (previous != null && previous.userId == auth.user?.uid) {
+                return previous;
+              }
+              return ChatService(
+                context.read<FirebaseService>(),
+                auth.user?.uid,
+              );
+            },
           ),
         ],
         child: MaterialApp(
@@ -165,48 +136,130 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.darkTheme,
           home: const AuthWrapper(),
           debugShowCheckedModeBanner: false,
+          builder: (context, child) {
+            // Error boundary for production
+            ErrorWidget.builder = (FlutterErrorDetails details) {
+              if (kDebugMode) {
+                return ErrorWidget(details.exception);
+              }
+              return Scaffold(
+                body: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Something went wrong',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Please restart the app',
+                        style: TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            };
+            return child!;
+          },
         ),
       );
     } catch (e, stack) {
-      // #region agent log
-      logToDebugFile("DART: MyApp.build() FAILED: $e", "H3", data: {'error': e.toString(), 'stack': stack.toString()});
-      // #endregion
+      DebugLogger.logError('MyApp.build', e, stackTrace: stack);
       rethrow;
     }
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // #region agent log
-    logToDebugFile("DART: AuthWrapper.build() started", "H4", data: {'step': 'authwrapper_build_entry'});
-    // #endregion
-    try {
-      return Consumer<AuthService>(
-        builder: (context, auth, _) {
-          // #region agent log
-          logToDebugFile("DART: AuthWrapper Consumer builder called", "H4", data: {'isAuthenticated': auth.isAuthenticated, 'hasUser': auth.user != null});
-          // #endregion
-          if (auth.isAuthenticated) {
-            // #region agent log
-            logToDebugFile("DART: Returning ChatScreen", "H4", data: {'step': 'returning_chatscreen'});
-            // #endregion
-            return const ChatScreen();
-          }
-          // #region agent log
-          logToDebugFile("DART: Returning LoginScreen", "H4", data: {'step': 'returning_loginscreen'});
-          // #endregion
-          return const LoginScreen();
-        },
-      );
-    } catch (e, stack) {
-      // #region agent log
-      logToDebugFile("DART: AuthWrapper.build() FAILED: $e", "H4", data: {'error': e.toString(), 'stack': stack.toString()});
-      // #endregion
-      rethrow;
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool _isCheckingProfile = true;
+  bool _needsOnboarding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkUserProfile();
+  }
+
+  Future<void> _checkUserProfile() async {
+    final auth = context.read<AuthService>();
+    if (!auth.isAuthenticated) {
+      setState(() {
+        _isCheckingProfile = false;
+      });
+      return;
     }
+
+    try {
+      final userService = context.read<UserService>();
+      final userId = auth.user?.uid;
+      final phoneNumber = auth.user?.phoneNumber;
+
+      if (userId != null) {
+        // Ensure user profile exists (Cloud Function will also create it, but this is a backup)
+        await userService.ensureUserProfile(userId, phoneNumber);
+
+        // Check if onboarding is needed
+        final profile = await userService.getUserProfile(userId);
+        if (mounted) {
+          setState(() {
+            _needsOnboarding = profile?.displayName == null ||
+                profile?.displayName?.isEmpty == true;
+            _isCheckingProfile = false;
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            _isCheckingProfile = false;
+          });
+        }
+      }
+    } catch (e, stack) {
+      DebugLogger.logError('AuthWrapper._checkUserProfile', e,
+          stackTrace: stack);
+      if (mounted) {
+        setState(() {
+          _isCheckingProfile = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthService>(
+      builder: (context, auth, _) {
+        if (!auth.isAuthenticated) {
+          return const LoginScreen();
+        }
+
+        if (_isCheckingProfile) {
+          return const Scaffold(
+            body: Center(
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        if (_needsOnboarding) {
+          return const OnboardingScreen();
+        }
+
+        return const ChatScreen();
+      },
+    );
   }
 }

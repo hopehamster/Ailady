@@ -6,7 +6,7 @@ class Message {
   final String content;
   final bool isFromUser;
   final DateTime timestamp;
-  
+
   // AI-Specific Fields
   final String? emotion;
   final String? emotionTrigger;

@@ -10,19 +10,20 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.isFromUser;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 16.0),
       child: Row(
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           Container(
             constraints: BoxConstraints(
               maxWidth: MediaQuery.of(context).size.width * 0.75,
             ),
             decoration: BoxDecoration(
-              color: isUser 
-                  ? AppTheme.primaryColor.withValues(alpha: 0.8) 
+              color: isUser
+                  ? AppTheme.primaryColor.withValues(alpha: 0.8)
                   : AppTheme.surfaceColor.withValues(alpha: 0.9),
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(20),
@@ -49,29 +50,28 @@ class MessageBubble extends StatelessWidget {
                         fit: BoxFit.cover,
                         loadingBuilder: (context, child, loadingProgress) {
                           if (loadingProgress == null) return child;
-                          return const Center(child: CircularProgressIndicator());
+                          return const Center(
+                              child: CircularProgressIndicator());
                         },
                       ),
                     ),
                   ),
-                
                 if (message.voiceUrl != null)
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.play_circle_fill, 
-                           color: isUser ? Colors.white : AppTheme.primaryColor),
+                      Icon(Icons.play_circle_fill,
+                          color: isUser ? Colors.white : AppTheme.primaryColor),
                       const SizedBox(width: 8),
                       const Text("Voice Message"),
                     ],
                   ),
-                  
                 if (message.content.isNotEmpty)
                   Text(
                     message.content,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: Colors.white,
-                    ),
+                          color: Colors.white,
+                        ),
                   ),
               ],
             ),

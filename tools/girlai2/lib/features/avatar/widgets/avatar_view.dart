@@ -9,7 +9,6 @@ class AvatarView extends StatefulWidget {
 }
 
 class _AvatarViewState extends State<AvatarView> {
-  
   @override
   Widget build(BuildContext context) {
     return Container(

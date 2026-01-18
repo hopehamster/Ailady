@@ -17,7 +17,7 @@ class AppTheme {
       brightness: Brightness.dark,
       primaryColor: primaryColor,
       scaffoldBackgroundColor: backgroundStart,
-      
+
       // Text Theme
       textTheme: TextTheme(
         displayLarge: GoogleFonts.playfairDisplay(
@@ -63,7 +63,8 @@ class AppTheme {
           borderSide: BorderSide.none,
         ),
         hintStyle: TextStyle(color: textSecondary.withValues(alpha: 0.5)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       ),
     );
   }
