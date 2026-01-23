@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../chat_service.dart';
 import '../widgets/message_bubble.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/utils/auth_error_handler.dart';
+import '../../../core/utils/chat_error_handler.dart';
+import '../../../core/exceptions/chat_exception.dart';
 import '../../avatar/widgets/avatar_view.dart';
+import '../../settings/screens/settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -44,6 +47,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
     _messageController.clear();
 
+    // Haptic feedback on send
+    HapticFeedback.lightImpact();
+
     try {
       await context.read<ChatService>().sendMessage(text);
       // Scroll to bottom (optimistic UI already shows message)
@@ -54,13 +60,32 @@ class _ChatScreenState extends State<ChatScreen> {
           curve: Curves.easeOut,
         );
       }
-    } catch (e) {
+    } on ChatException catch (e) {
+      // ChatException already has user-friendly message
       if (mounted) {
-        final errorMessage = AuthErrorHandler.getErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to send message: $errorMessage'),
+            content: Text(e.message),
             duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _sendMessage(),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      // Generic error - use ChatErrorHandler
+      if (mounted) {
+        final errorMessage = ChatErrorHandler.getErrorMessage(e);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _sendMessage(),
+            ),
           ),
         );
       }
@@ -79,7 +104,26 @@ class _ChatScreenState extends State<ChatScreen> {
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
-              // TODO: Navigate to settings
+              HapticFeedback.selectionClick();
+              Navigator.of(context).push(
+                PageRouteBuilder(
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const SettingsScreen(),
+                  transitionsBuilder:
+                      (context, animation, secondaryAnimation, child) {
+                    return SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(1.0, 0.0),
+                        end: Offset.zero,
+                      ).animate(CurvedAnimation(
+                        parent: animation,
+                        curve: Curves.easeInOut,
+                      )),
+                      child: child,
+                    );
+                  },
+                ),
+              );
             },
           ),
         ],

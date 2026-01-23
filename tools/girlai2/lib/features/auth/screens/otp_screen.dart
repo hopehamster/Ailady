@@ -1,91 +1,146 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_otp_kit/flutter_otp_kit.dart';
 import '../auth_service.dart';
 import '../../../core/utils/auth_error_handler.dart';
-import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/debug_logger.dart';
 
 class OtpScreen extends StatefulWidget {
   final String verificationId;
+  final String? phoneNumber; // Optional: for display purposes
 
-  const OtpScreen({super.key, required this.verificationId});
+  const OtpScreen({
+    super.key,
+    required this.verificationId,
+    this.phoneNumber,
+  });
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
 }
 
 class _OtpScreenState extends State<OtpScreen> {
-  final TextEditingController _otpController = TextEditingController();
-  final FocusNode _otpFocusNode = FocusNode();
-  bool _isLoading = false;
-  bool _isResending = false;
-  int _resendCooldown = 0;
-  Timer? _cooldownTimer;
+  bool _isVerifying = false;
 
-  @override
-  void initState() {
-    super.initState();
-    // Auto-focus on OTP input
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _otpFocusNode.requestFocus();
+  Future<bool> _verifyOtp(String otp) async {
+    if (_isVerifying) return false;
+
+    setState(() {
+      _isVerifying = true;
     });
-    // Start cooldown timer
-    _startCooldownTimer();
-  }
 
-  @override
-  void dispose() {
-    _otpController.dispose();
-    _otpFocusNode.dispose();
-    _cooldownTimer?.cancel();
-    super.dispose();
-  }
-
-  void _startCooldownTimer() {
-    _resendCooldown = AppConstants.otpResendCooldownSeconds;
-    _cooldownTimer?.cancel();
-    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (mounted) {
-        setState(() {
-          if (_resendCooldown > 0) {
-            _resendCooldown--;
-          } else {
-            timer.cancel();
-          }
-        });
-      } else {
-        timer.cancel();
-      }
-    });
-  }
-
-  void _verifyOtp() async {
-    final otp = _otpController.text.trim();
-    if (otp.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter the verification code')),
-      );
-      return;
-    }
-
-    if (otp.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verification code must be 6 digits')),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
+    final startTime = DateTime.now();
 
     try {
-      await context.read<AuthService>().signInWithOTP(otp);
+      debugPrint('🔐 OtpScreen._verifyOtp: START');
+      debugPrint('🔐 OTP length: ${otp.length}');
+      debugPrint(
+          '🔐 Verification ID: ${widget.verificationId.substring(0, 20)}...');
+      debugPrint('🔐 Verification ID length: ${widget.verificationId.length}');
+      debugPrint('🔐 Timestamp: ${startTime.toIso8601String()}');
 
-      if (!mounted) return;
+      debugPrint(
+          '🔐 OtpScreen: Attempting to verify OTP: ${otp.length} digits');
+      debugPrint(
+          '🔐 OtpScreen: Verification ID: ${widget.verificationId.substring(0, 20)}...');
+
+      DebugLogger.log('OtpScreen._verifyOtp', 'Starting OTP verification',
+          data: {
+            'otpLength': otp.length,
+            'verificationIdLength': widget.verificationId.length,
+            'verificationIdPrefix': widget.verificationId.substring(0, 20),
+          });
+
+      // Pass verificationId from widget to ensure it matches what was used to create OtpScreen
+      await context
+          .read<AuthService>()
+          .signInWithOTP(otp, verificationId: widget.verificationId);
+
+      if (!mounted) return false;
+
+      final elapsed = DateTime.now().difference(startTime);
+      debugPrint('✅ OtpScreen._verifyOtp: OTP verification successful');
+      debugPrint('✅ Elapsed: ${elapsed.inMilliseconds}ms');
+
+      debugPrint('✅ OtpScreen: OTP verification successful');
+      debugPrint('✅ OtpScreen: Elapsed time: ${elapsed.inMilliseconds}ms');
+
+      DebugLogger.log('OtpScreen._verifyOtp', 'OTP verification successful',
+          data: {
+            'elapsedMs': elapsed.inMilliseconds,
+          });
+
       // AuthWrapper in main.dart will handle navigation
       Navigator.of(context).popUntil((route) => route.isFirst);
-    } catch (e) {
+      return true;
+    } catch (e, stack) {
+      if (!mounted) return false;
+
+      final elapsed = DateTime.now().difference(startTime);
+
+      debugPrint('❌ OtpScreen._verifyOtp: OTP verification failed');
+      debugPrint('❌ Error: $e');
+      debugPrint('❌ Error type: ${e.runtimeType}');
+      debugPrint('❌ OTP length: ${otp.length}');
+      debugPrint(
+          '❌ Verification ID: ${widget.verificationId.substring(0, 20)}...');
+      debugPrint('❌ Verification ID length: ${widget.verificationId.length}');
+      debugPrint('❌ Elapsed: ${elapsed.inMilliseconds}ms');
+      debugPrint('❌ Stack: $stack');
+
+      debugPrint('❌ OtpScreen: OTP verification failed: $e');
+      debugPrint('❌ OtpScreen: Error type: ${e.runtimeType}');
+      debugPrint('❌ OtpScreen: Elapsed time: ${elapsed.inMilliseconds}ms');
+
+      // Log the actual error type and details
+      if (e is FirebaseAuthException) {
+        debugPrint('❌ OtpScreen: FirebaseAuthException');
+        debugPrint('❌ Error code: ${e.code}');
+        debugPrint('❌ Error message: ${e.message}');
+        debugPrint('❌ Error details: ${e.toString()}');
+
+        debugPrint(
+            '❌ OtpScreen: FirebaseAuthException - code: ${e.code}, message: ${e.message}');
+
+        DebugLogger.logErrorSync(
+            'OtpScreen._verifyOtp.firebaseAuthException', e,
+            stackTrace: stack,
+            data: {
+              'code': e.code,
+              'message': e.message,
+              'otpLength': otp.length,
+              'verificationIdLength': widget.verificationId.length,
+              'verificationIdPrefix': widget.verificationId.substring(0, 20),
+              'elapsedMs': elapsed.inMilliseconds,
+            });
+      } else {
+        debugPrint('❌ OtpScreen: Non-Firebase exception');
+        debugPrint('❌ Exception toString: ${e.toString()}');
+
+        DebugLogger.logErrorSync('OtpScreen._verifyOtp.unexpected', e,
+            stackTrace: stack,
+            data: {
+              'errorType': e.runtimeType.toString(),
+              'otpLength': otp.length,
+              'verificationIdLength': widget.verificationId.length,
+              'verificationIdPrefix': widget.verificationId.substring(0, 20),
+              'elapsedMs': elapsed.inMilliseconds,
+            });
+      }
+
+      DebugLogger.logError('OtpScreen._verifyOtp', e, stackTrace: stack, data: {
+        'otpLength': otp.length,
+        'verificationIdLength': widget.verificationId.length,
+        'errorType': e.runtimeType.toString(),
+      });
+
+      setState(() {
+        _isVerifying = false;
+      });
+
+      // Show error message via SnackBar
       if (mounted) {
-        setState(() => _isLoading = false);
         final errorMessage = AuthErrorHandler.getErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -93,24 +148,17 @@ class _OtpScreenState extends State<OtpScreen> {
             duration: const Duration(seconds: 4),
           ),
         );
-        // Clear OTP input on error
-        _otpController.clear();
-        _otpFocusNode.requestFocus();
       }
+
+      return false;
     }
   }
 
-  void _resendOTP() async {
-    if (_resendCooldown > 0 || _isResending) return;
-
-    setState(() => _isResending = true);
-
+  Future<void> _resendOtp() async {
     try {
       await context.read<AuthService>().resendOTP(
         onCodeSent: (verificationId) {
           if (mounted) {
-            setState(() => _isResending = false);
-            _startCooldownTimer();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Verification code sent')),
             );
@@ -118,7 +166,6 @@ class _OtpScreenState extends State<OtpScreen> {
         },
         onError: (error) {
           if (mounted) {
-            setState(() => _isResending = false);
             final errorMessage = AuthErrorHandler.getErrorMessage(error);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Failed to resend code: $errorMessage')),
@@ -128,7 +175,6 @@ class _OtpScreenState extends State<OtpScreen> {
       );
     } catch (e) {
       if (mounted) {
-        setState(() => _isResending = false);
         final errorMessage = AuthErrorHandler.getErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to resend code: $errorMessage')),
@@ -139,91 +185,54 @@ class _OtpScreenState extends State<OtpScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final phoneDisplay = widget.phoneNumber ?? 'your phone';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Verify Code')),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              'Enter the code sent to your phone',
-              style: Theme.of(context).textTheme.headlineMedium,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _otpController,
-              focusNode: _otpFocusNode,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              maxLength: 6,
-              style: const TextStyle(
-                fontSize: 24,
-                letterSpacing: 8,
-                fontWeight: FontWeight.bold,
-              ),
-              decoration: InputDecoration(
-                labelText: 'Verification Code',
-                hintText: '000000',
-                prefixIcon: const Icon(Icons.lock),
-                counterText: '',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onChanged: (value) {
-                // Auto-submit when 6 digits entered
-                if (value.length == 6 && !_isLoading) {
-                  _verifyOtp();
-                }
-              },
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _verifyOtp,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : const Text('Verify', style: TextStyle(fontSize: 16)),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  "Didn't receive the code?",
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed:
-                      (_resendCooldown > 0 || _isResending) ? null : _resendOTP,
-                  child: _isResending
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(
-                          _resendCooldown > 0
-                              ? 'Resend in ${_resendCooldown}s'
-                              : 'Resend',
-                          style: TextStyle(
-                            color: _resendCooldown > 0
-                                ? Theme.of(context).disabledColor
-                                : Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                ),
-              ],
-            ),
-          ],
+      appBar: AppBar(
+        title: const Text('Verify Code'),
+      ),
+      body: OtpKit(
+        title: 'Enter Verification Code',
+        subtitle: 'Enter the code sent to $phoneDisplay',
+        fieldCount: 6,
+        onVerify: _verifyOtp,
+        onResend: _resendOtp,
+        // Modern styling
+        fieldConfig: OtpFieldConfig.preset(OtpFieldPreset.modern),
+        // Timer configuration
+        showTimer: true,
+        timerDuration: 60,
+        // Animation configuration
+        animationConfig: OtpAnimationConfig(
+          animationDuration: const Duration(milliseconds: 300),
+          enableCursorAnimation: true,
+        ),
+        // Error handling
+        errorConfig: OtpErrorConfig(
+          clearFieldsOnError: false, // Keep user input on error
+          enableHapticFeedbackOnError: true,
+          showErrorIcon: true,
+          errorShakeEffect: true,
+          errorShakeDuration: const Duration(milliseconds: 500),
+          autoClearErrorOnInput: true,
+        ),
+        // SMS autofill support
+        smsConfig: OtpSmsConfig(
+          enableSmsAutofill: true,
+          enableSmartAuth: true,
+          enableSmsValidation: true,
+          smsTimeout: const Duration(minutes: 5),
+        ),
+        // Security configuration
+        securityConfig: OtpSecurityConfig(
+          enableRateLimiting: true,
+          maxAttemptsPerMinute: 5,
+          maxAttemptsPerHour: 20,
+          lockoutDuration: const Duration(minutes: 5),
+        ),
+        // Performance configuration
+        performanceConfig: OtpPerformanceConfig(
+          enableMemoryOptimization: true,
         ),
       ),
     );

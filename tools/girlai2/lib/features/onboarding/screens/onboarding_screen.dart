@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/services/user_service.dart';
 import '../../../core/utils/debug_logger.dart';
@@ -57,6 +58,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
     setState(() => _isLoading = true);
 
+    // Haptic feedback on completion
+    HapticFeedback.mediumImpact();
+
     try {
       final authService = context.read<AuthService>();
       final userService = context.read<UserService>();
@@ -72,9 +76,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           data: {'userId': userId, 'displayName': displayName});
 
       if (mounted) {
-        // Navigate to chat screen
+        // Navigate to chat screen with fade transition
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const ChatScreen()),
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                const ChatScreen(),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+              return FadeTransition(
+                opacity: animation,
+                child: child,
+              );
+            },
+          ),
         );
       }
     } catch (e, stack) {

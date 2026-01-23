@@ -94,4 +94,17 @@ class UserService {
       rethrow;
     }
   }
+
+  /// Update display name
+  Future<void> updateDisplayName(String userId, String displayName) async {
+    try {
+      await updateUserProfile(userId, {
+        'displayName': displayName,
+      });
+    } catch (e, stack) {
+      DebugLogger.logError('UserService.updateDisplayName', e,
+          stackTrace: stack);
+      rethrow;
+    }
+  }
 }

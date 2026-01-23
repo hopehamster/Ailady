@@ -42,6 +42,8 @@ class AuthErrorHandler {
         return 'Please enter the verification code';
       case 'missing-verification-id':
         return 'Verification session expired. Please request a new code';
+      case 'keychain-error':
+        return 'Authentication error. Please try again. If this persists, restart the app.';
       default:
         return 'An error occurred. Please try again';
     }

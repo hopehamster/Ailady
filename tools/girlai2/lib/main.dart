@@ -47,87 +47,42 @@ void main() async {
   runApp(const MyApp());
 }
 
-class ErrorApp extends StatelessWidget {
-  final String error;
-  const ErrorApp({super.key, required this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        backgroundColor: Colors.red.shade900,
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline,
-                      color: Colors.white, size: 64),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Initialization Failed",
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    error,
-                    style: const TextStyle(
-                        color: Colors.white70, fontFamily: 'Courier'),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     try {
+      // Create FirebaseService singleton instance
       final firebaseService = FirebaseService();
 
       return MultiProvider(
         providers: [
-          Provider<FirebaseService>(create: (_) => firebaseService),
-          Provider<UserService>(
-            create: (context) => UserService(context.read<FirebaseService>()),
-          ),
+          // Provide FirebaseService
+          Provider<FirebaseService>.value(value: firebaseService),
+
+          // Provide AuthService (depends on FirebaseService)
           ChangeNotifierProvider<AuthService>(
-            create: (context) {
-              try {
-                return AuthService(context.read<FirebaseService>());
-              } catch (e, stack) {
-                DebugLogger.logError('MyApp.build', e, stackTrace: stack);
-                rethrow;
-              }
-            },
+            create: (_) => AuthService(firebaseService),
           ),
+
+          // Provide UserService (depends on FirebaseService)
+          Provider<UserService>(
+            create: (_) => UserService(firebaseService),
+          ),
+
+          // Provide ChatService (depends on FirebaseService and AuthService)
           ChangeNotifierProxyProvider<AuthService, ChatService>(
-            create: (context) => ChatService(
-              context.read<FirebaseService>(),
-              null, // UserId initially null
-            ),
-            update: (context, auth, previous) {
-              // Only recreate if userId changed
-              if (previous != null && previous.userId == auth.user?.uid) {
-                return previous;
+            create: (_) => ChatService(firebaseService, null),
+            update: (_, auth, previousChat) {
+              // If userId changed, we might need to update the chat service
+              // For now, we'll just recreate it if the user changes
+              // Ideally, ChatService should handle user updates internally
+              if (previousChat != null &&
+                  previousChat.userId == auth.user?.uid) {
+                return previousChat;
               }
-              return ChatService(
-                context.read<FirebaseService>(),
-                auth.user?.uid,
-              );
+              return ChatService(firebaseService, auth.user?.uid);
             },
           ),
         ],
@@ -171,7 +126,15 @@ class MyApp extends StatelessWidget {
       );
     } catch (e, stack) {
       DebugLogger.logError('MyApp.build', e, stackTrace: stack);
-      rethrow;
+      debugPrint('❌ MyApp.build: Exception caught, showing ErrorApp');
+      debugPrint('❌ ERROR: $e');
+      debugPrint('❌ STACK: $stack');
+      // Don't rethrow - show error widget instead to prevent crash
+      return MaterialApp(
+        home: ErrorApp(
+          error: 'Error during app initialization:\n\n$e\n\nStack:\n$stack',
+        ),
+      );
     }
   }
 }
@@ -184,69 +147,97 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _isCheckingProfile = true;
-  bool _needsOnboarding = false;
-
   @override
   void initState() {
     super.initState();
-    _checkUserProfile();
+    // Defer the check to the next frame to ensure context is valid
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkUserProfile();
+    });
   }
 
   Future<void> _checkUserProfile() async {
-    final auth = context.read<AuthService>();
-    if (!auth.isAuthenticated) {
-      setState(() {
-        _isCheckingProfile = false;
-      });
-      return;
-    }
+    if (!mounted) return;
 
     try {
-      final userService = context.read<UserService>();
-      final userId = auth.user?.uid;
-      final phoneNumber = auth.user?.phoneNumber;
+      // Check if Firebase is initialized before using services
+      if (Firebase.apps.isEmpty) {
+        debugPrint('⚠️ AuthWrapper: Firebase not initialized yet');
+        return;
+      }
 
-      if (userId != null) {
-        // Ensure user profile exists (Cloud Function will also create it, but this is a backup)
-        await userService.ensureUserProfile(userId, phoneNumber);
+      // Check if context is still mounted and Provider is available
+      if (!mounted) return;
 
-        // Check if onboarding is needed
-        final profile = await userService.getUserProfile(userId);
-        if (mounted) {
-          setState(() {
-            _needsOnboarding = profile?.displayName == null ||
-                profile?.displayName?.isEmpty == true;
-            _isCheckingProfile = false;
-          });
+      AuthService? authService;
+      try {
+        authService = Provider.of<AuthService>(context, listen: false);
+      } on ProviderNotFoundException catch (e) {
+        debugPrint(
+            '⚠️ AuthWrapper: Provider not ready in _checkUserProfile: $e');
+        return;
+      } catch (e) {
+        debugPrint(
+            '❌ AuthWrapper: Failed to access AuthService in _checkUserProfile: $e');
+        return;
+      }
+
+      final user = authService.user;
+
+      if (user != null) {
+        if (!mounted) return;
+
+        UserService? userService;
+        try {
+          userService = Provider.of<UserService>(context, listen: false);
+        } on ProviderNotFoundException catch (e) {
+          debugPrint('⚠️ AuthWrapper: UserService Provider not ready: $e');
+          return;
+        } catch (e) {
+          debugPrint('❌ AuthWrapper: Failed to access UserService: $e');
+          return;
         }
-      } else {
-        if (mounted) {
-          setState(() {
-            _isCheckingProfile = false;
-          });
+
+        final userProfile = await userService.getUserProfile(user.uid);
+
+        if (!mounted) return;
+
+        if (userProfile == null) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+          );
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const ChatScreen()),
+          );
         }
       }
     } catch (e, stack) {
-      DebugLogger.logError('AuthWrapper._checkUserProfile', e,
-          stackTrace: stack);
-      if (mounted) {
-        setState(() {
-          _isCheckingProfile = false;
-        });
-      }
+      debugPrint('❌ AuthWrapper error: $e');
+      debugPrint('❌ Stack: $stack');
+      // Don't crash, just stay on login/loading
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<AuthService>(
-      builder: (context, auth, _) {
-        if (!auth.isAuthenticated) {
-          return const LoginScreen();
-        }
+    try {
+      // Check if Firebase is initialized
+      if (Firebase.apps.isEmpty) {
+        debugPrint('⚠️ AuthWrapper: Firebase not initialized');
+        return const Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
 
-        if (_isCheckingProfile) {
+      // Safely access AuthService with error handling
+      // Use Provider.of with listen: false first to check if it exists
+      AuthService? authService;
+      try {
+        // Check if Provider is available before accessing
+        if (!context.mounted) {
           return const Scaffold(
             body: Center(
               child: CircularProgressIndicator(),
@@ -254,12 +245,112 @@ class _AuthWrapperState extends State<AuthWrapper> {
           );
         }
 
-        if (_needsOnboarding) {
-          return const OnboardingScreen();
-        }
+        // Try to get AuthService - will throw ProviderNotFoundException if not in tree
+        authService = Provider.of<AuthService>(context, listen: true);
+      } on ProviderNotFoundException catch (e) {
+        debugPrint('⚠️ AuthWrapper: Provider not ready yet: $e');
+        // Provider not ready yet - show loading
+        return const Scaffold(
+          body: Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+      } catch (e) {
+        debugPrint('❌ AuthWrapper: Failed to access AuthService: $e');
+        return ErrorApp(
+            error:
+                'Failed to access authentication service. Please restart the app.\n\nError: $e');
+      }
 
-        return const ChatScreen();
-      },
+      // When auth state changes (user becomes non-null after OTP verification),
+      // this build method will be called again, and we should check user profile
+      if (authService.user != null) {
+        // Trigger profile check when user becomes available
+        // This handles the case where OTP verification completes and user is set
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _checkUserProfile();
+          }
+        });
+      }
+
+      // Show login if no user, otherwise show loading while checking profile
+      return authService.user == null
+          ? const LoginScreen()
+          : const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(),
+              ),
+            );
+    } catch (e, stack) {
+      debugPrint('❌ AuthWrapper build error: $e');
+      debugPrint('❌ Stack: $stack');
+      return ErrorApp(error: 'Auth error: $e\n\nStack:\n$stack');
+    }
+  }
+}
+
+class ErrorApp extends StatelessWidget {
+  final String error;
+
+  const ErrorApp({super.key, required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Center(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline,
+                        size: 64, color: Colors.red),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Initialization Error',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Text(
+                        error,
+                        style: const TextStyle(
+                          fontFamily: 'Courier',
+                          fontSize: 12,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Restart app (not possible in Flutter, but we can try to re-run main)
+                        main();
+                      },
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

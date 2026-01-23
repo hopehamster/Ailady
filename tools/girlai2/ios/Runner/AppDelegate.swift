@@ -2,10 +2,6 @@ import Flutter
 import UIKit
 import FirebaseCore
 import FirebaseAuth
-#if DEBUG
-import FLEX
-import DebugSwift
-#endif
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -13,17 +9,12 @@ import DebugSwift
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    #if DEBUG
-    // DebugSwift.setup()
-    // FLEXManager.shared.showExplorer()
-    #endif
-
-    // Register Flutter plugins first
-    GeneratedPluginRegistrant.register(with: self)
-    
     // Note: Firebase will be initialized by Flutter/Dart code
     // We don't initialize it here to avoid conflicts with FlutterFire
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    
+    // Register Flutter plugins after super.application() to ensure Flutter engine is initialized
+    GeneratedPluginRegistrant.register(with: self)
     
     // Register for remote notifications (required for Firebase Phone Auth)
     // This is safe even if Firebase isn't initialized yet - token will be set later
@@ -49,4 +40,35 @@ import DebugSwift
     // Call super to ensure Flutter plugins are notified
     super.application(application, didFailToRegisterForRemoteNotificationsWithError: error)
   }
+
+  // MARK: - UIScene Lifecycle Support (iOS 13+)
+  // REMOVED: UISceneDelegate methods to fix Swift plugin registration crash
+  // Issue: Implementing configurationForConnecting triggers scene-based lifecycle
+  // which causes Swift metadata to be unavailable during plugin registration
+  // This is a known Flutter issue #168228 with UISceneDelegate + Swift plugins
+  // SceneDelegate.swift still exists but won't be used without these methods
+  // TODO: Re-enable when Flutter/Xcode 26.2 compatibility is confirmed
+  //
+  // @available(iOS 13.0, *)
+  // override func application(
+  //   _ application: UIApplication,
+  //   configurationForConnecting connectingSceneSession: UISceneSession,
+  //   options: UIScene.ConnectionOptions
+  // ) -> UISceneConfiguration {
+  //   let sceneConfig = UISceneConfiguration(
+  //     name: "Default Configuration",
+  //     sessionRole: connectingSceneSession.role
+  //   )
+  //   if let delegateClass = NSClassFromString("Runner.SceneDelegate") as? UIWindowSceneDelegate.Type {
+  //     sceneConfig.delegateClass = delegateClass
+  //   }
+  //   return sceneConfig
+  // }
+  //
+  // @available(iOS 13.0, *)
+  // override func application(
+  //   _ application: UIApplication,
+  //   didDiscardSceneSessions sceneSessions: Set<UISceneSession>
+  // ) {
+  // }
 }

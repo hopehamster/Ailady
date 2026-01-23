@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../auth_service.dart';
@@ -56,6 +57,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
 
+    // Haptic feedback on login attempt
+    HapticFeedback.mediumImpact();
+
     // Set a timeout to prevent infinite loading
     _timeoutTimer = Timer(
       Duration(seconds: AppConstants.loginTimeoutSeconds),
@@ -79,14 +83,36 @@ class _LoginScreenState extends State<LoginScreen> {
       await authService.verifyPhoneNumber(
         normalizedPhone,
         onCodeSent: (verificationId) {
+          debugPrint('✅ LoginScreen: onCodeSent callback received');
+          debugPrint(
+              '✅ LoginScreen: Verification ID: ${verificationId.substring(0, 20)}...');
+          debugPrint(
+              '✅ LoginScreen: Verification ID length: ${verificationId.length}');
+          debugPrint('✅ LoginScreen: Widget mounted: $mounted');
+
           _timeoutTimer?.cancel();
           if (mounted) {
+            debugPrint('✅ LoginScreen: Navigating to OtpScreen...');
             setState(() => _isLoading = false);
             Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => OtpScreen(verificationId: verificationId),
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    OtpScreen(
+                  verificationId: verificationId,
+                  phoneNumber: normalizedPhone,
+                ),
+                transitionsBuilder:
+                    (context, animation, secondaryAnimation, child) {
+                  return FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  );
+                },
               ),
             );
+            debugPrint('✅ LoginScreen: Navigation completed');
+          } else {
+            debugPrint('❌ LoginScreen: Widget not mounted, cannot navigate');
           }
         },
         onError: (error) {
