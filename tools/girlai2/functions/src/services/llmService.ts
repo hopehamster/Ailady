@@ -7,11 +7,17 @@ export interface ConversationMessage {
 }
 
 // Initialize OpenAI client
-// API key should be set via Firebase Functions secrets:
-// firebase functions:secrets:set OPENAI_API_KEY
-// Then access via: functions.secret('OPENAI_API_KEY')
+// API key should be set via Firebase Functions config:
+// firebase functions:config:set openai.key="your-api-key"
+// Then access via: functions.config().openai.key
+const openaiApiKey = process.env.OPENAI_API_KEY || functions.config().openai?.key || '';
+
+if (!openaiApiKey) {
+  functions.logger.error('OpenAI API key is not configured. Set it with: firebase functions:config:set openai.key="your-key"');
+}
+
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || functions.config().openai?.key || '',
+  apiKey: openaiApiKey,
 });
 
 interface AIResponse {
@@ -78,9 +84,17 @@ Keep responses concise (2-4 sentences typically) and natural. Show genuine inter
     functions.logger.error('OpenAI API error', {
       error: error.message,
       type: error.type,
+      code: error.code,
+      status: error.status,
     });
 
-    // Fallback response if API fails
+    // If it's an authentication error, throw it up so we know the key is wrong
+    if (error.code === 'invalid_api_key' || error.status === 401 || error.message?.includes('api key')) {
+      functions.logger.error('OpenAI API key is invalid or missing');
+      throw new Error('OpenAI API key is invalid. Please check configuration.');
+    }
+
+    // Fallback response if API fails for other reasons
     return {
       content: "I'm here for you. Could you tell me more about what's on your mind?",
       emotion: 'neutral',

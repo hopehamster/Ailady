@@ -5,10 +5,12 @@ import { generateAIResponse, ConversationMessage } from './services/llmService';
 admin.initializeApp();
 
 // Set OpenAI API key from environment or config
-if (process.env.OPENAI_API_KEY) {
-  // Already set from secrets
-} else if (functions.config().openai?.key) {
-  process.env.OPENAI_API_KEY = functions.config().openai.key;
+const openaiApiKey = process.env.OPENAI_API_KEY || functions.config().openai?.key;
+if (openaiApiKey) {
+  process.env.OPENAI_API_KEY = openaiApiKey;
+  functions.logger.info('OpenAI API key configured');
+} else {
+  functions.logger.warn('OpenAI API key not found. Set it with: firebase functions:config:set openai.key="your-key"');
 }
 
 /**

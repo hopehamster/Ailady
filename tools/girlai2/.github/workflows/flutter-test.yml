@@ -1,0 +1,62 @@
+name: Flutter Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'tools/girlai2/lib/**'
+      - 'tools/girlai2/test/**'
+      - 'tools/girlai2/pubspec.yaml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'tools/girlai2/lib/**'
+      - 'tools/girlai2/test/**'
+      - 'tools/girlai2/pubspec.yaml'
+  workflow_dispatch:
+
+jobs:
+  flutter-tests:
+    name: Flutter/Dart Tests
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+          cache: true
+      
+      - name: Get dependencies
+        working-directory: tools/girlai2
+        run: flutter pub get
+      
+      - name: Generate mocks
+        working-directory: tools/girlai2
+        run: flutter pub run build_runner build --delete-conflicting-outputs
+        continue-on-error: true
+      
+      - name: Format code
+        working-directory: tools/girlai2
+        run: flutter format --set-exit-if-changed .
+        continue-on-error: true
+      
+      - name: Analyze code
+        working-directory: tools/girlai2
+        run: flutter analyze
+      
+      - name: Run Flutter tests
+        working-directory: tools/girlai2
+        run: flutter test --coverage
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: tools/girlai2/coverage/lcov.info
+          flags: flutter
+          name: flutter-coverage
+          fail_ci_if_error: false

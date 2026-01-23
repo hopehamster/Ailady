@@ -1,0 +1,47 @@
+name: Run Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.1'
+          channel: 'stable'
+      
+      - name: Install dependencies
+        run: |
+          cd tools/girlai2
+          flutter pub get
+      
+      - name: Generate mocks
+        run: |
+          cd tools/girlai2
+          flutter pub run build_runner build --delete-conflicting-outputs
+      
+      - name: Run tests
+        run: |
+          cd tools/girlai2
+          flutter test
+      
+      - name: Generate coverage
+        run: |
+          cd tools/girlai2
+          flutter test --coverage
+      
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./tools/girlai2/coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella

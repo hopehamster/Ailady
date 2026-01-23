@@ -79,5 +79,9 @@
 		<string>remote-notification</string>
 		<string>fetch</string>
 	</array>
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<!-- UIApplicationSceneManifest removed - using AppDelegate lifecycle only -->
+	<!-- SceneDelegate support can be added later if needed -->
 </dict>
 </plist>
