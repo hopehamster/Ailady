@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/services/user_service.dart';
 import '../../../core/utils/debug_logger.dart';
 import '../../auth/auth_service.dart';
@@ -97,9 +98,37 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       if (mounted) {
         setState(() => _isLoading = false);
+        
+        // Provide user-friendly error messages
+        String errorMessage;
+        if (e is FirebaseException) {
+          // Handle Firebase-specific errors
+          switch (e.code) {
+            case 'permission-denied':
+              errorMessage = 'Permission denied. Please try logging in again.';
+              break;
+            case 'unavailable':
+              errorMessage = 'Service temporarily unavailable. Please try again later.';
+              break;
+            case 'not-found':
+              errorMessage = 'Could not connect to the database. Please check your connection.';
+              break;
+            default:
+              errorMessage = 'Something went wrong. Please try again.';
+          }
+        } else if (e.toString().contains('network') || e.toString().contains('connection')) {
+          errorMessage = 'Network error. Please check your internet connection.';
+        } else if (e.toString().contains('User not authenticated')) {
+          errorMessage = 'Session expired. Please log in again.';
+        } else {
+          errorMessage = 'Failed to complete setup. Please try again.';
+        }
+        
+        debugPrint('❌ OnboardingScreen: Error - $e');
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to complete setup: ${e.toString()}'),
+            content: Text(errorMessage),
             duration: const Duration(seconds: 4),
           ),
         );

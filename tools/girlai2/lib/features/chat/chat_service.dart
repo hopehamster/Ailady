@@ -7,12 +7,23 @@ import '../../core/utils/debug_logger.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/message.dart';
 
+/// Callback type for avatar emotion triggers
+typedef EmotionTriggerCallback = void Function(String emotionTrigger, double intensity);
+
 class ChatService extends ChangeNotifier {
   final FirebaseService _firebaseService;
   final String? _userId;
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
   List<Message> _messages = [];
   bool _isTyping = false;
+  
+  // Current emotion state for avatar
+  String _currentEmotion = 'neutral';
+  String _currentEmotionTrigger = 'Idle_Gentle_Sway';
+  double _currentEmotionIntensity = 0.5;
+  
+  // Callback for avatar system to listen to emotion changes
+  EmotionTriggerCallback? onEmotionTrigger;
 
   ChatService(this._firebaseService, this._userId) {
     // Defer subscription to avoid accessing Firebase during construction
@@ -24,6 +35,9 @@ class ChatService extends ChangeNotifier {
   String? get userId => _userId;
   List<Message> get messages => _messages;
   bool get isTyping => _isTyping;
+  String get currentEmotion => _currentEmotion;
+  String get currentEmotionTrigger => _currentEmotionTrigger;
+  double get currentEmotionIntensity => _currentEmotionIntensity;
 
   void _initializeSubscription() {
     // Check if Firebase is ready before subscribing
@@ -126,7 +140,23 @@ class ChatService extends ChangeNotifier {
         }
 
         // Call Cloud Function which handles saving both user message and AI response
-        await _firebaseService.generateResponse(content);
+        final response = await _firebaseService.generateResponse(content);
+
+        // Update emotion state from AI response for avatar animations
+        if (response['emotionTrigger'] != null) {
+          _currentEmotion = response['emotion'] ?? 'neutral';
+          _currentEmotionTrigger = response['emotionTrigger'] as String;
+          _currentEmotionIntensity = (response['emotionIntensity'] as num?)?.toDouble() ?? 0.5;
+          
+          // Notify avatar system of emotion change
+          if (onEmotionTrigger != null) {
+            onEmotionTrigger!(_currentEmotionTrigger, _currentEmotionIntensity);
+          }
+          
+          if (kDebugMode) {
+            debugPrint('🎭 Emotion trigger: $_currentEmotionTrigger (intensity: $_currentEmotionIntensity)');
+          }
+        }
 
         // Success: Remove optimistic message - real message will come from Firestore stream
         _messages.removeWhere((msg) => msg.id == optimisticMessage.id);

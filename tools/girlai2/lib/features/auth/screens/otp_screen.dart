@@ -22,9 +22,59 @@ class OtpScreen extends StatefulWidget {
 
 class _OtpScreenState extends State<OtpScreen> {
   bool _isVerifying = false;
+  bool _isDisposed = false;
+  late String _currentVerificationId;
+
+  /// Safe helper to get a prefix of verification ID for logging
+  String _safeIdPrefix(String? id) {
+    if (id == null || id.isEmpty) return 'null';
+    return id.length > 20 ? '${id.substring(0, 20)}...' : id;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentVerificationId = widget.verificationId;
+    
+    // Validate verificationId on init
+    if (_currentVerificationId.isEmpty) {
+      debugPrint('❌ OtpScreen: Empty verificationId received');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Invalid verification session. Please try again.'),
+              duration: Duration(seconds: 4),
+            ),
+          );
+          Navigator.of(context).pop();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
 
   Future<bool> _verifyOtp(String otp) async {
-    if (_isVerifying) return false;
+    if (_isVerifying || _isDisposed) return false;
+
+    // Validate verificationId before proceeding
+    if (_currentVerificationId.isEmpty) {
+      debugPrint('❌ OtpScreen._verifyOtp: Empty verificationId');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Session expired. Please go back and try again.'),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+      return false;
+    }
 
     setState(() {
       _isVerifying = true;
@@ -36,26 +86,26 @@ class _OtpScreenState extends State<OtpScreen> {
       debugPrint('🔐 OtpScreen._verifyOtp: START');
       debugPrint('🔐 OTP length: ${otp.length}');
       debugPrint(
-          '🔐 Verification ID: ${widget.verificationId.substring(0, 20)}...');
-      debugPrint('🔐 Verification ID length: ${widget.verificationId.length}');
+          '🔐 Verification ID: ${_safeIdPrefix(_currentVerificationId)}');
+      debugPrint('🔐 Verification ID length: ${_currentVerificationId.length}');
       debugPrint('🔐 Timestamp: ${startTime.toIso8601String()}');
 
       debugPrint(
           '🔐 OtpScreen: Attempting to verify OTP: ${otp.length} digits');
       debugPrint(
-          '🔐 OtpScreen: Verification ID: ${widget.verificationId.substring(0, 20)}...');
+          '🔐 OtpScreen: Verification ID: ${_safeIdPrefix(_currentVerificationId)}');
 
       DebugLogger.log('OtpScreen._verifyOtp', 'Starting OTP verification',
           data: {
             'otpLength': otp.length,
-            'verificationIdLength': widget.verificationId.length,
-            'verificationIdPrefix': widget.verificationId.substring(0, 20),
+            'verificationIdLength': _currentVerificationId.length,
+            'verificationIdPrefix': _safeIdPrefix(_currentVerificationId),
           });
 
-      // Pass verificationId from widget to ensure it matches what was used to create OtpScreen
+      // Pass verificationId to ensure it matches what was used to create OtpScreen
       await context
           .read<AuthService>()
-          .signInWithOTP(otp, verificationId: widget.verificationId);
+          .signInWithOTP(otp, verificationId: _currentVerificationId);
 
       if (!mounted) return false;
 
@@ -75,7 +125,7 @@ class _OtpScreenState extends State<OtpScreen> {
       Navigator.of(context).popUntil((route) => route.isFirst);
       return true;
     } catch (e, stack) {
-      if (!mounted) return false;
+      if (!mounted || _isDisposed) return false;
 
       final elapsed = DateTime.now().difference(startTime);
 
@@ -84,8 +134,8 @@ class _OtpScreenState extends State<OtpScreen> {
       debugPrint('❌ Error type: ${e.runtimeType}');
       debugPrint('❌ OTP length: ${otp.length}');
       debugPrint(
-          '❌ Verification ID: ${widget.verificationId.substring(0, 20)}...');
-      debugPrint('❌ Verification ID length: ${widget.verificationId.length}');
+          '❌ Verification ID: ${_safeIdPrefix(_currentVerificationId)}');
+      debugPrint('❌ Verification ID length: ${_currentVerificationId.length}');
       debugPrint('❌ Elapsed: ${elapsed.inMilliseconds}ms');
       debugPrint('❌ Stack: $stack');
 
@@ -110,8 +160,8 @@ class _OtpScreenState extends State<OtpScreen> {
               'code': e.code,
               'message': e.message,
               'otpLength': otp.length,
-              'verificationIdLength': widget.verificationId.length,
-              'verificationIdPrefix': widget.verificationId.substring(0, 20),
+              'verificationIdLength': _currentVerificationId.length,
+              'verificationIdPrefix': _safeIdPrefix(_currentVerificationId),
               'elapsedMs': elapsed.inMilliseconds,
             });
       } else {
@@ -123,21 +173,23 @@ class _OtpScreenState extends State<OtpScreen> {
             data: {
               'errorType': e.runtimeType.toString(),
               'otpLength': otp.length,
-              'verificationIdLength': widget.verificationId.length,
-              'verificationIdPrefix': widget.verificationId.substring(0, 20),
+              'verificationIdLength': _currentVerificationId.length,
+              'verificationIdPrefix': _safeIdPrefix(_currentVerificationId),
               'elapsedMs': elapsed.inMilliseconds,
             });
       }
 
       DebugLogger.logError('OtpScreen._verifyOtp', e, stackTrace: stack, data: {
         'otpLength': otp.length,
-        'verificationIdLength': widget.verificationId.length,
+        'verificationIdLength': _currentVerificationId.length,
         'errorType': e.runtimeType.toString(),
       });
 
-      setState(() {
-        _isVerifying = false;
-      });
+      if (mounted && !_isDisposed) {
+        setState(() {
+          _isVerifying = false;
+        });
+      }
 
       // Show error message via SnackBar
       if (mounted) {
@@ -155,17 +207,24 @@ class _OtpScreenState extends State<OtpScreen> {
   }
 
   Future<void> _resendOtp() async {
+    if (_isDisposed) return;
+    
     try {
       await context.read<AuthService>().resendOTP(
         onCodeSent: (verificationId) {
-          if (mounted) {
+          if (mounted && !_isDisposed) {
+            // Update the current verification ID with the new one
+            setState(() {
+              _currentVerificationId = verificationId;
+            });
+            debugPrint('✅ OtpScreen: Updated verificationId after resend: ${_safeIdPrefix(verificationId)}');
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Verification code sent')),
             );
           }
         },
         onError: (error) {
-          if (mounted) {
+          if (mounted && !_isDisposed) {
             final errorMessage = AuthErrorHandler.getErrorMessage(error);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Failed to resend code: $errorMessage')),
@@ -174,7 +233,7 @@ class _OtpScreenState extends State<OtpScreen> {
         },
       );
     } catch (e) {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         final errorMessage = AuthErrorHandler.getErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to resend code: $errorMessage')),

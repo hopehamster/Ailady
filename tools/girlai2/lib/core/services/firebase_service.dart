@@ -102,6 +102,7 @@ class FirebaseService {
     try {
       // Verify Firebase is initialized
       if (Firebase.apps.isEmpty) {
+        debugPrint('❌ FirebaseService.generateResponse: Firebase not initialized');
         DebugLogger.logError(
             'FirebaseService.generateResponse', 'Firebase not initialized',
             data: {'messageId': messageId});
@@ -111,14 +112,32 @@ class FirebaseService {
       }
 
       // Verify user is authenticated
+      debugPrint('🔐 FirebaseService.generateResponse: Checking auth state...');
+      debugPrint('🔐 Firebase.apps.length: ${Firebase.apps.length}');
+      
       final user = _auth.currentUser;
+      debugPrint('🔐 FirebaseService.generateResponse: currentUser = ${user?.uid ?? "null"}');
+      
       if (user == null) {
+        debugPrint('❌ FirebaseService.generateResponse: User not authenticated!');
+        debugPrint('❌ _auth.currentUser is null');
         DebugLogger.logError(
             'FirebaseService.generateResponse', 'User not authenticated',
             data: {'messageId': messageId});
         throw ChatException(
           'Please sign in to continue.',
         );
+      }
+      
+      debugPrint('✅ FirebaseService.generateResponse: User authenticated as ${user.uid}');
+
+      // Force refresh the ID token to ensure it's attached to the Cloud Function call
+      debugPrint('🔄 FirebaseService.generateResponse: Refreshing ID token...');
+      final idToken = await user.getIdToken(true); // Force refresh
+      if (idToken != null && idToken.length > 20) {
+        debugPrint('✅ FirebaseService.generateResponse: ID token refreshed (${idToken.substring(0, 20)}...)');
+      } else {
+        debugPrint('⚠️ FirebaseService.generateResponse: ID token refresh returned unexpected result');
       }
 
       if (kDebugMode) {
@@ -133,6 +152,7 @@ class FirebaseService {
 
       final result = await callable.call(<String, dynamic>{
         'message': message,
+        'userId': user.uid, // Send userId as fallback for auth context issue
       }).timeout(
         const Duration(seconds: 30),
         onTimeout: () {

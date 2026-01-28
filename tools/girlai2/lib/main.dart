@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +30,15 @@ void main() async {
     
     debugPrint('✅ DART: Firebase initialized successfully!');
     debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
+    
+    // Initialize Firebase App Check with debug provider for development
+    debugPrint('🔐 DART: Initializing Firebase App Check...');
+    await FirebaseAppCheck.instance.activate(
+      // Use debug provider in debug mode - generates valid debug tokens
+      androidProvider: AndroidProvider.debug,
+      appleProvider: AppleProvider.debug,
+    );
+    debugPrint('✅ DART: Firebase App Check activated with debug provider');
     
     if (kDebugMode) {
       DebugLogger.log('main', 'Firebase initialized', data: {

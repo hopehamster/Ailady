@@ -14,7 +14,7 @@ import 'package:flutter/foundation.dart';
 class EmulatorConfig {
   static bool _isConfigured = false;
 
-  /// Check if running on iOS Simulator
+  /// Check if running on iOS Simulator or Android Emulator
   /// Physical devices cannot connect to localhost emulators
   static bool get _isIOSSimulator {
     if (!Platform.isIOS) return false;
@@ -42,7 +42,7 @@ class EmulatorConfig {
   }
 
   /// Get Firestore emulator host from environment
-  /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator compatibility
+  /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator and Android Emulator compatibility
   static String? get firestoreHost {
     final host = Platform.environment['FIRESTORE_EMULATOR_HOST'];
 
@@ -110,7 +110,7 @@ class EmulatorConfig {
   }
 
   /// Get Functions emulator host from environment
-  /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator compatibility
+  /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator and Android Emulator compatibility
   static String? get functionsHost {
     final host = Platform.environment['FIREBASE_FUNCTIONS_EMULATOR_HOST'];
 

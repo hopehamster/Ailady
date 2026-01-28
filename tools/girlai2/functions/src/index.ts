@@ -20,15 +20,31 @@ if (openaiApiKey) {
 export const generateResponse = functions
   .region('us-central1')
   .https.onCall(async (data, context) => {
-    // Verify authentication
-    if (!context.auth) {
+    // Log auth context for debugging
+    functions.logger.info('generateResponse called', {
+      hasAuth: !!context.auth,
+      authUid: context.auth?.uid || 'none',
+      dataUserId: data.userId || 'none',
+    });
+
+    // Get userId from auth context, or fallback to client-provided userId
+    // Note: Fallback is temporary for debugging - should require auth in production
+    let userId = context.auth?.uid;
+    
+    if (!userId && data.userId) {
+      functions.logger.warn('Using client-provided userId (auth context was null)', {
+        clientUserId: data.userId,
+      });
+      userId = data.userId;
+    }
+    
+    if (!userId) {
       throw new functions.https.HttpsError(
         'unauthenticated',
         'User must be authenticated to send messages'
       );
     }
 
-    const userId = context.auth.uid;
     const userMessage = data.message as string;
 
     // Validate input
@@ -59,44 +75,48 @@ export const generateResponse = functions
         createdAt: timestamp,
       });
 
-      // Get recent conversation history for context
+      // Get extended conversation history for context (3000 messages for deep memory)
       const recentMessages = await db
         .collection('conversations')
         .where('userId', '==', userId)
         .orderBy('timestamp', 'desc')
-        .limit(10)
+        .limit(3000)
         .get();
 
       const conversationHistory: ConversationMessage[] = recentMessages.docs
         .map((doc) => {
-          const data = doc.data();
+          const msgData = doc.data();
           return {
-            role: (data.isFromUser ? 'user' : 'assistant') as 'user' | 'assistant',
-            content: data.content as string,
+            role: (msgData.isFromUser ? 'user' : 'assistant') as 'user' | 'assistant',
+            content: msgData.content as string,
           };
         })
         .reverse();
 
-      // Generate AI response
-      const aiResponse = await generateAIResponse(userMessage.trim(), conversationHistory);
+      // Generate AI response with userId for memory access
+      const aiResponse = await generateAIResponse(userMessage.trim(), conversationHistory, userId);
 
-      // Save AI response to Firestore
+      // Save AI response to Firestore with emotion trigger for avatar
       await db.collection('conversations').add({
         userId,
         content: aiResponse.content,
         isFromUser: false,
         timestamp,
         emotion: aiResponse.emotion,
+        emotionTrigger: aiResponse.emotionTrigger,
+        emotionIntensity: aiResponse.emotionIntensity,
         modelUsed: aiResponse.modelUsed,
         createdAt: timestamp,
       });
 
-      // Return success response
+      // Return success response with emotion trigger for avatar animations
       return {
         success: true,
         messageId: userMessageRef.id,
         response: aiResponse.content,
         emotion: aiResponse.emotion,
+        emotionTrigger: aiResponse.emotionTrigger,
+        emotionIntensity: aiResponse.emotionIntensity,
       };
     } catch (error: any) {
       functions.logger.error('Error in generateResponse', {

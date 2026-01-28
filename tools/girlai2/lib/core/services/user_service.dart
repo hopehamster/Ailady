@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../../models/user_profile.dart';
 import '../utils/debug_logger.dart';
 import 'firebase_service.dart';
@@ -67,14 +68,18 @@ class UserService {
   }
 
   /// Update user profile
+  /// Uses set with merge option to handle cases where document may not exist
   Future<void> updateUserProfile(
       String userId, Map<String, dynamic> updates) async {
     try {
+      debugPrint('🔐 UserService.updateUserProfile: Updating userId: $userId');
       await _firebaseService.firestore
           .collection('users')
           .doc(userId)
-          .update(updates);
+          .set(updates, SetOptions(merge: true));
+      debugPrint('✅ UserService.updateUserProfile: Success');
     } catch (e, stack) {
+      debugPrint('❌ UserService.updateUserProfile: Error - $e');
       DebugLogger.logError('UserService.updateUserProfile', e,
           stackTrace: stack);
       rethrow;
@@ -82,13 +87,28 @@ class UserService {
   }
 
   /// Complete onboarding
+  /// Creates the user document if it doesn't exist, or updates it if it does
   Future<void> completeOnboarding(String userId, String displayName) async {
     try {
-      await updateUserProfile(userId, {
+      debugPrint('🔐 UserService.completeOnboarding: Starting for userId: $userId');
+      
+      final userRef = _firebaseService.firestore.collection('users').doc(userId);
+      
+      // Use set with merge to create document if it doesn't exist
+      // This handles the case where ensureUserProfile wasn't called
+      await userRef.set({
+        'id': userId,
         'displayName': displayName,
         'onboardingCompleted': true,
-      });
+        'lastLoginAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      
+      debugPrint('✅ UserService.completeOnboarding: Success for userId: $userId');
+      
+      DebugLogger.log('UserService.completeOnboarding', 'Onboarding completed',
+          data: {'userId': userId, 'displayName': displayName});
     } catch (e, stack) {
+      debugPrint('❌ UserService.completeOnboarding: Error - $e');
       DebugLogger.logError('UserService.completeOnboarding', e,
           stackTrace: stack);
       rethrow;

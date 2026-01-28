@@ -21,11 +21,27 @@ class _LoginScreenState extends State<LoginScreen> {
   CountryCode _selectedCountry = CountryCodeHelper.defaultCountry;
   bool _isLoading = false;
   Timer? _timeoutTimer;
+  bool _isDisposed = false;
+
+  /// Safe helper to get a prefix of verification ID for logging
+  String _safeIdPrefix(String? id) {
+    if (id == null || id.isEmpty) return 'null';
+    return id.length > 20 ? '${id.substring(0, 20)}...' : id;
+  }
+
+  /// Safe setState that checks if widget is still mounted
+  void _safeSetState(VoidCallback fn) {
+    if (mounted && !_isDisposed) {
+      setState(fn);
+    }
+  }
 
   @override
   void dispose() {
-    _phoneController.dispose();
+    _isDisposed = true;
     _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+    _phoneController.dispose();
     super.dispose();
   }
 
@@ -64,8 +80,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _timeoutTimer = Timer(
       Duration(seconds: AppConstants.loginTimeoutSeconds),
       () {
-        if (mounted && _isLoading) {
-          setState(() => _isLoading = false);
+        if (mounted && !_isDisposed && _isLoading) {
+          _safeSetState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
@@ -85,15 +101,28 @@ class _LoginScreenState extends State<LoginScreen> {
         onCodeSent: (verificationId) {
           debugPrint('✅ LoginScreen: onCodeSent callback received');
           debugPrint(
-              '✅ LoginScreen: Verification ID: ${verificationId.substring(0, 20)}...');
+              '✅ LoginScreen: Verification ID: ${_safeIdPrefix(verificationId)}');
           debugPrint(
               '✅ LoginScreen: Verification ID length: ${verificationId.length}');
-          debugPrint('✅ LoginScreen: Widget mounted: $mounted');
+          debugPrint('✅ LoginScreen: Widget mounted: $mounted, disposed: $_isDisposed');
 
           _timeoutTimer?.cancel();
-          if (mounted) {
+          if (mounted && !_isDisposed) {
             debugPrint('✅ LoginScreen: Navigating to OtpScreen...');
-            setState(() => _isLoading = false);
+            _safeSetState(() => _isLoading = false);
+            
+            // Validate verificationId before navigating
+            if (verificationId.isEmpty) {
+              debugPrint('❌ LoginScreen: Empty verificationId, cannot navigate');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Verification failed. Please try again.'),
+                  duration: Duration(seconds: 4),
+                ),
+              );
+              return;
+            }
+            
             Navigator.of(context).push(
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) =>
@@ -112,13 +141,13 @@ class _LoginScreenState extends State<LoginScreen> {
             );
             debugPrint('✅ LoginScreen: Navigation completed');
           } else {
-            debugPrint('❌ LoginScreen: Widget not mounted, cannot navigate');
+            debugPrint('❌ LoginScreen: Widget not mounted or disposed, cannot navigate');
           }
         },
         onError: (error) {
           _timeoutTimer?.cancel();
-          if (mounted) {
-            setState(() => _isLoading = false);
+          if (mounted && !_isDisposed) {
+            _safeSetState(() => _isLoading = false);
             final errorMessage = AuthErrorHandler.getErrorMessage(error);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -131,8 +160,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     } catch (e) {
       _timeoutTimer?.cancel();
-      if (mounted) {
-        setState(() => _isLoading = false);
+      if (mounted && !_isDisposed) {
+        _safeSetState(() => _isLoading = false);
         final errorMessage = AuthErrorHandler.getErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

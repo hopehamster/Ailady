@@ -24,7 +24,7 @@ class MessageBubble extends StatelessWidget {
             decoration: BoxDecoration(
               color: isUser
                   ? AppTheme.primaryColor.withValues(alpha: 0.8)
-                  : AppTheme.surfaceColor.withValues(alpha: 0.9),
+                  : const Color(0xDD2A2A3E), // Dark purple-gray for AI messages
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(20),
                 topRight: const Radius.circular(20),

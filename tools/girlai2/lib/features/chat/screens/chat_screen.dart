@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../chat_service.dart';
 import '../widgets/message_bubble.dart';
@@ -7,6 +8,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/chat_error_handler.dart';
 import '../../../core/exceptions/chat_exception.dart';
 import '../../avatar/widgets/avatar_view.dart';
+import '../../avatar/screens/avatar_creator_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -96,11 +98,24 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: const Text('AI Girlfriend'),
         actions: [
+          if (kDebugMode)
+            IconButton(
+              icon: const Icon(Icons.face_retouching_natural),
+              tooltip: 'Avatar Creator (Dev)',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AvatarCreatorScreen(),
+                  ),
+                );
+              },
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
@@ -196,30 +211,31 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
 
-              // Input Area
-              Padding(
-                padding: const EdgeInsets.all(16.0) +
-                    EdgeInsets.only(
-                        bottom: MediaQuery.of(context).viewInsets.bottom),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _messageController,
-                        textCapitalization: TextCapitalization.sentences,
-                        maxLength: AppConstants.maxMessageLength,
-                        decoration: InputDecoration(
-                          hintText: 'Say something...',
-                          counterText: '', // Hide character counter
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.send),
-                            onPressed: _sendMessage,
+              // Input Area - wrapped in SafeArea for proper keyboard handling
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          textCapitalization: TextCapitalization.sentences,
+                          maxLength: AppConstants.maxMessageLength,
+                          decoration: InputDecoration(
+                            hintText: 'Say something...',
+                            counterText: '', // Hide character counter
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.send),
+                              onPressed: _sendMessage,
+                            ),
                           ),
+                          onSubmitted: (_) => _sendMessage(),
                         ),
-                        onSubmitted: (_) => _sendMessage(),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ],

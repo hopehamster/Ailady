@@ -14,6 +14,15 @@ class AuthService extends ChangeNotifier {
   int? _resendToken;
   String? _lastPhoneNumber;
   StreamSubscription<User?>? _authStateSubscription;
+  int _authInitRetryCount = 0;
+  static const int _maxAuthInitRetries = 5;
+
+  /// Safe helper to get a prefix of verification ID for logging
+  /// Prevents crashes from null or short strings
+  static String _safeIdPrefix(String? id) {
+    if (id == null || id.isEmpty) return 'null';
+    return id.length > 20 ? '${id.substring(0, 20)}...' : id;
+  }
 
   AuthService(this._firebaseService) {
     // Defer auth state subscription to avoid throwing during construction
@@ -22,11 +31,23 @@ class AuthService extends ChangeNotifier {
   }
 
   void _initializeAuthState() {
+    // Check retry limit to prevent infinite loops
+    if (_authInitRetryCount >= _maxAuthInitRetries) {
+      debugPrint(
+          '❌ AuthService: Max auth init retries ($_maxAuthInitRetries) reached, giving up');
+      DebugLogger.logError(
+          'AuthService._initializeAuthState',
+          Exception('Max retries reached'),
+          data: {'retryCount': _authInitRetryCount});
+      return;
+    }
+
     try {
       // Check if Firebase is initialized before accessing auth
       if (Firebase.apps.isEmpty) {
+        _authInitRetryCount++;
         debugPrint(
-            '⚠️ AuthService: Firebase not initialized, deferring auth state subscription');
+            '⚠️ AuthService: Firebase not initialized, deferring auth state subscription (retry $_authInitRetryCount/$_maxAuthInitRetries)');
         // Retry after a short delay
         Future.delayed(const Duration(milliseconds: 500), () {
           if (Firebase.apps.isNotEmpty && _authStateSubscription == null) {
@@ -39,19 +60,32 @@ class AuthService extends ChangeNotifier {
       // Double-check Firebase is ready before accessing auth
       try {
         final auth = _firebaseService.auth;
-        // Verify auth instance is valid before subscribing
-        if (auth.currentUser != null || true) { // Always try to subscribe
-          _authStateSubscription = auth.authStateChanges().listen((User? user) {
-            _user = user;
-            notifyListeners();
-          }, onError: (error) {
-            debugPrint('⚠️ AuthService: Error in auth state stream: $error');
-            // Don't crash, just log the error
-          });
+        
+        // Check current user on startup
+        final currentUser = auth.currentUser;
+        debugPrint('🔐 AuthService: Initial currentUser check: ${currentUser?.uid ?? "null"}');
+        if (currentUser != null) {
+          debugPrint('✅ AuthService: User already signed in: ${currentUser.uid}');
+          _user = currentUser;
         }
+        
+        // Verify auth instance is valid before subscribing
+        _authStateSubscription = auth.authStateChanges().listen((User? user) {
+          debugPrint('🔐 AuthService: authStateChanges fired: ${user?.uid ?? "null"}');
+          _user = user;
+          notifyListeners();
+        }, onError: (error) {
+          debugPrint('⚠️ AuthService: Error in auth state stream: $error');
+          // Don't crash, just log the error
+        });
+        
+        // Reset retry count on success
+        _authInitRetryCount = 0;
+        debugPrint('✅ AuthService: Auth state subscription established');
       } catch (e) {
         // If accessing auth fails, retry later
-        debugPrint('⚠️ AuthService: Failed to access auth, will retry: $e');
+        _authInitRetryCount++;
+        debugPrint('⚠️ AuthService: Failed to access auth, will retry (attempt $_authInitRetryCount/$_maxAuthInitRetries): $e');
         Future.delayed(const Duration(milliseconds: 1000), () {
           if (Firebase.apps.isNotEmpty && _authStateSubscription == null) {
             _initializeAuthState();
@@ -60,12 +94,13 @@ class AuthService extends ChangeNotifier {
         return;
       }
     } catch (e, stack) {
+      _authInitRetryCount++;
       DebugLogger.logError('AuthService._initializeAuthState', e,
-          stackTrace: stack);
+          stackTrace: stack, data: {'retryCount': _authInitRetryCount});
       // Don't rethrow - allow the service to exist even if auth state can't be subscribed
       // The service will still work for manual auth operations
       debugPrint(
-          '⚠️ AuthService: Failed to subscribe to auth state changes: $e');
+          '⚠️ AuthService: Failed to subscribe to auth state changes (attempt $_authInitRetryCount/$_maxAuthInitRetries): $e');
       // Retry after a delay
       Future.delayed(const Duration(milliseconds: 1000), () {
         if (Firebase.apps.isNotEmpty && _authStateSubscription == null) {
@@ -136,7 +171,6 @@ class AuthService extends ChangeNotifier {
           });
 
       final auth = _firebaseService.auth;
-      bool callbackFired = false;
 
       try {
         debugPrint(
@@ -147,7 +181,6 @@ class AuthService extends ChangeNotifier {
         await auth.verifyPhoneNumber(
           phoneNumber: phoneNumber,
           verificationCompleted: (PhoneAuthCredential credential) async {
-            callbackFired = true;
             final callbackTime = DateTime.now();
             final elapsed = callbackTime.difference(startTime);
 
@@ -188,7 +221,6 @@ class AuthService extends ChangeNotifier {
             }
           },
           verificationFailed: (FirebaseAuthException e) {
-            callbackFired = true;
             final callbackTime = DateTime.now();
             final elapsed = callbackTime.difference(startTime);
 
@@ -221,21 +253,20 @@ class AuthService extends ChangeNotifier {
             onError(AuthErrorHandler.getErrorMessageFromCode(e.code));
           },
           codeSent: (String verificationId, int? resendToken) {
-            callbackFired = true;
             final callbackTime = DateTime.now();
             final elapsed = callbackTime.difference(startTime);
 
             debugPrint(
                 '✅ AuthService.verifyPhoneNumber: codeSent callback fired!');
             debugPrint(
-                '✅ Verification ID: ${verificationId.substring(0, 20)}...');
+                '✅ Verification ID: ${_safeIdPrefix(verificationId)}');
             debugPrint('✅ Verification ID length: ${verificationId.length}');
             debugPrint('✅ Elapsed: ${elapsed.inMilliseconds}ms');
             debugPrint('✅ Phone: $phoneNumber');
 
             debugPrint('✅ AuthService: codeSent callback fired!');
             debugPrint(
-                '✅ AuthService: Verification ID received: ${verificationId.substring(0, 20)}...');
+                '✅ AuthService: Verification ID received: ${_safeIdPrefix(verificationId)}');
             debugPrint(
                 '✅ AuthService: Verification ID length: ${verificationId.length}');
             debugPrint(
@@ -246,7 +277,7 @@ class AuthService extends ChangeNotifier {
                 data: {
                   'phoneNumber': phoneNumber,
                   'verificationIdLength': verificationId.length,
-                  'verificationIdPrefix': verificationId.substring(0, 20),
+                  'verificationIdPrefix': _safeIdPrefix(verificationId),
                   'hasResendToken': resendToken != null,
                   'elapsedMs': elapsed.inMilliseconds,
                   'callback': 'codeSent',
@@ -258,20 +289,19 @@ class AuthService extends ChangeNotifier {
             onCodeSent(verificationId);
           },
           codeAutoRetrievalTimeout: (String verificationId) {
-            callbackFired = true;
             final callbackTime = DateTime.now();
             final elapsed = callbackTime.difference(startTime);
 
             debugPrint(
                 '⚠️ AuthService.verifyPhoneNumber: codeAutoRetrievalTimeout callback fired');
             debugPrint(
-                '⚠️ Verification ID: ${verificationId.substring(0, 20)}...');
+                '⚠️ Verification ID: ${_safeIdPrefix(verificationId)}');
             debugPrint('⚠️ Elapsed: ${elapsed.inMilliseconds}ms');
 
             debugPrint(
                 '⚠️ AuthService: codeAutoRetrievalTimeout callback fired');
             debugPrint(
-                '⚠️ AuthService: Verification ID: ${verificationId.substring(0, 20)}...');
+                '⚠️ AuthService: Verification ID: ${_safeIdPrefix(verificationId)}');
             debugPrint(
                 '⚠️ AuthService: Elapsed time: ${elapsed.inMilliseconds}ms');
 
@@ -280,7 +310,7 @@ class AuthService extends ChangeNotifier {
                 data: {
                   'phoneNumber': phoneNumber,
                   'verificationIdLength': verificationId.length,
-                  'verificationIdPrefix': verificationId.substring(0, 20),
+                  'verificationIdPrefix': _safeIdPrefix(verificationId),
                   'elapsedMs': elapsed.inMilliseconds,
                   'callback': 'codeAutoRetrievalTimeout',
                 });
@@ -320,70 +350,15 @@ class AuthService extends ChangeNotifier {
         return;
       }
 
-      // Wait a moment to see if callbacks fire
+      // Note: We don't wait for callbacks here anymore.
+      // On Android with reCAPTCHA, the browser popup can take much longer than 2 seconds.
+      // The callbacks (codeSent, verificationFailed, etc.) will fire asynchronously
+      // and handle success/failure appropriately.
+      // The LoginScreen has its own timeout (AppConstants.loginTimeoutSeconds) for UX.
       debugPrint(
-          '🔐 AuthService.verifyPhoneNumber: Waiting 2 seconds for callbacks...');
-      debugPrint('🔐 AuthService: Waiting 2 seconds for callbacks...');
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (!callbackFired) {
-        final elapsed = DateTime.now().difference(startTime);
-        debugPrint(
-            '❌ AuthService.verifyPhoneNumber: No callback fired after ${elapsed.inSeconds}s');
-        debugPrint('❌ Phone: $phoneNumber');
-        debugPrint('❌ Emulator status: $emulatorStatus');
-
-        debugPrint(
-            '❌ AuthService: No callback fired after ${elapsed.inSeconds}s');
-        debugPrint(
-            '❌ AuthService: This may indicate the emulator is not responding or there is a network issue');
-
-        DebugLogger.logErrorSync('AuthService.verifyPhoneNumber.noCallback',
-            Exception('No callback fired after ${elapsed.inSeconds}s'),
-            stackTrace: null,
-            data: {
-              'phoneNumber': phoneNumber,
-              'elapsedSeconds': elapsed.inSeconds,
-              'emulatorHost': authEmulator?.host,
-              'emulatorPort': authEmulator?.port,
-              'usingEmulator': authEmulator != null,
-            });
-
-        final errorMessage = StringBuffer();
-        errorMessage.writeln(
-            'Phone verification did not respond after ${elapsed.inSeconds}s.');
-        errorMessage.writeln('');
-
-        if (authEmulator != null) {
-          errorMessage.writeln('Emulator Configuration:');
-          errorMessage
-              .writeln('  • Host: ${authEmulator.host}:${authEmulator.port}');
-          errorMessage.writeln('');
-          errorMessage.writeln('Please verify:');
-          errorMessage.writeln(
-              '1. Firebase Auth Emulator is running: firebase emulators:start --only auth');
-          errorMessage.writeln(
-              '2. Emulator is accessible at http://${authEmulator.host}:${authEmulator.port}');
-          errorMessage
-              .writeln('3. App logs show "✅ DART: Auth emulator configured"');
-          errorMessage
-              .writeln('4. For iOS Simulator, use 127.0.0.1 (not localhost)');
-        } else {
-          errorMessage.writeln('Using Production Firebase Auth:');
-          errorMessage
-              .writeln('1. Phone Auth must be ENABLED in Firebase Console');
-          errorMessage.writeln(
-              '2. Check Firebase Console → Authentication → Sign-in method');
-          errorMessage.writeln(
-              '3. Verify phone number format is correct (E.164 format)');
-        }
-
-        onError(errorMessage.toString());
-      } else {
-        debugPrint(
-            '✅ AuthService.verifyPhoneNumber: Callback fired successfully');
-        debugPrint('✅ AuthService: Callback fired successfully');
-      }
+          '✅ AuthService.verifyPhoneNumber: verifyPhoneNumber initiated, callbacks will fire asynchronously');
+      debugPrint(
+          '✅ AuthService: On Android, reCAPTCHA verification may open a browser - this is normal');
     } catch (e, stack) {
       final elapsed = DateTime.now().difference(startTime);
 
@@ -421,9 +396,9 @@ class AuthService extends ChangeNotifier {
       debugPrint('❌ AuthService.signInWithOTP: Verification ID is missing');
       debugPrint('❌ SMS Code length: ${smsCode.length}');
       debugPrint(
-          '❌ Passed verificationId: ${verificationId != null ? "${verificationId.substring(0, 20)}..." : "null"}');
+          '❌ Passed verificationId: ${_safeIdPrefix(verificationId)}');
       debugPrint(
-          '❌ Internal _verificationId: ${_verificationId != null ? "${_verificationId!.substring(0, 20)}..." : "null"}');
+          '❌ Internal _verificationId: ${_safeIdPrefix(_verificationId)}');
 
       DebugLogger.logErrorSync('AuthService.signInWithOTP', error,
           stackTrace: null,
@@ -441,7 +416,7 @@ class AuthService extends ChangeNotifier {
     try {
       debugPrint('🔐 AuthService.signInWithOTP: START');
       debugPrint(
-          '🔐 Verification ID: ${effectiveVerificationId.substring(0, 20)}...');
+          '🔐 Verification ID: ${_safeIdPrefix(effectiveVerificationId)}');
       debugPrint(
           '🔐 Verification ID length: ${effectiveVerificationId.length}');
       debugPrint('🔐 SMS Code length: ${smsCode.length}');
@@ -450,7 +425,7 @@ class AuthService extends ChangeNotifier {
       debugPrint('🔐 Timestamp: ${startTime.toIso8601String()}');
 
       debugPrint(
-          '🔐 AuthService: Verifying OTP with verificationId: ${effectiveVerificationId.substring(0, 20)}...');
+          '🔐 AuthService: Verifying OTP with verificationId: ${_safeIdPrefix(effectiveVerificationId)}');
       debugPrint('🔐 AuthService: SMS Code length: ${smsCode.length}');
       debugPrint(
           '🔐 AuthService: Verification ID length: ${effectiveVerificationId.length}');
@@ -460,7 +435,7 @@ class AuthService extends ChangeNotifier {
       DebugLogger.log('AuthService.signInWithOTP', 'Starting OTP verification',
           data: {
             'verificationIdLength': effectiveVerificationId.length,
-            'verificationIdPrefix': effectiveVerificationId.substring(0, 20),
+            'verificationIdPrefix': _safeIdPrefix(effectiveVerificationId),
             'smsCodeLength': smsCode.length,
             'usingPassedVerificationId': verificationId != null,
           });
@@ -504,7 +479,7 @@ class AuthService extends ChangeNotifier {
       debugPrint('❌ Error code: ${e.code}');
       debugPrint('❌ Error message: ${e.message}');
       debugPrint(
-          '❌ Verification ID: ${effectiveVerificationId?.substring(0, 20) ?? "null"}...');
+          '❌ Verification ID: ${_safeIdPrefix(effectiveVerificationId)}');
       debugPrint(
           '❌ Verification ID length: ${effectiveVerificationId?.length ?? 0}');
       debugPrint('❌ SMS Code length: ${smsCode.length}');
@@ -523,7 +498,7 @@ class AuthService extends ChangeNotifier {
             'code': e.code,
             'message': e.message,
             'verificationIdLength': effectiveVerificationId?.length ?? 0,
-            'verificationIdPrefix': effectiveVerificationId?.substring(0, 20),
+            'verificationIdPrefix': _safeIdPrefix(effectiveVerificationId),
             'smsCodeLength': smsCode.length,
             'elapsedMs': elapsed.inMilliseconds,
           });
@@ -545,7 +520,7 @@ class AuthService extends ChangeNotifier {
       debugPrint('❌ Error: $e');
       debugPrint('❌ Error type: ${e.runtimeType}');
       debugPrint(
-          '❌ Verification ID: ${effectiveVerificationId?.substring(0, 20) ?? "null"}...');
+          '❌ Verification ID: ${_safeIdPrefix(effectiveVerificationId)}');
       debugPrint(
           '❌ Verification ID length: ${effectiveVerificationId?.length ?? 0}');
       debugPrint('❌ SMS Code length: ${smsCode.length}');
@@ -560,7 +535,7 @@ class AuthService extends ChangeNotifier {
           stackTrace: stack,
           data: {
             'verificationIdLength': effectiveVerificationId?.length ?? 0,
-            'verificationIdPrefix': effectiveVerificationId?.substring(0, 20),
+            'verificationIdPrefix': _safeIdPrefix(effectiveVerificationId),
             'smsCodeLength': smsCode.length,
             'elapsedMs': elapsed.inMilliseconds,
             'errorType': e.runtimeType.toString(),
@@ -586,14 +561,15 @@ class AuthService extends ChangeNotifier {
       return;
     }
 
+    debugPrint('🔐 AuthService.resendOTP: Starting resend for $_lastPhoneNumber');
+
     try {
       final auth = _firebaseService.auth;
-      bool callbackFired = false;
 
       await auth.verifyPhoneNumber(
         phoneNumber: _lastPhoneNumber!,
         verificationCompleted: (PhoneAuthCredential credential) async {
-          callbackFired = true;
+          debugPrint('✅ AuthService.resendOTP: verificationCompleted callback');
           try {
             await auth.signInWithCredential(credential);
           } catch (e, stack) {
@@ -602,32 +578,31 @@ class AuthService extends ChangeNotifier {
           }
         },
         verificationFailed: (FirebaseAuthException e) {
-          callbackFired = true;
+          debugPrint('❌ AuthService.resendOTP: verificationFailed - ${e.code}');
           DebugLogger.logError('AuthService.resendOTP', e,
               data: {'code': e.code});
           onError(AuthErrorHandler.getErrorMessageFromCode(e.code));
         },
         codeSent: (String verificationId, int? resendToken) {
-          callbackFired = true;
+          debugPrint('✅ AuthService.resendOTP: codeSent - ${_safeIdPrefix(verificationId)}');
           _verificationId = verificationId;
           _resendToken = resendToken;
           onCodeSent(verificationId);
         },
         codeAutoRetrievalTimeout: (String verificationId) {
-          callbackFired = true;
+          debugPrint('⚠️ AuthService.resendOTP: codeAutoRetrievalTimeout');
           _verificationId = verificationId;
         },
         forceResendingToken: _resendToken,
         timeout: const Duration(seconds: 60),
       );
 
-      // Wait to see if callbacks fire
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (!callbackFired) {
-        onError('Resend verification did not respond. Please try again.');
-      }
+      // Note: We don't wait for callbacks here anymore.
+      // On Android with reCAPTCHA, the browser popup can take longer.
+      // The callbacks will fire asynchronously and handle success/failure.
+      debugPrint('✅ AuthService.resendOTP: verifyPhoneNumber initiated, callbacks will fire asynchronously');
     } catch (e, stack) {
+      debugPrint('❌ AuthService.resendOTP: Exception - $e');
       DebugLogger.logError('AuthService.resendOTP', e, stackTrace: stack);
       onError('Unexpected error: ${AuthErrorHandler.getErrorMessage(e)}');
     }
