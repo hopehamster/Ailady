@@ -1,0 +1,46 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "bezzly.moc3",
+    "Textures": [
+      "bezzly.8192/texture_00.png"
+    ],
+    "Physics": "bezzly.physics3.json",
+    "DisplayInfo": "bezzly.cdi3.json",
+    "Expressions": [
+      {
+        "Name": "Happy",
+        "File": "Happy.exp3.json"
+      },
+      {
+        "Name": "Sad",
+        "File": "Sad.exp3.json"
+      },
+      {
+        "Name": "Angry",
+        "File": "Angry.exp3.json"
+      }
+    ]
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY",
+        "ParamMouthForm",
+        "MouthPucker",
+        "MouthFunnel",
+        "MouthX"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    }
+  ]
+}

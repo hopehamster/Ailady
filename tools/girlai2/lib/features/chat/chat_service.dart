@@ -8,7 +8,8 @@ import '../../core/constants/app_constants.dart';
 import '../../models/message.dart';
 
 /// Callback type for avatar emotion triggers
-typedef EmotionTriggerCallback = void Function(String emotionTrigger, double intensity);
+typedef EmotionTriggerCallback = void Function(
+    String emotion, String emotionTrigger, double intensity);
 
 class ChatService extends ChangeNotifier {
   final FirebaseService _firebaseService;
@@ -16,12 +17,12 @@ class ChatService extends ChangeNotifier {
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
   List<Message> _messages = [];
   bool _isTyping = false;
-  
+
   // Current emotion state for avatar
   String _currentEmotion = 'neutral';
   String _currentEmotionTrigger = 'Idle_Gentle_Sway';
   double _currentEmotionIntensity = 0.5;
-  
+
   // Callback for avatar system to listen to emotion changes
   EmotionTriggerCallback? onEmotionTrigger;
 
@@ -146,15 +147,21 @@ class ChatService extends ChangeNotifier {
         if (response['emotionTrigger'] != null) {
           _currentEmotion = response['emotion'] ?? 'neutral';
           _currentEmotionTrigger = response['emotionTrigger'] as String;
-          _currentEmotionIntensity = (response['emotionIntensity'] as num?)?.toDouble() ?? 0.5;
-          
+          _currentEmotionIntensity =
+              (response['emotionIntensity'] as num?)?.toDouble() ?? 0.5;
+
           // Notify avatar system of emotion change
           if (onEmotionTrigger != null) {
-            onEmotionTrigger!(_currentEmotionTrigger, _currentEmotionIntensity);
+            onEmotionTrigger!(
+              _currentEmotion,
+              _currentEmotionTrigger,
+              _currentEmotionIntensity,
+            );
           }
-          
+
           if (kDebugMode) {
-            debugPrint('🎭 Emotion trigger: $_currentEmotionTrigger (intensity: $_currentEmotionIntensity)');
+            debugPrint(
+                '🎭 Emotion trigger: $_currentEmotionTrigger (intensity: $_currentEmotionIntensity)');
           }
         }
 

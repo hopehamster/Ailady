@@ -1,11 +1,9 @@
-import 'dart:convert';
-
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_unity_widget/flutter_unity_widget.dart';
+import 'package:flutter/rendering.dart';
 
-/// Avatar Creator screen with embedded Genies SDK Avatar Editor.
+import '../live2d/live2d_bridge.dart';
+
 class AvatarCreatorScreen extends StatefulWidget {
   const AvatarCreatorScreen({super.key});
 
@@ -14,113 +12,113 @@ class AvatarCreatorScreen extends StatefulWidget {
 }
 
 class _AvatarCreatorScreenState extends State<AvatarCreatorScreen> {
-  UnityWidgetController? _unity;
-  bool _isEditorOpen = false;
-  bool _isSaving = false;
+  static const String _modelPath =
+      'flutter_assets/assets/live2d/bezzly/bezzly.model3.json';
 
-  void _onUnityCreated(UnityWidgetController controller) {
-    _unity = controller;
+  final Live2DBridge _bridge = Live2DBridge.instance;
+  bool _loaded = false;
+  double _mouthOpen = 0.0;
 
-    // Initial handshake
-    final init = jsonEncode({
-      'mode': 'wizard',
-      'tier': 'regular',
-      'userId': null,
-    });
+  Future<void> _loadModel() async {
+    await _bridge.loadModel(_modelPath);
+    await _bridge.setExpression('Neutral');
 
-    controller.postMessage('AvatarBridge', 'Init', init);
-    
-    // Auto-open the avatar editor
-    Future.delayed(const Duration(milliseconds: 500), () {
-      _openAvatarEditor();
+    if (!mounted) return;
+    setState(() {
+      _loaded = true;
     });
   }
 
-  void _onUnityMessage(dynamic message) {
-    try {
-      final data = jsonDecode(message.toString());
-      final type = data['type'] as String?;
-      
-      switch (type) {
-        case 'AvatarEditorOpened':
-          setState(() => _isEditorOpen = true);
-          break;
-        case 'AvatarEditorClosed':
-          setState(() => _isEditorOpen = false);
-          break;
-        case 'AvatarSaved':
-          setState(() => _isSaving = false);
-          _showSnackBar('Avatar saved successfully!');
-          break;
-        case 'UnityError':
-          final error = data['payload']?['error'] ?? 'Unknown error';
-          _showSnackBar('Error: $error');
-          break;
-      }
-    } catch (e) {
-      // Ignore parse errors for debug messages
-    }
+  Future<void> _setExpression(String value) async {
+    await _bridge.setExpression(value);
   }
 
-  void _openAvatarEditor() {
-    _unity?.postMessage('AvatarBridge', 'OpenAvatarEditor', '');
-  }
+  Future<void> _setMouthOpen(double value) async {
+    setState(() {
+      _mouthOpen = value;
+    });
 
-  void _saveAvatar() {
-    setState(() => _isSaving = true);
-    _unity?.postMessage('AvatarBridge', 'SaveAvatar', '');
-  }
-
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    await _bridge.setParameters(<String, double>{
+      'ParamMouthOpenY': _mouthOpen,
+      'ParamMouthForm': 0.0,
+      'MouthPucker': 0.0,
+      'MouthFunnel': 0.0,
+      'MouthX': 0.0,
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return const Scaffold(
+        body: Center(
+          child: Text('Live2D rig preview is currently Android-only.'),
+        ),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Your Avatar'),
-        actions: [
-          if (_isSaving)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else
-            TextButton(
-              onPressed: _saveAvatar,
-              child: const Text(
-                'Done',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+      appBar: AppBar(title: const Text('Live2D Rig Preview')),
+      body: Column(
+        children: <Widget>[
+          Expanded(
+            child: Stack(
+              children: <Widget>[
+                AndroidView(
+                  viewType: 'girlai2/live2d_view',
+                  onPlatformViewCreated: (_) => _loadModel(),
+                  hitTestBehavior: PlatformViewHitTestBehavior.opaque,
                 ),
-              ),
+                if (!_loaded)
+                  Container(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    alignment: Alignment.center,
+                    child: const CircularProgressIndicator(color: Colors.pink),
+                  ),
+              ],
             ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: <Widget>[
+              OutlinedButton(
+                onPressed: () => _setExpression('Happy'),
+                child: const Text('Happy'),
+              ),
+              OutlinedButton(
+                onPressed: () => _setExpression('Sad'),
+                child: const Text('Sad'),
+              ),
+              OutlinedButton(
+                onPressed: () => _setExpression('Angry'),
+                child: const Text('Angry'),
+              ),
+              OutlinedButton(
+                onPressed: () => _setExpression('Neutral'),
+                child: const Text('Neutral'),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: <Widget>[
+                const Text('Mouth'),
+                Expanded(
+                  child: Slider(
+                    value: _mouthOpen,
+                    min: 0.0,
+                    max: 1.0,
+                    onChanged: _setMouthOpen,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
         ],
-      ),
-      body: UnityWidget(
-        onUnityCreated: _onUnityCreated,
-        onUnityMessage: _onUnityMessage,
-        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
-          Factory<EagerGestureRecognizer>(
-            () => EagerGestureRecognizer(),
-          ),
-          Factory<ScaleGestureRecognizer>(
-            () => ScaleGestureRecognizer(),
-          ),
-          Factory<PanGestureRecognizer>(
-            () => PanGestureRecognizer(),
-          ),
-        },
       ),
     );
   }
 }
-
