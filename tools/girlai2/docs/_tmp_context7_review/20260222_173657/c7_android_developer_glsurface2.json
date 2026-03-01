@@ -1,0 +1,100 @@
+### Call Android Activity onPause
+
+Source: https://developer.android.com/reference/android/app/Instrumentation
+
+Invokes the onPause method of an Android Activity. This method is available from API level 1 and is used to handle the activity pausing.
+
+```java
+public void callActivityOnPause (Activity activity)
+```
+
+--------------------------------
+
+### setOnFrameAvailableListener(listener)
+
+Source: https://developer.android.com/reference/android/graphics/SurfaceTexture
+
+Registers a callback to be invoked when a new image frame becomes available. The callback may be called on an arbitrary thread.
+
+```APIDOC
+## setOnFrameAvailableListener(listener)
+
+### Description
+Registers a callback to be invoked when a new image frame becomes available to the SurfaceTexture. The callback may be called on an arbitrary thread, so it is not safe to call `updateTexImage()` without first binding the OpenGL ES context to the thread invoking the callback.
+
+### Method
+`public void setOnFrameAvailableListener (SurfaceTexture.OnFrameAvailableListener listener)`
+
+### Endpoint
+N/A (Method within a class)
+
+### Parameters
+#### Path Parameters
+None
+
+#### Query Parameters
+None
+
+#### Request Body
+None
+
+### Parameters
+* **listener** (`SurfaceTexture.OnFrameAvailableListener`) - The listener to use, or null to remove the listener.
+
+### Request Example
+N/A
+
+### Response
+N/A
+```
+
+--------------------------------
+
+### updateTexImage()
+
+Source: https://developer.android.com/reference/android/graphics/SurfaceTexture
+
+Updates the texture image to the most recent frame from the image stream. This must be called while the owning OpenGL ES context is current on the calling thread and implicitly binds its texture to the `GL_TEXTURE_EXTERNAL_OES` texture target.
+
+```APIDOC
+## updateTexImage()
+
+### Description
+Updates the texture image to the most recent frame from the image stream. This may only be called while the OpenGL ES context that owns the texture is current on the calling thread. It will implicitly bind its texture to the `GL_TEXTURE_EXTERNAL_OES` texture target.
+
+### Method
+`public void updateTexImage ()`
+
+### Endpoint
+N/A (Method within a class)
+
+### Parameters
+None
+
+### Request Example
+N/A
+
+### Response
+N/A
+```
+
+--------------------------------
+
+### Set Frame Available Listener with Handler
+
+Source: https://developer.android.com/reference/android/graphics/SurfaceTexture
+
+Registers a callback to be invoked when a new image frame is available. If a handler is provided, the callback runs on its thread. Otherwise, it may run on an arbitrary thread, requiring careful OpenGL ES context management.
+
+```java
+public void setOnFrameAvailableListener (SurfaceTexture.OnFrameAvailableListener listener, Handler handler)
+```
+
+Source: https://developer.android.com/reference/android/graphics/SurfaceTexture
+
+SurfaceTexture > Public methods > setOnFrameAvailableListener: Register a callback to be invoked when a new image frame becomes available to the SurfaceTexture. 
+If a handler is specified, the callback will be invoked on that handler's thread. If no handler is specified, then the callback may be called on an arbitrary thread, so it is not safe to call `updateTexImage()` without first binding the OpenGL ES context to the thread invoking the callback. 
+Parameters  
+---  
+`listener` |  `SurfaceTexture.OnFrameAvailableListener`: The listener to use, or null to remove the listener.  
+`handler` |  `Handler`: The handler on which the listener should be invoked, or null to use an arbitrary thread.

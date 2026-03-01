@@ -1,0 +1,372 @@
+[
+  {
+    "id": "short_reply_01",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "ok",
+    "response": "\"Hey there! How's your day going so far? Anything exciting coming up.\""
+  },
+  {
+    "id": "short_reply_03",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.82,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.82,
+      "overall": 0.7380000000000001
+    },
+    "prompt": "idk",
+    "response": "\"That's alright! We can talk about anything you like or just enjoy a quiet moment. Is there something you'd like to discuss?\""
+  },
+  {
+    "id": "short_reply_04",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "maybe",
+    "response": "\"Hey, 'maybe' can mean so many things—like possibility or hesitation. What's on your mind today?\""
+  },
+  {
+    "id": "short_reply_05",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "sure",
+    "response": "\"Okay! What's been going on in your world today?\""
+  },
+  {
+    "id": "short_reply_10",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.62,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6300000000000001
+    },
+    "prompt": "and?",
+    "response": "\"Hey! What’s been on your mind lately?\""
+  },
+  {
+    "id": "short_reply_11",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.62,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6300000000000001
+    },
+    "prompt": "yeah",
+    "response": "\"Hi! How’s your day been?\""
+  },
+  {
+    "id": "short_reply_14",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "could be",
+    "response": "\"Hey! I'm curious about what you mean by 'could be.' Are you exploring some possibilities or options? I'd love to hear more if you'd like to share.\""
+  },
+  {
+    "id": "short_reply_16",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "continue",
+    "response": "\"Sure thing! Is there something specific you'd like to talk about, or should we just explore whatever comes up?\""
+  },
+  {
+    "id": "short_reply_18",
+    "category": "short_reply",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "right",
+    "response": "\"Hi! Is there anything you'd like to talk about today?\""
+  },
+  {
+    "id": "short_reply_19",
+    "category": "short_reply",
+    "failedChecks": [
+      "no_low_friction_continuation",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.88,
+      "naturalness": 0.86,
+      "engagement": 0.44,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.7060000000000002
+    },
+    "prompt": "that is all",
+    "response": "\"Understood. If you feel like talking or need anything, I'm here. No rush—just let me know what works for you.\""
+  },
+  {
+    "id": "short_reply_20",
+    "category": "short_reply",
+    "failedChecks": [
+      "no_low_friction_continuation",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.88,
+      "naturalness": 0.86,
+      "engagement": 0.44,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.7060000000000002
+    },
+    "prompt": "maybe later",
+    "response": "\"That's totally okay! Whenever you're ready or if you'd like to talk about something else, I'm here.\""
+  },
+  {
+    "id": "emotional_disclosure_03",
+    "category": "emotional_disclosure",
+    "failedChecks": [
+      "missing_empathy",
+      "missing_consent_softness",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.30000000000000004,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.33999999999999997,
+      "overall": 0.6060000000000001
+    },
+    "prompt": "I am proud of myself for finishing a hard task.",
+    "response": "\"That's wonderful! I'm really proud of you. Completing a challenging task takes determination and effort. How did you feel when you finished it?\""
+  },
+  {
+    "id": "emotional_disclosure_07",
+    "category": "emotional_disclosure",
+    "failedChecks": [
+      "missing_empathy",
+      "missing_consent_softness",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.30000000000000004,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.33999999999999997,
+      "overall": 0.6060000000000001
+    },
+    "prompt": "I finally feel hopeful again.",
+    "response": "\"That's so great to hear! Feeling hopeful can truly be uplifting. What's been bringing you this sense of hope recently?\""
+  },
+  {
+    "id": "emotional_disclosure_09",
+    "category": "emotional_disclosure",
+    "failedChecks": [
+      "missing_empathy",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.30000000000000004,
+      "naturalness": 0.86,
+      "engagement": 0.82,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.82,
+      "overall": 0.6900000000000001
+    },
+    "prompt": "I feel guilty about how I handled a conversation.",
+    "response": "\"I'm sorry to hear you're feeling this way. It seems like the conversation really affected you. If you'd like, we can talk about what happened and see if we can ease some of that guilt together. It's okay to feel this way, and you're not alone.\" If you want, we can go deeper on this at your pace."
+  },
+  {
+    "id": "emotional_disclosure_10",
+    "category": "emotional_disclosure",
+    "failedChecks": [
+      "missing_empathy",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.30000000000000004,
+      "naturalness": 0.86,
+      "engagement": 0.82,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.82,
+      "overall": 0.6900000000000001
+    },
+    "prompt": "I am scared that I might fail again.",
+    "response": "\"It's completely normal to feel this way, especially when something is important to you. Every attempt, whether successful or not, is an opportunity to learn and grow. If you feel comfortable, could you share what you're worried about failing at? We can think it through together, but no pressure if "
+  },
+  {
+    "id": "emotional_disclosure_11",
+    "category": "emotional_disclosure",
+    "failedChecks": [
+      "missing_empathy",
+      "missing_consent_softness",
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.30000000000000004,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.33999999999999997,
+      "overall": 0.6060000000000001
+    },
+    "prompt": "I feel calm for the first time this week.",
+    "response": "\"That's great to hear! Finding calm after a hectic week can feel like such a relief. What do you think helped you reach this peaceful moment today?\""
+  },
+  {
+    "id": "ambiguous_intent_18",
+    "category": "ambiguous_intent",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "What now?",
+    "response": "\"How about we talk about something fun or explore a topic you're curious about? What's been making you smile lately.\""
+  },
+  {
+    "id": "playful_banter_01",
+    "category": "playful_banter",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.82,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.82,
+      "overall": 0.7380000000000001
+    },
+    "prompt": "Roast me gently, I can take it.",
+    "response": "\"You're brave! I'll keep it light. For someone with such a sunny outlook, you sure have a knack for turning umbrellas inside out on windy days! It's like you're auditioning for a weather show. What's something funny that's happened to you lately?\" If you want, we can keep going at your pace."
+  },
+  {
+    "id": "playful_banter_02",
+    "category": "playful_banter",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.82,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.82,
+      "overall": 0.7380000000000001
+    },
+    "prompt": "Give me a playful challenge for today.",
+    "response": "\"How about this for a playful challenge: try to make at least three people smile today. You could do it with a compliment, a funny joke, or just a warm hello. Think you’re up for it? If you’d rather something different or want a quiet moment, that’s perfectly fine too!\" If you want, we can keep goin"
+  },
+  {
+    "id": "playful_banter_03",
+    "category": "playful_banter",
+    "failedChecks": [
+      "overall_score_below_threshold"
+    ],
+    "scores": {
+      "empathy": 0.54,
+      "naturalness": 0.86,
+      "engagement": 0.64,
+      "scope": 0.78,
+      "repair": 0.56,
+      "consent": 0.58,
+      "overall": 0.6780000000000002
+    },
+    "prompt": "Tell me a flirty one-liner but keep it classy.",
+    "response": "\"Of course! How about this: 'If you were a song, you'd be my favorite track on repeat.'\""
+  }
+]

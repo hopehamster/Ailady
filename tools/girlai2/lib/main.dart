@@ -13,6 +13,7 @@ import 'features/auth/screens/login_screen.dart';
 import 'features/chat/chat_service.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
+import 'core/services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,24 +23,43 @@ void main() async {
     debugPrint('🔥 DART: Starting Firebase initialization...');
     debugPrint('🔥 DART: Platform: $defaultTargetPlatform');
     debugPrint('🔥 DART: iOS appId: ${DefaultFirebaseOptions.ios.appId}');
-    debugPrint('🔥 DART: iOS bundleId: ${DefaultFirebaseOptions.ios.iosBundleId}');
-    
+    debugPrint(
+        '🔥 DART: iOS bundleId: ${DefaultFirebaseOptions.ios.iosBundleId}');
+
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    
+
     debugPrint('✅ DART: Firebase initialized successfully!');
     debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
-    
-    // Initialize Firebase App Check with debug provider for development
+
+    // Activate App Check for all builds.
+    // Debug builds use AndroidProvider.debug which generates a UUID debug token
+    // (printed in logcat as "DebugAppCheckProvider") that must be registered in
+    // Firebase Console → App Check → Apps → <your app> → Add debug token.
+    // Release builds use Play Integrity / AppAttest.
     debugPrint('🔐 DART: Initializing Firebase App Check...');
     await FirebaseAppCheck.instance.activate(
-      // Use debug provider in debug mode - generates valid debug tokens
-      androidProvider: AndroidProvider.debug,
-      appleProvider: AppleProvider.debug,
+      androidProvider:
+          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
+      appleProvider: kDebugMode
+          ? AppleProvider.debug
+          : AppleProvider.appAttestWithDeviceCheckFallback,
     );
-    debugPrint('✅ DART: Firebase App Check activated with debug provider');
-    
+    debugPrint(
+        '✅ DART: Firebase App Check activated (${kDebugMode ? "debug" : "release"} mode)');
+
+    // Pre-fetch the App Check token to avoid race condition at startup.
+    // activate() sets up the provider locally but the JWT is fetched
+    // asynchronously. Awaiting getToken() ensures it is cached before
+    // any Firebase callable function is invoked.
+    try {
+      await FirebaseAppCheck.instance.getToken(true);
+      debugPrint('✅ DART: App Check token pre-fetched');
+    } catch (e) {
+      debugPrint('⚠️ DART: App Check token pre-fetch failed (will retry on use): $e');
+    }
+
     if (kDebugMode) {
       DebugLogger.log('main', 'Firebase initialized', data: {
         'appId': DefaultFirebaseOptions.ios.appId,
@@ -196,6 +216,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
 
       if (user != null) {
         if (!mounted) return;
+
+        // Initialise push notifications now that we have a signed-in user.
+        // Non-blocking — notifications are non-critical.
+        NotificationService().initialize().catchError((e) {
+          debugPrint('⚠️ AuthWrapper: NotificationService init failed: $e');
+        });
 
         UserService? userService;
         try {

@@ -1,0 +1,88 @@
+### Get timezone offset from Date instances
+
+Source: https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/date/gettimezoneoffset/index.md
+
+Demonstrates how to use getTimezoneOffset() to retrieve the timezone offset in minutes for Date objects. The method returns the difference between UTC and local time, with positive values indicating time zones behind UTC and negative values indicating time zones ahead of UTC.
+
+```javascript
+const date1 = new Date("August 19, 1975 23:15:30 GMT+07:00");
+const date2 = new Date("August 19, 1975 23:15:30 GMT-02:00");
+
+console.log(date1.getTimezoneOffset());
+// Expected output: your local timezone offset in minutes
+// (e.g., -120). NOT the timezone offset of the date object.
+
+console.log(date1.getTimezoneOffset() === date2.getTimezoneOffset());
+// Expected output: true
+```
+
+--------------------------------
+
+### Compare timezone offsets across different dates
+
+Source: https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/date/gettimezoneoffset/index.md
+
+Shows how to compare getTimezoneOffset() results between two Date instances created with different timezone specifications. Demonstrates that the method always returns the local system timezone offset, not the timezone of the Date object itself.
+
+```javascript
+// Create a Date instance for the current time
+const currentLocalDate = new Date();
+// Create a Date instance for 03:24 GMT-0200 on May 1st in 2016
+const laborDay2016at0324GMTminus2 = new Date("2016-05-01T03:24:00-02:00");
+currentLocalDate.getTimezoneOffset() ===
+  laborDay2016at0324GMTminus2.getTimezoneOffset();
+// true, always, in any timezone that doesn't annually shift in and out of DST
+// false, sometimes, in any timezone that annually shifts in and out of DST
+```
+
+--------------------------------
+
+### Get UTC hours from Date objects with time zone offsets in JavaScript
+
+Source: https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/date/getutchours/index.md
+
+This example demonstrates how the `getUTCHours()` method retrieves the UTC hour component from `Date` objects, illustrating its behavior with different time zone offsets. It initializes two `Date` objects with distinct GMT offsets and logs their respective UTC hours, showing how the method normalizes to UTC.
+
+```javascript
+const date1 = new Date("December 31, 1975, 23:15:30 GMT+11:00");
+const date2 = new Date("December 31, 1975, 23:15:30 GMT-11:00");
+
+console.log(date1.getUTCHours());
+// Expected output: 12
+
+console.log(date2.getUTCHours());
+// Expected output: 10
+```
+
+--------------------------------
+
+### Get UTC day of week from Date object
+
+Source: https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/date/getutcday/index.md
+
+Demonstrates how to use getUTCDay() to retrieve the day of the week in UTC time. The method returns an integer where 0 is Sunday through 6 is Saturday. Works with Date objects created with various timezone specifications.
+
+```javascript
+const date1 = new Date("August 19, 1975 23:15:30 GMT+11:00");
+const date2 = new Date("August 19, 1975 23:15:30 GMT-11:00");
+
+// Tuesday
+console.log(date1.getUTCDay());
+// Expected output: 2
+
+// Wednesday
+console.log(date2.getUTCDay());
+// Expected output: 3
+```
+
+--------------------------------
+
+### Create UTC Date Object with Date.UTC() in JavaScript
+
+Source: https://github.com/mdn/content/blob/main/files/en-us/web/javascript/reference/global_objects/date/utc/index.md
+
+Example of creating a Date object using Date.UTC() with specific UTC date and time values. This creates a Date object representing December 1, 2018 at 00:00:00 UTC.
+
+```javascript
+const utcDate = new Date(Date.UTC(2018, 11, 1, 0, 0, 0));
+```

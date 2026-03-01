@@ -2,10 +2,12 @@ package com.sifstudio.girlai2.live2d;
 
 import android.app.Activity;
 import android.content.Context;
+import androidx.annotation.Keep;
 
 import java.io.IOException;
 import java.io.InputStream;
 
+@Keep
 public final class JniBridgeJava {
     private static final String LIBRARY_NAME = "girlai2_live2d";
 
@@ -38,6 +40,10 @@ public final class JniBridgeJava {
     public static native void nativeLoadModel(String modelJsonPath);
     public static native void nativeSetExpression(String expressionName);
     public static native void nativeSetParameter(String parameterId, float value);
+    public static native void nativeClearParameter(String parameterId);
+    public static native void nativeSetViewTransform(float scale, float offsetX, float offsetY);
+    public static native boolean nativeHasModel();
+    public static native long nativeGetRenderFrameAgeMs();
 
     public static void setContext(Context ctx) {
         context = ctx;
@@ -47,6 +53,7 @@ public final class JniBridgeJava {
         activityInstance = activity;
     }
 
+    @Keep
     public static byte[] LoadFile(String filePath) {
         if (context == null) {
             return null;
@@ -73,6 +80,7 @@ public final class JniBridgeJava {
         }
     }
 
+    @Keep
     public static void MoveTaskToBack() {
         if (activityInstance != null) {
             activityInstance.moveTaskToBack(true);

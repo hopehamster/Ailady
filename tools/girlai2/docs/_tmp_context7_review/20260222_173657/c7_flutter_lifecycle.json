@@ -1,0 +1,113 @@
+### Observe Flutter App Lifecycle Events (Dart)
+
+Source: https://docs.flutter.dev/get-started/flutter-for/android-devs
+
+This snippet demonstrates how to listen to application lifecycle events in Flutter using `WidgetsBindingObserver`. It shows how to implement a `StatefulWidget` that adds itself as an observer to `WidgetsBinding.instance` in `initState` and removes itself in `dispose`. The `didChangeAppLifecycleState` callback is used to update the UI based on changes in the app's lifecycle state, such as `paused` or `resumed`.
+
+```dart
+import 'package:flutter/widgets.dart';
+
+class LifecycleWatcher extends StatefulWidget {
+  const LifecycleWatcher({super.key});
+
+  @override
+  State<LifecycleWatcher> createState() => _LifecycleWatcherState();
+}
+
+class _LifecycleWatcherState extends State<LifecycleWatcher>
+    with WidgetsBindingObserver {
+  AppLifecycleState? _lastLifecycleState;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    setState(() {
+      _lastLifecycleState = state;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_lastLifecycleState == null) {
+      return const Text(
+        'This widget has not observed any lifecycle changes.',
+        textDirection: TextDirection.ltr,
+      );
+    }
+
+    return Text(
+      'The most recent lifecycle state this widget observed was: $_lastLifecycleState.',
+      textDirection: TextDirection.ltr,
+    );
+  }
+}
+
+void main() {
+  runApp(const Center(child: LifecycleWatcher()));
+}
+```
+
+--------------------------------
+
+### Override dispose() for State Cleanup in Flutter
+
+Source: https://docs.flutter.dev/widgets-intro
+
+Override the dispose() method in a State object to perform cleanup work such as canceling timers or unsubscribing from platform services. This method is called by the framework when a state object is no longer needed. Implementations typically end by calling super.dispose().
+
+```dart
+@override
+void dispose() {
+  // Cancel timers or unsubscribe from platform services
+  super.dispose();
+}
+```
+
+### Listening to lifecycle events
+
+Source: https://docs.flutter.dev/get-started/flutter-for/uikit-devs
+
+In UIKit, you can override methods to the `ViewController` to capture lifecycle methods for the view itself, or register lifecycle callbacks in the `AppDelegate`. In Flutter, you have neither concept, but you can instead listen to lifecycle events by hooking into the `WidgetsBinding` observer and listening to the `didChangeAppLifecycleState()` change event.
+
+The observable lifecycle events are:
+
+**`inactive`**
+The application is in an inactive state and is not receiving user input. This event only works on iOS, as there is no equivalent event on Android.
+
+**`paused`**
+The application is not currently visible to the user, is not responding to user input, but is running in the background.
+
+**`resumed`**
+The application is visible and responding to user input.
+
+**`suspending`**
+The application is suspended momentarily. The iOS platform has no equivalent event.
+
+For more details on the meaning of these states, see [`AppLifecycleState` documentation](https://api.flutter.dev/flutter/dart-ui/AppLifecycleState.html).
+
+--------------------------------
+
+### How do I listen to application lifecycle events?
+
+Source: https://docs.flutter.dev/get-started/flutter-for/xamarin-forms-devs
+
+In Xamarin.Forms, you have an `Application` that contains `OnStart`, `OnResume` and `OnSleep`. In Flutter, you can instead listen to similar lifecycle events by hooking into the `WidgetsBinding` observer and listening to the `didChangeAppLifecycleState()` change event. The observable lifecycle events are: `inactive` (The application is in an inactive state and is not receiving user input. This event is iOS only.), `paused` (The application is not currently visible to the user, is not responding to user input, but is running in the background.), `resumed` (The application is visible and responding to user input.), `suspending` (The application is suspended momentarily. This event is Android only.). For more details on the meaning of these states, see the [`AppLifecycleStatus` documentation](https://api.flutter.dev/flutter/dart-ui/AppLifecycleState.html).
+
+--------------------------------
+
+### State Management > Lifecycle > Dispose
+
+Source: https://docs.flutter.dev/widgets-intro
+
+When a state object is no longer needed, the framework calls `dispose()` on the state object. Override the `dispose` function to do cleanup work. For example, override `dispose` to cancel timers or to unsubscribe from platform services. Implementations of `dispose` typically end by calling `super.dispose`. This ensures that resources are properly released and prevents memory leaks in your Flutter applications.

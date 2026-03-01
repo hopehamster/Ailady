@@ -99,6 +99,11 @@ public:
     void SetParameterOverride(const std::string& parameterId, Csm::csmFloat32 value);
 
     /**
+     * @brief Remove a persistent parameter override by parameter id.
+     */
+    void ClearParameterOverride(const std::string& parameterId);
+
+    /**
     * @brief   イベントの発火を受け取る
     *
     */
@@ -116,6 +121,8 @@ public:
     Csm::Rendering::CubismOffscreenSurface_OpenGLES2& GetRenderBuffer();
 
 private:
+    void InitializeParameterIds();
+
     /**
      * @brief OpenGLのテクスチャユニットにテクスチャをロードする
      *
@@ -163,8 +170,14 @@ private:
     const Csm::CubismId* _idParamAngleY; ///< パラメータID: ParamAngleX
     const Csm::CubismId* _idParamAngleZ; ///< パラメータID: ParamAngleX
     const Csm::CubismId* _idParamBodyAngleX; ///< パラメータID: ParamBodyAngleX
+    const Csm::CubismId* _idParamBodyAngleY; ///< パラメータID: ParamBodyAngleY
+    const Csm::CubismId* _idParamBodyAngleZ; ///< パラメータID: ParamBodyAngleZ
     const Csm::CubismId* _idParamEyeBallX; ///< パラメータID: ParamEyeBallX
     const Csm::CubismId* _idParamEyeBallY; ///< パラメータID: ParamEyeBallXY
+    const Csm::CubismId* _idParamBreath; ///< パラメータID: ParamBreath
+    const Csm::CubismId* _idParamHairFront; ///< パラメータID: ParamHairFront
+    const Csm::CubismId* _idParamHairSide; ///< パラメータID: ParamHairSide
+    const Csm::CubismId* _idParamHairBack; ///< パラメータID: ParamHairBack
     std::map<std::string, Csm::csmFloat32> _parameterOverrides; ///< Flutter-driven overrides.
 
     Csm::Rendering::CubismOffscreenSurface_OpenGLES2  _renderBuffer;   ///< フレームバッファ以外の描画先

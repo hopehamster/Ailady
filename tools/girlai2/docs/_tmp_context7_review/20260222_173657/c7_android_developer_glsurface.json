@@ -1,0 +1,81 @@
+### Call Android Activity onPause
+
+Source: https://developer.android.com/reference/android/app/Instrumentation
+
+Invokes the onPause method of an Android Activity. This method is available from API level 1 and is used to handle the activity pausing.
+
+```java
+public void callActivityOnPause (Activity activity)
+```
+
+--------------------------------
+
+### callActivityOnResume
+
+Source: https://developer.android.com/reference/android/app/Instrumentation
+
+Performs the calling of an activity's onResume method.
+
+```APIDOC
+## callActivityOnResume
+
+### Description
+Perform calling of an activity's `Activity.onResume` method. The default implementation simply calls through to that method.
+
+### Method
+`public void callActivityOnResume (Activity activity)`
+
+### Parameters
+#### Path Parameters
+- None
+
+#### Query Parameters
+- None
+
+#### Request Body
+- `activity` (Activity) - Required - The activity being resumed.
+
+### Request Example
+```json
+{
+  "activity": "<ActivityObject>"
+}
+```
+
+### Response
+#### Success Response (200)
+- None (void method)
+
+#### Response Example
+```json
+// No response body for void methods
+```
+```
+
+--------------------------------
+
+### Dispatch Resume Method (Java)
+
+Source: https://developer.android.com/reference/android/app/LocalActivityManager
+
+Propagates the onResume event from the host Activity to the LocalActivityManager. This allows the manager to resume the activities it holds, ensuring they are in an active state.
+
+```Java
+public void dispatchResume ()
+```
+
+--------------------------------
+
+### Dispatch Pause Method (Java)
+
+Source: https://developer.android.com/reference/android/app/LocalActivityManager
+
+Propagates the onPause event from the host Activity to the LocalActivityManager. This enables the manager to pause the activities it holds, with an option to handle finishing of the parent activity.
+
+```Java
+public void dispatchPause (boolean finishing)
+```
+
+Source: https://developer.android.com/reference/android/graphics/SurfaceTexture
+
+SurfaceTexture > Public methods > updateTexImage: Update the texture image to the most recent frame from the image stream. This may only be called while the OpenGL ES context that owns the texture is current on the calling thread. It will implicitly bind its texture to the `GL_TEXTURE_EXTERNAL_OES` texture target.

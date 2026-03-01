@@ -1,0 +1,2 @@
+PROMPT: what features are active for me right now
+RESPONSE: Right now, you have access to voice replies, which means we can chat more naturally! However, camera vision isn't available on your current plan. If there's anything specific you'd like to explore within these features, just let me know! Whenever you're ready, we can keep this flowing naturally.

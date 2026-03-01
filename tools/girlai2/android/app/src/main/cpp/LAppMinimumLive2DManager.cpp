@@ -6,6 +6,7 @@
  */
 
 #include "LAppMinimumLive2DManager.hpp"
+#include <cmath>
 #include <string>
 #include <GLES2/gl2.h>
 #include <Rendering/CubismRenderer.hpp>
@@ -47,6 +48,9 @@ LAppMinimumLive2DManager::LAppMinimumLive2DManager()
 {
     _viewMatrix = new CubismMatrix44();
     _model = nullptr;
+    _viewScale = 1.0f;
+    _viewOffsetX = 0.0f;
+    _viewOffsetY = 0.0f;
 }
 
 LAppMinimumLive2DManager::~LAppMinimumLive2DManager()
@@ -89,10 +93,26 @@ void LAppMinimumLive2DManager::OnUpdate() const
 
     int width = LAppMinimumDelegate::GetInstance()->GetWindowWidth();
     int height = LAppMinimumDelegate::GetInstance()->GetWindowHeight();
+    if (width <= 0 || height <= 0)
+    {
+        return;
+    }
+
+    auto* cubismModel = model->GetModel();
+    if (!cubismModel)
+    {
+        return;
+    }
+
+    auto* view = LAppMinimumDelegate::GetInstance()->GetView();
+    if (!view)
+    {
+        return;
+    }
 
     CubismMatrix44 projection;
 
-    if (model->GetModel()->GetCanvasWidth() > 1.0f && width < height)
+    if (cubismModel->GetCanvasWidth() > 1.0f && width < height)
     {
         // 横に長いモデルを縦長ウィンドウに表示する際モデルの横サイズでscaleを算出する
         model->GetModelMatrix()->SetWidth(2.0f);
@@ -103,20 +123,25 @@ void LAppMinimumLive2DManager::OnUpdate() const
         projection.Scale(static_cast<float>(height) / static_cast<float>(width), 1.0f);
     }
 
-    // 必要があればここで乗算
     if (_viewMatrix)
     {
+        _viewMatrix->LoadIdentity();
+        _viewMatrix->Scale(_viewScale, _viewScale);
+        _viewMatrix->TranslateRelative(_viewOffsetX, _viewOffsetY);
         projection.MultiplyByMatrix(_viewMatrix);
     }
 
+    // Keep framing anchored. Whole-model bob/zoom created visible drifting
+    // during chat and typing.
+
     // モデル1体描画前コール
-    LAppMinimumDelegate::GetInstance()->GetView()->PreModelDraw(*model);
+    view->PreModelDraw(*model);
 
     model->Update();
     model->Draw(projection);///< 参照渡しなのでprojectionは変質する
 
     // モデル1体描画前コール
-    LAppMinimumDelegate::GetInstance()->GetView()->PostModelDraw(*model);
+    view->PostModelDraw(*model);
 }
 
 void LAppMinimumLive2DManager::SetAssetDirectory(const std::string &path)
@@ -171,3 +196,22 @@ void LAppMinimumLive2DManager::SetParameter(const std::string& parameterId, csmF
     model->SetParameterOverride(parameterId, value);
 }
 
+void LAppMinimumLive2DManager::ClearParameter(const std::string& parameterId) const
+{
+    LAppMinimumModel* model = GetModel();
+    if (!model)
+    {
+        return;
+    }
+    model->ClearParameterOverride(parameterId);
+}
+
+void LAppMinimumLive2DManager::SetViewTransform(
+    csmFloat32 scale,
+    csmFloat32 offsetX,
+    csmFloat32 offsetY)
+{
+    _viewScale = scale;
+    _viewOffsetX = offsetX;
+    _viewOffsetY = offsetY;
+}

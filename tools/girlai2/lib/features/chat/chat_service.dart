@@ -96,7 +96,7 @@ class ChatService extends ChangeNotifier {
   /// Send a message and trigger AI response
   /// Implements optimistic UI - adds user message immediately, shows typing indicator
   /// Includes retry logic for transient failures
-  Future<void> sendMessage(String content) async {
+  Future<void> sendMessage(String content, {String? chatMode}) async {
     final userId = _userId;
     if (userId == null) {
       DebugLogger.logError(
@@ -141,7 +141,10 @@ class ChatService extends ChangeNotifier {
         }
 
         // Call Cloud Function which handles saving both user message and AI response
-        final response = await _firebaseService.generateResponse(content);
+        final response = await _firebaseService.generateResponse(
+          content,
+          chatMode: chatMode,
+        );
 
         // Update emotion state from AI response for avatar animations
         if (response['emotionTrigger'] != null) {
@@ -249,6 +252,48 @@ class ChatService extends ChangeNotifier {
         // This method is for future use if we want to update in place
       }
     }
+  }
+
+  /// Update companion proactive settings.
+  Future<Map<String, dynamic>> updateCompanionConfig({
+    bool? enabled,
+    int? cadenceMinutes,
+    int? quietHoursStart,
+    int? quietHoursEnd,
+  }) {
+    return _firebaseService.updateCompanionConfig(
+      enabled: enabled,
+      cadenceMinutes: cadenceMinutes,
+      quietHoursStart: quietHoursStart,
+      quietHoursEnd: quietHoursEnd,
+    );
+  }
+
+  /// Trigger a backend proactive check-in attempt.
+  /// Returns true when a proactive message was generated and stored.
+  Future<bool> requestProactiveMessage() async {
+    final result = await _firebaseService.generateProactiveMessage();
+    return result['shouldSend'] == true;
+  }
+
+  /// Submit user feedback for an assistant response.
+  Future<void> submitMessageFeedback({
+    required String messageId,
+    required bool isPositive,
+    String? reason,
+    String? reasonCode,
+  }) {
+    return _firebaseService.submitMessageFeedback(
+      messageId: messageId,
+      isPositive: isPositive,
+      reason: reason,
+      reasonCode: reasonCode,
+    );
+  }
+
+  /// Fetch backend quality telemetry for launch tuning.
+  Future<Map<String, dynamic>> getCompanionQualityInsights() {
+    return _firebaseService.getCompanionQualityInsights();
   }
 
   @override

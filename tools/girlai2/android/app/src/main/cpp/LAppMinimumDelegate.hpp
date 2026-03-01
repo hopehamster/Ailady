@@ -140,6 +140,8 @@ private:
     int _height;                                 ///< windowの高さ
     bool _captured;                              ///< クリックしているか
     bool _isActive;                              ///< アプリがアクティブ状態なのか
+    bool _started;                               ///< OnStart was completed
+    bool _frameworkInitialized;                  ///< CubismFramework::Initialize has run
     float _mouseY;                               ///< マウスY座標
     float _mouseX;                               ///< マウスX座標
 };

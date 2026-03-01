@@ -7,10 +7,13 @@
 
 #include <jni.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <string>
 #include "JniBridgeC.hpp"
 #include "LAppMinimumDelegate.hpp"
 #include "LAppMinimumLive2DManager.hpp"
+#include "LAppMinimumModel.hpp"
 #include "LAppPal.hpp"
 
 using namespace Csm;
@@ -19,6 +22,7 @@ static JavaVM* g_JVM; // JavaVM is valid for all threads, so just save it global
 static jclass  g_JniBridgeJavaClass;
 static jmethodID g_LoadFileMethodId;
 static jmethodID g_MoveTaskToBackMethodId;
+static std::atomic<long long> g_lastFrameMonotonicMs{0};
 
 namespace {
 std::string JStringToStdString(JNIEnv* env, jstring value)
@@ -149,6 +153,10 @@ extern "C"
     Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeOnDrawFrame(JNIEnv *env, jclass type)
     {
         LAppMinimumDelegate::GetInstance()->Run();
+        const auto now = std::chrono::steady_clock::now();
+        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()).count();
+        g_lastFrameMonotonicMs.store(nowMs, std::memory_order_relaxed);
     }
 
     JNIEXPORT void JNICALL
@@ -220,5 +228,62 @@ extern "C"
             return;
         }
         LAppMinimumLive2DManager::GetInstance()->SetParameter(parameter, value);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeClearParameter(
+        JNIEnv* env,
+        jclass type,
+        jstring parameterId)
+    {
+        std::string parameter = JStringToStdString(env, parameterId);
+        if (parameter.empty())
+        {
+            return;
+        }
+        LAppMinimumLive2DManager::GetInstance()->ClearParameter(parameter);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeSetViewTransform(
+        JNIEnv* env,
+        jclass type,
+        jfloat scale,
+        jfloat offsetX,
+        jfloat offsetY)
+    {
+        LAppMinimumLive2DManager::GetInstance()->SetViewTransform(scale, offsetX, offsetY);
+    }
+
+    JNIEXPORT jboolean JNICALL
+    Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeHasModel(
+        JNIEnv* env,
+        jclass type)
+    {
+        auto* model = LAppMinimumLive2DManager::GetInstance()->GetModel();
+        if (!model)
+        {
+            return JNI_FALSE;
+        }
+
+        return model->GetModel() ? JNI_TRUE : JNI_FALSE;
+    }
+
+    JNIEXPORT jlong JNICALL
+    Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeGetRenderFrameAgeMs(
+        JNIEnv* env,
+        jclass type)
+    {
+        const long long lastMs = g_lastFrameMonotonicMs.load(std::memory_order_relaxed);
+        if (lastMs <= 0)
+        {
+            return static_cast<jlong>(-1);
+        }
+
+        const auto now = std::chrono::steady_clock::now();
+        const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()).count();
+        const long long age = nowMs - lastMs;
+        return static_cast<jlong>(age < 0 ? 0 : age);
     }
 }

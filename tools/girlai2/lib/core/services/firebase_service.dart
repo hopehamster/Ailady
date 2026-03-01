@@ -95,14 +95,18 @@ class FirebaseService {
 
   /// Call the Chat Cloud Function
   /// Throws ChatException with user-friendly message on error
-  Future<Map<String, dynamic>> generateResponse(String message) async {
+  Future<Map<String, dynamic>> generateResponse(
+    String message, {
+    String? chatMode,
+  }) async {
     final startTime = DateTime.now();
     final messageId = DateTime.now().millisecondsSinceEpoch.toString();
 
     try {
       // Verify Firebase is initialized
       if (Firebase.apps.isEmpty) {
-        debugPrint('❌ FirebaseService.generateResponse: Firebase not initialized');
+        debugPrint(
+            '❌ FirebaseService.generateResponse: Firebase not initialized');
         DebugLogger.logError(
             'FirebaseService.generateResponse', 'Firebase not initialized',
             data: {'messageId': messageId});
@@ -114,12 +118,14 @@ class FirebaseService {
       // Verify user is authenticated
       debugPrint('🔐 FirebaseService.generateResponse: Checking auth state...');
       debugPrint('🔐 Firebase.apps.length: ${Firebase.apps.length}');
-      
+
       final user = _auth.currentUser;
-      debugPrint('🔐 FirebaseService.generateResponse: currentUser = ${user?.uid ?? "null"}');
-      
+      debugPrint(
+          '🔐 FirebaseService.generateResponse: currentUser = ${user?.uid ?? "null"}');
+
       if (user == null) {
-        debugPrint('❌ FirebaseService.generateResponse: User not authenticated!');
+        debugPrint(
+            '❌ FirebaseService.generateResponse: User not authenticated!');
         debugPrint('❌ _auth.currentUser is null');
         DebugLogger.logError(
             'FirebaseService.generateResponse', 'User not authenticated',
@@ -128,16 +134,19 @@ class FirebaseService {
           'Please sign in to continue.',
         );
       }
-      
-      debugPrint('✅ FirebaseService.generateResponse: User authenticated as ${user.uid}');
+
+      debugPrint(
+          '✅ FirebaseService.generateResponse: User authenticated as ${user.uid}');
 
       // Force refresh the ID token to ensure it's attached to the Cloud Function call
       debugPrint('🔄 FirebaseService.generateResponse: Refreshing ID token...');
       final idToken = await user.getIdToken(true); // Force refresh
       if (idToken != null && idToken.length > 20) {
-        debugPrint('✅ FirebaseService.generateResponse: ID token refreshed (${idToken.substring(0, 20)}...)');
+        debugPrint(
+            '✅ FirebaseService.generateResponse: ID token refreshed (${idToken.substring(0, 20)}...)');
       } else {
-        debugPrint('⚠️ FirebaseService.generateResponse: ID token refresh returned unexpected result');
+        debugPrint(
+            '⚠️ FirebaseService.generateResponse: ID token refresh returned unexpected result');
       }
 
       if (kDebugMode) {
@@ -149,10 +158,17 @@ class FirebaseService {
 
       final HttpsCallable callable =
           _functions.httpsCallable('generateResponse');
+      final now = DateTime.now();
 
       final result = await callable.call(<String, dynamic>{
         'message': message,
         'userId': user.uid, // Send userId as fallback for auth context issue
+        'clientTime': <String, dynamic>{
+          'clientEpochMs': now.millisecondsSinceEpoch,
+          'timeZoneOffsetMinutes': now.timeZoneOffset.inMinutes,
+          'timeZoneName': now.timeZoneName,
+        },
+        if (chatMode != null) 'chatMode': chatMode,
       }).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -226,17 +242,404 @@ class FirebaseService {
   }
 
   /// Call the Voice Cloud Function
-  Future<String> generateVoice(String text, {String? voiceId}) async {
+  /// Returns audio URL and viseme timeline for lip-sync
+  Future<VoiceResult> generateVoice(String text, {String? voiceId}) async {
+    final startTime = DateTime.now();
+
     try {
-      final HttpsCallable callable =
-          _functions.httpsCallable('generateVoiceMessage');
+      final user = _auth.currentUser;
+      if (user == null) {
+        throw ChatException('Please sign in to continue.');
+      }
+
+      if (kDebugMode) {
+        debugPrint('🔊 Calling Cloud Function: generateVoiceMessage');
+        debugPrint('🔊 Text length: ${text.length}');
+      }
+
+      final HttpsCallable callable = _functions.httpsCallable(
+        'generateVoiceMessage',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 120)),
+      );
+
       final result = await callable.call(<String, dynamic>{
         'text': text,
         'voiceId': voiceId,
+        'userId': user.uid,
       });
-      return result.data['audioUrl'] as String;
+
+      final duration = DateTime.now().difference(startTime);
+      if (kDebugMode) {
+        debugPrint('✅ Voice generated in ${duration.inMilliseconds}ms');
+        debugPrint('✅ Provider: ${result.data['provider']}');
+        debugPrint(
+            '✅ Viseme count: ${(result.data['visemeTimeline'] as List?)?.length ?? 0}');
+      }
+
+      return VoiceResult.fromMap(Map<String, dynamic>.from(result.data));
+    } on FirebaseFunctionsException catch (e) {
+      final reasonKey = _extractVoiceReasonKey(e.details);
+      final category = _mapVoiceErrorCategory(e.code, reasonKey);
+      if (kDebugMode) {
+        debugPrint(
+            '❌ Voice generation error: ${e.code} - ${e.message} (reason=$reasonKey, category=$category)');
+      }
+      throw VoiceGenerationException(
+        category: category,
+        message: _voiceCategoryLabel(category),
+        reasonKey: reasonKey,
+        code: e.code,
+        original: e,
+      );
     } catch (e) {
-      rethrow;
+      if (e is VoiceGenerationException || e is ChatException) {
+        rethrow;
+      }
+      if (kDebugMode) {
+        debugPrint('❌ Voice generation error: $e');
+      }
+      throw const VoiceGenerationException(
+        category: 'unknown',
+        message: 'voice service',
+      );
     }
   }
+
+  /// Update companion social configuration (proactive cadence + quiet hours)
+  Future<Map<String, dynamic>> updateCompanionConfig({
+    bool? enabled,
+    int? cadenceMinutes,
+    int? quietHoursStart,
+    int? quietHoursEnd,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw ChatException('Please sign in to continue.');
+    }
+
+    final payload = <String, dynamic>{};
+    if (enabled != null) payload['enabled'] = enabled;
+    if (cadenceMinutes != null) payload['cadenceMinutes'] = cadenceMinutes;
+    if (quietHoursStart != null) payload['quietHoursStart'] = quietHoursStart;
+    if (quietHoursEnd != null) payload['quietHoursEnd'] = quietHoursEnd;
+
+    final callable = _functions.httpsCallable('updateCompanionConfig');
+    final result = await callable.call(payload);
+    return Map<String, dynamic>.from(result.data);
+  }
+
+  /// Ask backend to generate a proactive message if cadence/settings allow it.
+  Future<Map<String, dynamic>> generateProactiveMessage() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw ChatException('Please sign in to continue.');
+    }
+
+    final callable = _functions.httpsCallable('generateProactiveMessage');
+    final result = await callable.call(<String, dynamic>{});
+    return Map<String, dynamic>.from(result.data);
+  }
+
+  /// Submit explicit feedback for an assistant message.
+  Future<void> submitMessageFeedback({
+    required String messageId,
+    required bool isPositive,
+    String? reason,
+    String? reasonCode,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw ChatException('Please sign in to continue.');
+    }
+
+    final callable = _functions.httpsCallable('submitMessageFeedback');
+    await callable.call(<String, dynamic>{
+      'messageId': messageId,
+      'vote': isPositive ? 'up' : 'down',
+      if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+      if (reasonCode != null && reasonCode.trim().isNotEmpty)
+        'reasonCode': reasonCode.trim(),
+    });
+  }
+
+  /// Fetch latest weekly relationship tuning report + shadow benchmark stats.
+  Future<Map<String, dynamic>> getCompanionQualityInsights() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw ChatException('Please sign in to continue.');
+    }
+
+    final callable = _functions.httpsCallable('getCompanionQualityInsights');
+    final result = await callable.call(<String, dynamic>{});
+    return Map<String, dynamic>.from(result.data);
+  }
+
+  String? _extractVoiceReasonKey(dynamic details) {
+    if (details is Map) {
+      final reason = details['reason'];
+      if (reason is String && reason.isNotEmpty) {
+        return reason;
+      }
+    }
+    return null;
+  }
+
+  String _mapVoiceErrorCategory(String code, String? reasonKey) {
+    if (reasonKey == 'voice_not_allowed' || code == 'permission-denied') {
+      return 'account_access';
+    }
+    if (reasonKey == 'voice_not_configured' || code == 'failed-precondition') {
+      return 'service_config';
+    }
+    if (reasonKey == 'voice_storage_error') {
+      return 'audio_delivery';
+    }
+    if (code == 'unavailable' ||
+        code == 'deadline-exceeded' ||
+        code == 'timeout') {
+      return 'audio_delivery';
+    }
+    return 'unknown';
+  }
+
+  String _voiceCategoryLabel(String category) {
+    switch (category) {
+      case 'account_access':
+        return 'account access';
+      case 'service_config':
+        return 'service config';
+      case 'audio_delivery':
+        return 'audio delivery';
+      default:
+        return 'voice service';
+    }
+  }
+
+  // ── Important Dates ──────────────────────────────────────────────────────
+
+  /// Save (create or update) an important date for the current user.
+  /// Returns the document ID of the saved date.
+  Future<String> saveUserImportantDate({
+    required String label,
+    required String date,
+    required String category,
+    required bool recurs,
+    String? id,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw ChatException('Please sign in to continue.');
+
+    final callable = _functions.httpsCallable('saveUserImportantDate');
+    final result = await callable.call(<String, dynamic>{
+      'label': label,
+      'date': date,
+      'category': category,
+      'recurs': recurs,
+      if (id != null) 'id': id,
+    });
+    final data = result.data as Map<String, dynamic>?;
+    return data?['id'] as String? ?? '';
+  }
+
+  /// Delete an important date by ID for the current user.
+  Future<void> deleteUserImportantDate(String dateId) async {
+    final user = _auth.currentUser;
+    if (user == null) throw ChatException('Please sign in to continue.');
+
+    final callable = _functions.httpsCallable('deleteUserImportantDate');
+    await callable.call(<String, dynamic>{'id': dateId});
+  }
+
+  /// Fetch important dates for the current user.
+  ///
+  /// [upcomingOnly] — if true, only returns dates within [daysAhead] days.
+  /// [daysAhead]   — window in days (default 7). Ignored when upcomingOnly=false.
+  ///
+  /// Returns a list of raw maps matching ImportantDate / UpcomingDate shape.
+  Future<List<Map<String, dynamic>>> getUserImportantDates({
+    bool upcomingOnly = false,
+    int daysAhead = 7,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) throw ChatException('Please sign in to continue.');
+
+    final callable = _functions.httpsCallable('getUserImportantDates');
+    final result = await callable.call(<String, dynamic>{
+      if (upcomingOnly) 'upcomingOnly': true,
+      if (upcomingOnly) 'daysAhead': daysAhead,
+    });
+    final data = result.data as Map<String, dynamic>?;
+    final dates = data?['dates'] as List<dynamic>? ?? [];
+    return dates
+        .whereType<Map>()
+        .map((d) => Map<String, dynamic>.from(d))
+        .toList();
+  }
+
+  // ── FCM Token ────────────────────────────────────────────────────────────
+
+  /// Register a Firebase Cloud Messaging token for push notifications.
+  /// Silently returns if the user is not authenticated (e.g. called pre-login).
+  Future<void> registerFCMToken(String token) async {
+    final user = _auth.currentUser;
+    if (user == null) return; // Not signed in yet — will retry after login
+
+    // Force-refresh the Firebase Auth ID token before the callable.
+    // On app startup the cached token may be stale; forcing a refresh ensures
+    // the server sees a valid `context.auth` in the Cloud Function.
+    try {
+      await user.getIdToken(true);
+      if (kDebugMode) {
+        debugPrint('✅ FirebaseService: ID token refreshed before FCM registration');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ FirebaseService: ID token refresh failed — skipping FCM: $e');
+      }
+      return; // Cannot proceed without a valid auth token
+    }
+
+    try {
+      final platform =
+          defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android';
+      final callable = _functions.httpsCallable('registerFCMToken');
+      await callable.call(<String, dynamic>{
+        'token': token,
+        'platform': platform,
+      });
+      if (kDebugMode) {
+        debugPrint('✅ FirebaseService: FCM token registered ($platform)');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('⚠️ FirebaseService: FCM token registration failed: $e');
+      }
+      // Non-fatal — push notifications just won't work until next launch
+    }
+  }
+
+  // ── TIER B: Memory ──────────────────────────────────────────
+  Future<Map<String, dynamic>> getUserMemories() async {
+    final callable = _functions.httpsCallable('getUserMemories');
+    final result = await callable.call();
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  Future<void> deleteUserMemory({
+    required String type,
+    required String id,
+  }) async {
+    final callable = _functions.httpsCallable('deleteUserMemory');
+    await callable.call(<String, dynamic>{'type': type, 'id': id});
+  }
+
+  // ── TIER B: Virtual Dates ────────────────────────────────────
+  Future<Map<String, dynamic>> startVirtualDate(String activityType) async {
+    final callable = _functions.httpsCallable('startVirtualDate');
+    final result = await callable.call(<String, dynamic>{
+      'activityType': activityType,
+      'userId': _auth.currentUser?.uid,
+    });
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  Future<void> endVirtualDate() async {
+    final callable = _functions.httpsCallable('endVirtualDate');
+    await callable.call();
+  }
+
+  // ── TIER B: Mood Summary ─────────────────────────────────────
+  Future<Map<String, dynamic>> getMoodSummary() async {
+    final callable = _functions.httpsCallable('getMoodSummary');
+    final result = await callable.call();
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  // ── TIER C: Aria-Generated Gifts ─────────────────────────────
+  Future<Map<String, dynamic>> generateAriaGift(String giftType) async {
+    final callable = _functions.httpsCallable(
+      'generateAriaGift',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 70)),
+    );
+    final result = await callable.call(<String, dynamic>{'giftType': giftType});
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+}
+
+/// Result from voice generation including audio URL and viseme timeline
+class VoiceResult {
+  final String audioUrl;
+  final List<VisemeEvent> visemeTimeline;
+  final double durationMs;
+  final String provider;
+
+  VoiceResult({
+    required this.audioUrl,
+    required this.visemeTimeline,
+    required this.durationMs,
+    required this.provider,
+  });
+
+  factory VoiceResult.fromMap(Map<String, dynamic> map) {
+    final timelineData = map['visemeTimeline'] as List? ?? [];
+    final visemes = timelineData
+        .map((e) => VisemeEvent.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
+
+    return VoiceResult(
+      audioUrl: map['audioUrl'] as String? ?? '',
+      visemeTimeline: visemes,
+      durationMs: (map['durationMs'] as num?)?.toDouble() ?? 0,
+      provider: map['provider'] as String? ?? 'unknown',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'audioUrl': audioUrl,
+        'visemeTimeline': visemeTimeline.map((e) => e.toJson()).toList(),
+        'durationMs': durationMs,
+        'provider': provider,
+      };
+}
+
+/// A single viseme event with ID and timing
+class VisemeEvent {
+  final int visemeId;
+  final double audioOffsetMs;
+
+  VisemeEvent({
+    required this.visemeId,
+    required this.audioOffsetMs,
+  });
+
+  factory VisemeEvent.fromMap(Map<String, dynamic> map) {
+    return VisemeEvent(
+      visemeId: (map['visemeId'] as num?)?.toInt() ?? 0,
+      audioOffsetMs: (map['audioOffsetMs'] as num?)?.toDouble() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'visemeId': visemeId,
+        'audioOffsetMs': audioOffsetMs,
+      };
+}
+
+class VoiceGenerationException implements Exception {
+  final String category;
+  final String message;
+  final String? reasonKey;
+  final String? code;
+  final Object? original;
+
+  const VoiceGenerationException({
+    required this.category,
+    required this.message,
+    this.reasonKey,
+    this.code,
+    this.original,
+  });
+
+  @override
+  String toString() => message;
 }

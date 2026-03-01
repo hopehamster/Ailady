@@ -6,9 +6,18 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public final class GLRenderer implements GLSurfaceView.Renderer {
+    private final Runnable onSurfaceCreatedCallback;
+
+    public GLRenderer(Runnable onSurfaceCreatedCallback) {
+        this.onSurfaceCreatedCallback = onSurfaceCreatedCallback;
+    }
+
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
         JniBridgeJava.nativeOnSurfaceCreated();
+        if (onSurfaceCreatedCallback != null) {
+            onSurfaceCreatedCallback.run();
+        }
     }
 
     @Override

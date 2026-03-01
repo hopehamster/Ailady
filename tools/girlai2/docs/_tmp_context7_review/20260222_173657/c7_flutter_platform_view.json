@@ -1,0 +1,132 @@
+### Implement Android Platform View with Hybrid Composition (Dart)
+
+Source: https://docs.flutter.dev/platform-integration/platform-views
+
+This Dart `build()` method demonstrates how to embed an Android platform view within a Flutter application using the hybrid composition approach. It leverages `PlatformViewLink` to create a bridge, `AndroidViewSurface` for rendering the native view, and `PlatformViewsService.initSurfaceAndroidView` to initialize and manage the lifecycle of the Android view, including passing creation parameters and handling focus events.
+
+```dart
+Widget build(BuildContext context) {
+  // This is used in the platform side to register the view.
+  const String viewType = '<platform-view-type>';
+  // Pass parameters to the platform side.
+  const Map<String, dynamic> creationParams = <String, dynamic>{};
+
+  return PlatformViewLink(
+    viewType: viewType,
+    surfaceFactory: (context, controller) {
+      return AndroidViewSurface(
+        controller: controller as AndroidViewController,
+        gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{},
+        hitTestBehavior: PlatformViewHitTestBehavior.opaque,
+      );
+    },
+    onCreatePlatformView: (params) {
+      return PlatformViewsService.initSurfaceAndroidView(
+          id: params.id,
+          viewType: viewType,
+          layoutDirection: TextDirection.ltr,
+          creationParams: creationParams,
+          creationParamsCodec: const StandardMessageCodec(),
+          onFocus: () {
+            params.onFocusChanged(true);
+          },
+        )
+        ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
+        ..create();
+    },
+  );
+}
+```
+
+--------------------------------
+
+### Observe Flutter App Lifecycle Events (Dart)
+
+Source: https://docs.flutter.dev/get-started/flutter-for/android-devs
+
+This snippet demonstrates how to listen to application lifecycle events in Flutter using `WidgetsBindingObserver`. It shows how to implement a `StatefulWidget` that adds itself as an observer to `WidgetsBinding.instance` in `initState` and removes itself in `dispose`. The `didChangeAppLifecycleState` callback is used to update the UI based on changes in the app's lifecycle state, such as `paused` or `resumed`.
+
+```dart
+import 'package:flutter/widgets.dart';
+
+class LifecycleWatcher extends StatefulWidget {
+  const LifecycleWatcher({super.key});
+
+  @override
+  State<LifecycleWatcher> createState() => _LifecycleWatcherState();
+}
+
+class _LifecycleWatcherState extends State<LifecycleWatcher>
+    with WidgetsBindingObserver {
+  AppLifecycleState? _lastLifecycleState;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    setState(() {
+      _lastLifecycleState = state;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_lastLifecycleState == null) {
+      return const Text(
+        'This widget has not observed any lifecycle changes.',
+        textDirection: TextDirection.ltr,
+      );
+    }
+
+    return Text(
+      'The most recent lifecycle state this widget observed was: $_lastLifecycleState.',
+      textDirection: TextDirection.ltr,
+    );
+  }
+}
+
+void main() {
+  runApp(const Center(child: LifecycleWatcher()));
+}
+```
+
+### Texture Layer Hybrid Composition > On the Dart side > Hybrid composition
+
+Source: https://docs.flutter.dev/platform-integration/platform-views
+
+To create a platform view on Android using hybrid composition on the Dart side, you need to implement a Widget with a build method that uses PlatformViewLink as the root widget. The PlatformViewLink requires a viewType string to identify the platform view type and a surfaceFactory callback that returns an AndroidViewSurface configured with the appropriate gesture recognizers and hit test behavior. Additionally, you must provide an onCreatePlatformView callback that initializes the surface using PlatformViewsService.initSurfaceAndroidView, passing parameters such as the view ID, view type, layout direction, creation parameters, and focus handlers.
+
+--------------------------------
+
+### Platform integration > Android > Android platform-views > Overview
+
+Source: https://docs.flutter.dev/platform-integration/platform-views
+
+Platform views allow you to embed native views in a Flutter app, so you can apply transforms, clips, and opacity to the native view from Dart. This allows you, for example, to use the native Google Maps from the Android SDK directly inside your Flutter app.
+
+--------------------------------
+
+### How do I listen to Android activity lifecycle events?
+
+Source: https://docs.flutter.dev/get-started/flutter-for/android-devs
+
+In Android, you can override methods from the `Activity` to capture lifecycle methods for the activity itself, or register `ActivityLifecycleCallbacks` on the `Application`. In Flutter, you have neither concept, but you can instead listen to lifecycle events by hooking into the `WidgetsBinding` observer and listening to the `didChangeAppLifecycleState()` change event.
+
+The observable lifecycle events are:
+
+*   `detached` — The application is still hosted on a flutter engine but is detached from any host views.
+*   `inactive` — The application is in an inactive state and is not receiving user input.
+*   `paused` — The application is not currently visible to the user, not responding to user input, and running in the background. This is equivalent to `onPause()` in Android.
+*   `resumed` — The application is visible and responding to user input. This is equivalent to `onPostResume()` in Android.
+
+As you might have noticed, only a small minority of the Activity lifecycle events are available; while `FlutterActivity` does capture almost all the activity lifecycle events internally and send them over to the Flutter engine, they're mostly shielded away from you. Flutter takes care of starting and stopping the engine for you, and there is little reason for needing to observe the activity lifecycle on the Flutter side in most cases. If you need to observe the lifecycle to acquire or release any native resources, you should likely be doing it from the native side, at any rate.

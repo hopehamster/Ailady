@@ -1,0 +1,133 @@
+### Authentication Context in Callable Functions
+
+Source: https://context7.com/firebase/firebase-functions/llms.txt
+
+This function shows how to access user authentication data within a callable function. It automatically verifies the Firebase Auth token and provides access to user information and custom claims via `request.auth`. It includes checks for authentication status and specific admin claims.
+
+```typescript
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as admin from "firebase-admin";
+
+export const adminOperation = onCall({
+  enforceAppCheck: true
+}, async (request) => {
+  const auth = request.auth;
+
+  if (!auth) {
+    throw new HttpsError("unauthenticated", "Authentication required");
+  }
+
+  // Check custom claims
+  const customClaims = auth.token;
+  if (!customClaims.admin) {
+    throw new HttpsError("permission-denied", "Admin access required");
+  }
+
+  // Perform admin operation
+  const users = await admin.auth().listUsers(100);
+
+  return {
+    userCount: users.users.length,
+    performedBy: auth.uid
+  };
+});
+
+```
+
+--------------------------------
+
+### Create Callable Functions with TypeScript
+
+Source: https://context7.com/firebase/firebase-functions/llms.txt
+
+Implements a callable function using `firebase-functions/v2/https.onCall` that client applications can invoke directly. It includes authentication checks, argument validation, and returns structured data. Requires Firebase SDK and `@google-cloud/functions-framework`.
+
+```typescript
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
+
+interface UserProfileData {
+  displayName: string;
+  bio: string;
+}
+
+export const updateProfile = onCall<UserProfileData>({
+  region: "us-west1",
+  enforceAppCheck: true,
+  cors: ["https://example.com"]
+}, async (request) => {
+  logger.info("Callable function invoked", {
+    uid: request.auth?.uid,
+    data: request.data
+  });
+
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be authenticated");
+  }
+
+  const { displayName, bio } = request.data;
+
+  if (!displayName || displayName.length < 3) {
+    throw new HttpsError("invalid-argument", "Display name must be at least 3 characters");
+  }
+
+  // Process the update (e.g., write to Firestore)
+  return {
+    success: true,
+    uid: request.auth.uid,
+    updatedAt: new Date().toISOString()
+  };
+});
+```
+
+--------------------------------
+
+### Create HTTPS Request Handler with TypeScript
+
+Source: https://context7.com/firebase/firebase-functions/llms.txt
+
+Defines an HTTP endpoint using `firebase-functions/v2/https` that handles incoming requests with Express-style objects. It processes query parameters, logs requests, and returns JSON responses. Dependencies include `firebase-functions` and `@google-cloud/functions-framework`.
+
+```typescript
+import { onRequest } from "firebase-functions/v2/https";
+import * as logger from "firebase-functions/logger";
+
+export const api = onRequest({ 
+  region: "us-central1",
+  memory: "256MiB",
+  timeoutSeconds: 60,
+  cors: true
+}, async (request, response) => {
+  try {
+    const { name } = request.query;
+    logger.info("Processing request", { queryParams: request.query });
+
+    if (!name) {
+      response.status(400).json({ error: "Name parameter required" });
+      return;
+    }
+
+    response.json({
+      message: `Hello ${name}!`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error("Request failed", error);
+    response.status(500).json({ error: "Internal server error" });
+  }
+});
+```
+
+### Firebase SDK for Cloud Functions > Callable Functions
+
+Source: https://context7.com/firebase/firebase-functions/llms.txt
+
+Create callable functions that client applications can invoke directly using Firebase SDKs. These functions benefit from automatic authentication, meaning they can securely access user information. They also support input validation and can throw specific `HttpsError` types for detailed error handling on the client-side. Configuration options include region, enforcing App Check, and specifying allowed CORS origins.
+
+--------------------------------
+
+### Firebase SDK for Cloud Functions > HTTPS Request Handler
+
+Source: https://context7.com/firebase/firebase-functions/llms.txt
+
+Create HTTP endpoints that handle incoming requests with Express-style request/response objects. These functions can be configured with options such as region, memory allocation, timeout, and CORS settings. They allow for processing query parameters, handling different HTTP methods, and sending JSON responses or error messages.

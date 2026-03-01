@@ -1,0 +1,62 @@
+### Define and Handle Firebase Functions Errors
+
+Source: https://github.com/firebase/firebase-js-sdk/blob/main/common/api-review/functions.api.md
+
+Defines custom error types for Firebase Functions, extending FirebaseError. Includes error codes and optional details.
+
+```typescript
+export class FunctionsError extends FirebaseError {
+    constructor(
+    code: FunctionsErrorCodeCore, message?: string,
+    details?: unknown);
+    readonly details?: unknown;
+}
+
+export type FunctionsErrorCode = `functions/${FunctionsErrorCodeCore}`;
+
+export type FunctionsErrorCodeCore = 'ok' | 'cancelled' | 'unknown' | 'invalid-argument' | 'deadline-exceeded' | 'not-found' | 'already-exists' | 'permission-denied' | 'resource-exhausted' | 'failed-precondition' | 'aborted' | 'out-of-range' | 'unimplemented' | 'internal' | 'unavailable' | 'data-loss' | 'unauthenticated';
+```
+
+--------------------------------
+
+### FunctionsError Constructor (TypeScript)
+
+Source: https://github.com/firebase/firebase-js-sdk/blob/main/docs-devsite/functions.functionserror.md
+
+Provides the constructor signature for the FunctionsError class. It accepts an error code, an optional message, and optional details for error reporting.
+
+```typescript
+constructor(
+    code: FunctionsErrorCode,
+    message?: string,
+    details?: unknown
+);
+```
+
+--------------------------------
+
+### Firebase Functions Error Codes (TypeScript)
+
+Source: https://github.com/firebase/firebase-js-sdk/blob/main/docs-devsite/functions.md
+
+Defines the set of status codes for Firebase Functions, mirroring gRPC status codes. These codes indicate the outcome of function executions, from successful operations to various error conditions.
+
+```typescript
+export type FunctionsErrorCode = `functions/${FunctionsErrorCodeCore}`;
+```
+
+--------------------------------
+
+### Firebase Functions Error Code Core Values (TypeScript)
+
+Source: https://github.com/firebase/firebase-js-sdk/blob/main/docs-devsite/functions.md
+
+Specifies the core string values for Firebase Functions error codes, which are appended after the 'functions/' prefix. This type lists all possible error states a function might return.
+
+```typescript
+export type FunctionsErrorCodeCore = 'ok' | 'cancelled' | 'unknown' | 'invalid-argument' | 'deadline-exceeded' | 'not-found' | 'already-exists' | 'permission-denied' | 'resource-exhausted' | 'failed-precondition' | 'aborted' | 'out-of-range' | 'unimplemented' | 'internal' | 'unavailable' | 'data-loss' | 'unauthenticated';
+```
+
+Source: https://github.com/firebase/firebase-js-sdk/blob/main/docs-devsite/functions.md
+
+functions package > FunctionsErrorCodeCore: Functions error code string appended after "functions/" product prefix. See [FunctionsErrorCode](./functions.md#functionserrorcode) for full documentation of codes.

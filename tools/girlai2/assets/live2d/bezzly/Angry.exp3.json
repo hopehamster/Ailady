@@ -5,6 +5,11 @@
             "Id": "Param3",
             "Value": 1.0,
             "Blend": "Add"
+        },
+        {
+            "Id": "ParamMouthForm",
+            "Value": -0.22,
+            "Blend": "Add"
         }
     ]
 }

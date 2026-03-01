@@ -39,6 +39,16 @@ class Live2DMethodChannelHandler : MethodChannel.MethodCallHandler {
                 result.success(null)
             }
 
+            "clearParameter" -> {
+                val id = call.argument<String>("id")
+                if (id.isNullOrBlank()) {
+                    result.error("INVALID_ARGS", "id is required", null)
+                    return
+                }
+                surfaceView.clearParameter(id)
+                result.success(null)
+            }
+
             "setParameters" -> {
                 val argMap = call.argument<Map<String, Any?>>("parameters") ?: emptyMap()
                 val values = LinkedHashMap<String, Float>()
@@ -49,6 +59,36 @@ class Live2DMethodChannelHandler : MethodChannel.MethodCallHandler {
                 }
                 surfaceView.setParameters(values)
                 result.success(null)
+            }
+
+            "clearParameters" -> {
+                val ids = call.argument<List<String>>("ids") ?: emptyList()
+                val validIds = ids.filter { it.isNotBlank() }
+                surfaceView.clearParameters(validIds)
+                result.success(null)
+            }
+
+            "setViewTransform" -> {
+                val scale = call.argument<Double>("scale") ?: 1.0
+                val offsetX = call.argument<Double>("offsetX") ?: 0.0
+                val offsetY = call.argument<Double>("offsetY") ?: 0.0
+                surfaceView.setViewTransform(
+                    scale.toFloat(),
+                    offsetX.toFloat(),
+                    offsetY.toFloat()
+                )
+                result.success(null)
+            }
+
+            "isSurfaceReady" -> {
+                result.success(surfaceView.isSurfaceReadyForDraw())
+            }
+
+            "hasNativeModel" -> {
+                result.success(surfaceView.hasNativeModel())
+            }
+            "getRenderFrameAgeMs" -> {
+                result.success(surfaceView.getRenderFrameAgeMs())
             }
 
             "pause" -> {

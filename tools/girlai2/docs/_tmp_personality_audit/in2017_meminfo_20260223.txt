@@ -1,0 +1,64 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 2294136292 Realtime: 2298043928
+
+** MEMINFO in pid 29841 [com.sifstudio.girlai2] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap    63947    63880       16      106    65736    84480    70827    13652
+  Dalvik Heap     6632     6484       52       86     8012    14019     7010     7009
+ Dalvik Other    10666     6240      372        5    15612                           
+        Stack     2680     2680        0        4     2688                           
+       Ashmem      249        0        0        0      964                           
+      Gfx dev     9608     9608        0        0     9608                           
+    Other dev      300      240       24        0      948                           
+     .so mmap    13341      440     7732        2    50408                           
+    .jar mmap     3412        0     1072        0    47744                           
+    .apk mmap    52916      696    47180        0    69036                           
+    .ttf mmap     2719        0     2372        0     3432                           
+    .dex mmap      916       52       36        0     3908                           
+    .oat mmap       47        0        0        0     3132                           
+    .art mmap     8077     7068      652       59    17716                           
+   Other mmap    55627       40    55556        0    56480                           
+   EGL mtrack   323120   323120        0        0   323120                           
+    GL mtrack      768      768        0        0      768                           
+      Unknown   124821   124796        4      137   125244                           
+        TOTAL   680245   546112   115068      399   804556    98499    77837    20661
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:    14204                          25728
+         Native Heap:    63880                          65736
+                Code:    59600                         185496
+               Stack:     2680                           2688
+            Graphics:   333496                         333496
+       Private Other:   187320
+              System:    19065
+             Unknown:                                  191412
+ 
+           TOTAL PSS:   680245            TOTAL RSS:   804556       TOTAL SWAP PSS:      399
+ 
+ Objects
+               Views:       14         ViewRootImpl:        1
+         AppContexts:        8           Activities:        1
+              Assets:       56        AssetManagers:        0
+       Local Binders:       58        Proxy Binders:       58
+       Parcel memory:       23         Parcel count:       94
+    Death Recipients:        2      OpenSSL Sockets:        0
+            WebViews:        0
+ 
+ SQL
+         MEMORY_USED:      585
+  PAGECACHE_OVERFLOW:      434          MALLOC_SIZE:       46
+ 
+ DATABASES
+      pgsz     dbsz   Lookaside(b)          cache  Dbname
+         4      400            106   4407/1566/25  /data/user/0/com.sifstudio.girlai2/databases/firestore.%5BDEFAULT%5D.girlai2.%28default%29
+ 
+ Asset Allocations
+    : 1607K
+    : 21K
+
+
+

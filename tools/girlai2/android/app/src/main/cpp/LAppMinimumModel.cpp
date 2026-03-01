@@ -6,6 +6,7 @@
  */
 
 #include "LAppMinimumModel.hpp"
+#include <cmath>
 #include <fstream>
 #include <vector>
 #include <CubismModelSettingJson.hpp>
@@ -25,6 +26,34 @@ using namespace Live2D::Cubism::Framework;
 using namespace Live2D::Cubism::Framework::DefaultParameterId;
 using namespace LAppDefine;
 
+namespace {
+const CubismId* ResolveIdSafely(const csmChar* id)
+{
+    auto* idManager = CubismFramework::GetIdManager();
+    if (!idManager)
+    {
+        return nullptr;
+    }
+    return idManager->GetId(id);
+}
+}
+
+void LAppMinimumModel::InitializeParameterIds()
+{
+    _idParamAngleX = ResolveIdSafely(ParamAngleX);
+    _idParamAngleY = ResolveIdSafely(ParamAngleY);
+    _idParamAngleZ = ResolveIdSafely(ParamAngleZ);
+    _idParamBodyAngleX = ResolveIdSafely(ParamBodyAngleX);
+    _idParamBodyAngleY = ResolveIdSafely(ParamBodyAngleY);
+    _idParamBodyAngleZ = ResolveIdSafely(ParamBodyAngleZ);
+    _idParamEyeBallX = ResolveIdSafely(ParamEyeBallX);
+    _idParamEyeBallY = ResolveIdSafely(ParamEyeBallY);
+    _idParamBreath = ResolveIdSafely(ParamBreath);
+    _idParamHairFront = ResolveIdSafely(ParamHairFront);
+    _idParamHairSide = ResolveIdSafely(ParamHairSide);
+    _idParamHairBack = ResolveIdSafely(ParamHairBack);
+}
+
 LAppMinimumModel::LAppMinimumModel()
     : LAppModel_Common()
     , _modelJson(nullptr)
@@ -35,12 +64,7 @@ LAppMinimumModel::LAppMinimumModel()
         _debugMode = true;
     }
 
-    _idParamAngleX = CubismFramework::GetIdManager()->GetId(ParamAngleX);
-    _idParamAngleY = CubismFramework::GetIdManager()->GetId(ParamAngleY);
-    _idParamAngleZ = CubismFramework::GetIdManager()->GetId(ParamAngleZ);
-    _idParamBodyAngleX = CubismFramework::GetIdManager()->GetId(ParamBodyAngleX);
-    _idParamEyeBallX = CubismFramework::GetIdManager()->GetId(ParamEyeBallX);
-    _idParamEyeBallY = CubismFramework::GetIdManager()->GetId(ParamEyeBallY);
+    InitializeParameterIds();
 }
 
 LAppMinimumModel::LAppMinimumModel(const std::string modelDirectoryName,const std::string currentModelDirectory)
@@ -51,12 +75,7 @@ LAppMinimumModel::LAppMinimumModel(const std::string modelDirectoryName,const st
         _debugMode = true;
     }
 
-    _idParamAngleX = CubismFramework::GetIdManager()->GetId(ParamAngleX);
-    _idParamAngleY = CubismFramework::GetIdManager()->GetId(ParamAngleY);
-    _idParamAngleZ = CubismFramework::GetIdManager()->GetId(ParamAngleZ);
-    _idParamBodyAngleX = CubismFramework::GetIdManager()->GetId(ParamBodyAngleX);
-    _idParamEyeBallX = CubismFramework::GetIdManager()->GetId(ParamEyeBallX);
-    _idParamEyeBallY = CubismFramework::GetIdManager()->GetId(ParamEyeBallY);
+    InitializeParameterIds();
 }
 
 LAppMinimumModel::~LAppMinimumModel()
@@ -64,12 +83,16 @@ LAppMinimumModel::~LAppMinimumModel()
     ReleaseMotions();
     ReleaseExpressions();
 
-    for (csmInt32 i = 0; i < _modelJson->GetMotionGroupCount(); i++)
+    if (_modelJson)
     {
-        const csmChar* group = _modelJson->GetMotionGroupName(i);
-        ReleaseMotionGroup(group);
+        for (csmInt32 i = 0; i < _modelJson->GetMotionGroupCount(); i++)
+        {
+            const csmChar* group = _modelJson->GetMotionGroupName(i);
+            ReleaseMotionGroup(group);
+        }
+        delete _modelJson;
+        _modelJson = nullptr;
     }
-    delete _modelJson;
 }
 
 std::string LAppMinimumModel::MakeAssetPath(const std::string &assetFileName)
@@ -105,8 +128,19 @@ void LAppMinimumModel::SetupModel()
 
     // モデルの設定データをJsonファイルから読み込み
     LoadAssets(_modelDirName + ".model3.json", [=](Csm::csmByte* buffer, Csm::csmSizeInt bufferSize) { _modelJson = new Csm::CubismModelSettingJson(buffer, bufferSize); });
+    if (!_modelJson)
+    {
+        _updating = false;
+        return;
+    }
     // モデルの設定データからモデルデータを読み込み
     LoadAssets(_modelJson->GetModelFileName(), [=](Csm::csmByte* buffer, Csm::csmSizeInt bufferSize) { LoadModel(buffer, bufferSize); });
+    if (!_model)
+    {
+        _updating = false;
+        return;
+    }
+    InitializeParameterIds();
 
     // 表情データの読み込み
     for (auto expressionIndex = 0; expressionIndex < _modelJson->GetExpressionCount(); ++expressionIndex)
@@ -180,6 +214,10 @@ void LAppMinimumModel::PreloadMotionGroup(const csmChar* group)
         //ex) idle_0
         csmString name = Utils::CubismString::GetFormatedString("%s_%d", group, i);
         csmString path = _modelJson->GetMotionFileName(group, i);
+        if (strcmp(path.GetRawString(), "") == 0)
+        {
+            continue;
+        }
         path = csmString(_currentModelDirectory.c_str()) + path;
 
         if (_debugMode)
@@ -190,6 +228,10 @@ void LAppMinimumModel::PreloadMotionGroup(const csmChar* group)
         csmByte* buffer;
         csmSizeInt size;
         buffer = CreateBuffer(path.GetRawString(), &size);
+        if (!buffer || size <= 0)
+        {
+            continue;
+        }
         CubismMotion* tmpMotion = static_cast<CubismMotion*>(LoadMotion(buffer, size, name.GetRawString(), NULL, NULL, _modelJson, group, i));
 
         if (tmpMotion)
@@ -255,6 +297,11 @@ void LAppMinimumModel::ReleaseExpressions()
 
 void LAppMinimumModel::Update()
 {
+    if (!_model)
+    {
+        return;
+    }
+
     const csmFloat32 deltaTimeSeconds = LAppPal::GetDeltaTime();
     _userTimeSeconds += deltaTimeSeconds;
 
@@ -270,7 +317,10 @@ void LAppMinimumModel::Update()
     if (_motionManager->IsFinished())
     {
         // モーションの再生がない場合、始めに登録されているモーションを再生する
-        StartMotion(LAppDefine::MotionGroupIdle, 0, LAppDefine::PriorityIdle);
+        if (_modelJson && _modelJson->GetMotionCount(LAppDefine::MotionGroupIdle) > 0)
+        {
+            StartMotion(LAppDefine::MotionGroupIdle, 0, LAppDefine::PriorityIdle);
+        }
     }
     else
     {
@@ -296,16 +346,16 @@ void LAppMinimumModel::Update()
 
     //ドラッグによる変化
     //ドラッグによる顔の向きの調整
-    _model->AddParameterValue(_idParamAngleX, _dragX * 30); // -30から30の値を加える
-    _model->AddParameterValue(_idParamAngleY, _dragY * 30);
-    _model->AddParameterValue(_idParamAngleZ, _dragX * _dragY * -30);
+    if (_idParamAngleX) _model->AddParameterValue(_idParamAngleX, _dragX * 14); // -14から14の値を加える
+    if (_idParamAngleY) _model->AddParameterValue(_idParamAngleY, _dragY * 14);
+    if (_idParamAngleZ) _model->AddParameterValue(_idParamAngleZ, _dragX * _dragY * -10);
 
     //ドラッグによる体の向きの調整
-    _model->AddParameterValue(_idParamBodyAngleX, _dragX * 10); // -10から10の値を加える
+    if (_idParamBodyAngleX) _model->AddParameterValue(_idParamBodyAngleX, _dragX * 4); // -4から4の値を加える
 
     //ドラッグによる目の向きの調整
-    _model->AddParameterValue(_idParamEyeBallX, _dragX); // -1から1の値を加える
-    _model->AddParameterValue(_idParamEyeBallY, _dragY);
+    if (_idParamEyeBallX) _model->AddParameterValue(_idParamEyeBallX, _dragX * 0.6f); // -0.6から0.6の値を加える
+    if (_idParamEyeBallY) _model->AddParameterValue(_idParamEyeBallY, _dragY * 0.6f);
 
     // 呼吸など
     if (_breath)
@@ -325,9 +375,29 @@ void LAppMinimumModel::Update()
         _pose->UpdateParameters(_model, deltaTimeSeconds);
     }
 
+    // Keep idle movement subtle and anchored to avoid visible drifting.
+    const csmFloat32 idleHair = std::sinf(_userTimeSeconds * 1.80f);
+
+    if (_idParamHairFront) _model->AddParameterValue(_idParamHairFront, idleHair * 0.12f);
+    if (_idParamHairSide) _model->AddParameterValue(_idParamHairSide, idleHair * 0.10f);
+    if (_idParamHairBack) _model->AddParameterValue(_idParamHairBack, idleHair * 0.14f);
+    if (_idParamBreath)
+    {
+        _model->SetParameterValue(_idParamBreath, 0.50f + 0.12f * std::sinf(_userTimeSeconds * 1.60f));
+    }
+
+    auto* idManager = CubismFramework::GetIdManager();
     for (const auto& overrideEntry : _parameterOverrides)
     {
-        const CubismId* parameterId = CubismFramework::GetIdManager()->GetId(overrideEntry.first.c_str());
+        if (!idManager)
+        {
+            break;
+        }
+        const CubismId* parameterId = idManager->GetId(overrideEntry.first.c_str());
+        if (!parameterId)
+        {
+            continue;
+        }
         _model->SetParameterValue(parameterId, overrideEntry.second);
     }
 
@@ -337,6 +407,11 @@ void LAppMinimumModel::Update()
 
 CubismMotionQueueEntryHandle LAppMinimumModel::StartMotion(const csmChar* group, csmInt32 no, csmInt32 priority)
 {
+    if (!_modelJson || !group)
+    {
+        return InvalidMotionQueueEntryHandleValue;
+    }
+
     if (priority == PriorityForce)
     {
         _motionManager->SetReservePriority(priority);
@@ -351,6 +426,10 @@ CubismMotionQueueEntryHandle LAppMinimumModel::StartMotion(const csmChar* group,
     }
 
     const csmString fileName = _modelJson->GetMotionFileName(group, no);
+    if (strcmp(fileName.GetRawString(), "") == 0)
+    {
+        return InvalidMotionQueueEntryHandleValue;
+    }
 
     //ex) idle_0
     csmString name = Utils::CubismString::GetFormatedString("%s_%d", group, no);
@@ -365,6 +444,10 @@ CubismMotionQueueEntryHandle LAppMinimumModel::StartMotion(const csmChar* group,
         csmByte* buffer;
         csmSizeInt size;
         buffer = CreateBuffer(path.GetRawString(), &size);
+        if (!buffer || size <= 0)
+        {
+            return InvalidMotionQueueEntryHandleValue;
+        }
         motion = static_cast<CubismMotion*>(LoadMotion(buffer, size, nullptr, NULL, NULL, _modelJson, group, no));
 
         if (motion)
@@ -373,6 +456,11 @@ CubismMotionQueueEntryHandle LAppMinimumModel::StartMotion(const csmChar* group,
         }
 
         DeleteBuffer(buffer, path.GetRawString());
+    }
+
+    if (!motion)
+    {
+        return InvalidMotionQueueEntryHandleValue;
     }
 
     //voice
@@ -387,7 +475,7 @@ CubismMotionQueueEntryHandle LAppMinimumModel::StartMotion(const csmChar* group,
     {
         LAppPal::PrintLogLn("[APP]start motion: [%s_%d]", group, no);
     }
-    return  _motionManager->StartMotionPriority(motion, autoDelete, priority);
+    return _motionManager->StartMotionPriority(motion, autoDelete, priority);
 }
 
 void LAppMinimumModel::Draw(CubismMatrix44& matrix)
@@ -432,6 +520,15 @@ void LAppMinimumModel::ClearExpression()
 void LAppMinimumModel::SetParameterOverride(const std::string& parameterId, csmFloat32 value)
 {
     _parameterOverrides[parameterId] = value;
+}
+
+void LAppMinimumModel::ClearParameterOverride(const std::string& parameterId)
+{
+    const auto iter = _parameterOverrides.find(parameterId);
+    if (iter != _parameterOverrides.end())
+    {
+        _parameterOverrides.erase(iter);
+    }
 }
 
 void LAppMinimumModel::ReloadRenderer()

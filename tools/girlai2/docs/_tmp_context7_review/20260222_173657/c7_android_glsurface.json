@@ -1,0 +1,120 @@
+### Update GlesRenderer GL Context Management
+
+Source: https://developer.android.com/jetpack/androidx/releases/wear_hl=bn
+
+In `GlesRenderer`, `onGlContextCreated` is renamed to `onBackgroundThreadGlContextCreated`, and `onGlSurfaceCreated` to `onUiThreadGlSurfaceCreated`. This clarifies the thread on which these GL-related callbacks occur, improving understanding of GL lifecycle management within the renderer.
+
+```java
+public class GlesRenderer {
+
+    /**
+     * Called on the background thread when the GL context is created.
+     * Use this for background thread GL initializations.
+     */
+    protected void onBackgroundThreadGlContextCreated() {
+        // Background thread GL context setup
+    }
+
+    /**
+     * Called on the UI thread when the GL surface is created.
+     * Use this for UI thread GL surface setup.
+     */
+    protected void onUiThreadGlSurfaceCreated() {
+        // UI thread GL surface setup
+    }
+
+    // Deprecated methods (example):
+    // @Deprecated
+    // protected void onGlContextCreated() { /* ... */ }
+    // @Deprecated
+    // protected void onGlSurfaceCreated() { /* ... */ }
+}
+
+```
+
+--------------------------------
+
+### Initialize CanvasRenderer on UI Thread
+
+Source: https://developer.android.com/jetpack/androidx/releases/wear_hl=bn
+
+Introduces `CanvasRenderer.uiThreadInit` which is called once on the UI thread before any rendering occurs. This method facilitates easier initialization of the renderer and sharing state between the `Renderer` and `CanvasComplication`. It simplifies setup for rendering components.
+
+```java
+public class CanvasRenderer {
+
+    /**
+     * Called once on the UI thread before any calls to render.
+     * Use this method for any UI thread initialization.
+     */
+    public void uiThreadInit() {
+        // Perform UI thread initialization here
+        // For example: setup UI resources, initialize listeners, etc.
+        Log.d("CanvasRenderer", "UI thread initialization complete.");
+    }
+
+    // The render method would be called after uiThreadInit
+    public void render(Canvas canvas, Rect bounds, long time) {
+        // Rendering logic
+    }
+}
+
+public class CanvasComplication {
+    private Renderer renderer;
+
+    public void setRenderer(Renderer renderer) {
+        this.renderer = renderer;
+        if (renderer instanceof CanvasRenderer) {
+            ((CanvasRenderer) renderer).uiThreadInit(); // Call init if it's a CanvasRenderer
+        }
+        onRendererCreated(); // Call onRendererCreated
+    }
+
+    /**
+     * Called when the renderer is set, making it easier to share state.
+     */
+    protected void onRendererCreated() {
+        // Initialize or share state with the renderer here
+    }
+}
+
+```
+
+--------------------------------
+
+### OpenGL-based Framebuffer Rendering with GLFrameBufferRenderer (Android)
+
+Source: https://developer.android.com/jetpack/androidx/releases/graphics_hl=fr
+
+Introduces `GLFrameBufferRenderer` for OpenGL-based rendering, managing swapchain configurations, pixel formats, and `SurfaceControl`. This API is suitable for scenarios requiring direct OpenGL rendering to a buffer that can be presented.
+
+```java
+GLFrameBufferRenderer renderer = new GLFrameBufferRenderer(
+    width, height, surfaceControl, eglContext, pixelFormat);
+
+renderer.renderFrame(frameBuffer -> {
+    // OpenGL rendering commands
+});
+
+renderer.release();
+```
+
+--------------------------------
+
+### Add API for Rendering Directly to Double Buffered Layers (Java)
+
+Source: https://developer.android.com/jetpack/androidx/releases/graphics_hl=id
+
+Introduces APIs in version 1.0.0-alpha03 for rendering directly to double-buffered layers. This feature assists in re-rendering scenes after resuming and allows consumers to selectively utilize front-buffered rendering dynamically. This enhances scene management and rendering efficiency.
+
+```java
+androidx.graphics.surface.SurfaceControlCompat.Builder
+```
+
+Source: https://developer.android.com/jetpack/androidx/releases/graphics
+
+Version 1.0.0-alpha03: March 22, 2023
+`androidx.graphics:graphics-core:1.0.0-alpha03` is released. Version 1.0.0-alpha03 contains these commits.
+**API Changes**
+  * Add API to render directly to the double buffered layer. This assists with re-rendering a scene after resume as well as giving an opportunity to consumers to selectively determine when to leverage front buffered rendering dynamically based on the desired scene to render. (Ied56c)
+  * More return type nullability of deprecated-hidden functions (Ibf7b0)

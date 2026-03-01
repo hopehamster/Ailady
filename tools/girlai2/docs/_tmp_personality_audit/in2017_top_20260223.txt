@@ -1,0 +1,2 @@
+  PID USER         PR  NI VIRT  RES  SHR S[%CPU] %MEM     TIME+ ARGS
+29841 u0_a362      10 -10  13G 9.2M 9.2M S  160   0.1 120:38.95 com.sifstudio.girlai2

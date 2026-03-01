@@ -12,6 +12,7 @@
 #include "LAppPal.hpp"
 #include "LAppDefine.hpp"
 #include "LAppMinimumLive2DManager.hpp"
+#include "LAppMinimumModel.hpp"
 #include "LAppTextureManager.hpp"
 #include "JniBridgeC.hpp"
 
@@ -46,9 +47,15 @@ void LAppMinimumDelegate::ReleaseInstance()
 
 void LAppMinimumDelegate::OnStart()
 {
+    if (_started)
+    {
+        return;
+    }
+
     _textureManager = new LAppTextureManager();
     _view = new LAppMinimumView();
     LAppPal::UpdateTime();
+    _started = true;
 }
 
 void LAppMinimumDelegate::OnPause()
@@ -58,6 +65,11 @@ void LAppMinimumDelegate::OnPause()
 
 void LAppMinimumDelegate::OnStop()
 {
+    if (!_started && !_frameworkInitialized)
+    {
+        return;
+    }
+
     if (_view)
     {
         delete _view;
@@ -72,11 +84,18 @@ void LAppMinimumDelegate::OnStop()
     // リソースを解放
     LAppMinimumLive2DManager::ReleaseInstance();
 
-    CubismFramework::Dispose();
+    if (_frameworkInitialized)
+    {
+        CubismFramework::Dispose();
+        _frameworkInitialized = false;
+    }
+
+    _started = false;
 }
 
 void LAppMinimumDelegate::OnDestroy()
 {
+    OnStop();
     ReleaseInstance();
 }
 
@@ -112,8 +131,19 @@ void LAppMinimumDelegate::OnSurfaceCreate()
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-    //Initialize cubism
-    CubismFramework::Initialize();
+    if (!_frameworkInitialized)
+    {
+        //Initialize cubism
+        CubismFramework::Initialize();
+        _frameworkInitialized = true;
+    }
+
+    // If GL context was recreated after backgrounding, rebind model textures.
+    auto* model = LAppMinimumLive2DManager::GetInstance()->GetModel();
+    if (model)
+    {
+        model->ReloadRenderer();
+    }
 }
 
 void LAppMinimumDelegate::OnSurfaceChanged(float width, float height)
@@ -135,6 +165,8 @@ LAppMinimumDelegate::LAppMinimumDelegate():
     _mouseX(0.0f),
     _mouseY(0.0f),
     _isActive(true),
+    _started(false),
+    _frameworkInitialized(false),
     _textureManager(nullptr),
     _view(nullptr)
 {

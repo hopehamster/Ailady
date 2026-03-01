@@ -10,51 +10,108 @@ class Live2DBridge {
 
   bool get isSupported => defaultTargetPlatform == TargetPlatform.android;
 
-  Future<void> loadModel(String modelJsonPath) async {
-    await _invoke('loadModel', <String, dynamic>{
+  Future<bool> loadModel(String modelJsonPath) async {
+    return _invoke('loadModel', <String, dynamic>{
       'modelJsonPath': modelJsonPath,
     });
   }
 
-  Future<void> setExpression(String name) async {
-    await _invoke('setExpression', <String, dynamic>{'name': name});
+  Future<bool> setExpression(String name) async {
+    return _invoke('setExpression', <String, dynamic>{'name': name});
   }
 
-  Future<void> setParameter(String id, double value) async {
-    await _invoke('setParameter', <String, dynamic>{
+  Future<bool> setParameter(String id, double value) async {
+    return _invoke('setParameter', <String, dynamic>{
       'id': id,
       'value': value,
     });
   }
 
-  Future<void> setParameters(Map<String, double> parameters) async {
-    await _invoke('setParameters', <String, dynamic>{'parameters': parameters});
+  Future<bool> setParameters(Map<String, double> parameters) async {
+    return _invoke(
+        'setParameters', <String, dynamic>{'parameters': parameters});
   }
 
-  Future<void> pause() async {
-    await _invoke('pause');
+  Future<bool> clearParameter(String id) async {
+    return _invoke('clearParameter', <String, dynamic>{'id': id});
   }
 
-  Future<void> resume() async {
-    await _invoke('resume');
+  Future<bool> clearParameters(List<String> ids) async {
+    return _invoke('clearParameters', <String, dynamic>{'ids': ids});
   }
 
-  Future<void> dispose() async {
-    await _invoke('dispose');
+  Future<bool> setViewTransform({
+    required double scale,
+    required double offsetX,
+    required double offsetY,
+  }) async {
+    return _invoke('setViewTransform', <String, dynamic>{
+      'scale': scale,
+      'offsetX': offsetX,
+      'offsetY': offsetY,
+    });
   }
 
-  Future<void> _invoke(String method, [Map<String, dynamic>? arguments]) async {
-    if (!isSupported) return;
+  Future<bool> pause() async {
+    return _invoke('pause');
+  }
+
+  Future<bool> resume() async {
+    return _invoke('resume');
+  }
+
+  Future<bool> dispose() async {
+    return _invoke('dispose');
+  }
+
+  Future<bool> isSurfaceReady() async {
+    return _invoke('isSurfaceReady');
+  }
+
+  Future<bool> hasNativeModel() async {
+    return _invoke('hasNativeModel');
+  }
+
+  Future<int> getRenderFrameAgeMs() async {
+    if (!isSupported) return -1;
+    try {
+      final result = await _channel.invokeMethod<dynamic>('getRenderFrameAgeMs');
+      if (result is int) {
+        return result;
+      }
+      if (result is num) {
+        return result.toInt();
+      }
+      return -1;
+    } on MissingPluginException {
+      return -1;
+    } on PlatformException catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+            'Live2D bridge call failed (getRenderFrameAgeMs): ${e.code} ${e.message}');
+      }
+      return -1;
+    }
+  }
+
+  Future<bool> _invoke(String method, [Map<String, dynamic>? arguments]) async {
+    if (!isSupported) return false;
 
     try {
-      await _channel.invokeMethod<void>(method, arguments);
+      final result = await _channel.invokeMethod<dynamic>(method, arguments);
+      if (result is bool) {
+        return result;
+      }
+      return true;
     } on MissingPluginException {
       // Ignore in unsupported/test environments.
+      return false;
     } on PlatformException catch (e) {
       if (kDebugMode) {
         debugPrint(
             'Live2D bridge call failed ($method): ${e.code} ${e.message}');
       }
+      return false;
     }
   }
 }

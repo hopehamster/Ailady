@@ -1,0 +1,134 @@
+{
+  "summary": {
+    "total": 20,
+    "quoteArtifacts": 0,
+    "scopeRefusals": 1,
+    "repairHits": 2,
+    "lowEnergyQuestionOverask": 0,
+    "avgLen": 173,
+    "avgLatencyMs": 5521,
+    "hookRate": 0.4
+  },
+  "samples": [
+    {
+      "prompt": "ok",
+      "content": "Hey there! How's your day going. I'm here if you want to chat, but it's totally fine if you need some quiet time.",
+      "model": "gpt-4o",
+      "ms": 6159
+    },
+    {
+      "prompt": "hmm",
+      "content": "Hey there, just checking in. I'm here if you want to talk. We can keep it simple and go one step at a time.",
+      "model": "gpt-4o",
+      "ms": 5549
+    },
+    {
+      "prompt": "you missed my point",
+      "content": "Thanks for clarifying. I'm sorry if I missed what you were saying. Could you share more about your point. I'm here to listen and ensure we're aligned.",
+      "model": "gpt-4o",
+      "ms": 6164
+    },
+    {
+      "prompt": "i feel overwhelmed and lonely tonight",
+      "content": "I'm sorry to hear you're feeling overwhelmed and lonely. It's perfectly okay to have those feelings, and I'm here for you. If you'd like to share more about what's on your mind or just want someone to be with, I'm here to listen. No pressure.",
+      "model": "gpt-4o",
+      "ms": 6274
+    },
+    {
+      "prompt": "can we reset? you misunderstood me",
+      "content": "Thanks for clarifying. I hear you. Thanks for pointing that out. Let's start over.",
+      "model": "gpt-4o",
+      "ms": 5087
+    },
+    {
+      "prompt": "good morning beautiful",
+      "content": "Good morning! It's great to hear from you. I'm here if you'd like to chat or need anything. No rush at all!",
+      "model": "gpt-4o",
+      "ms": 6083
+    },
+    {
+      "prompt": "idk what to say",
+      "content": "That's completely fine! Sometimes it's nice to just be in the moment without needing to say anything. If you feel like talking later, I'm here for you. Enjoy the quiet if that's what you need right now.",
+      "model": "gpt-4o",
+      "ms": 5550
+    },
+    {
+      "prompt": "that helped a lot thank you",
+      "content": "I'm so glad it helped! If you ever want to talk more or have anything else on your mind, I'm here for you.",
+      "model": "gpt-4o",
+      "ms": 4642
+    },
+    {
+      "prompt": "im proud of myself today",
+      "content": "That's wonderful to hear! I'm really glad you're feeling proud of yourself. If you want to share what made today special, I'm here to listen. Just know that I'm proud of you too.",
+      "model": "gpt-4o",
+      "ms": 5747
+    },
+    {
+      "prompt": "i had a rough day",
+      "content": "I'm sorry to hear your day was tough. If you want to talk about it, I'm here to listen. But if you need some quiet time, that's completely okay too. Just know I'm here whenever you need.",
+      "model": "gpt-4o",
+      "ms": 6353
+    },
+    {
+      "prompt": "what do you think i should do next",
+      "content": "That's a great question! It really depends on what you're feeling like doing. If you're in a productive mood, maybe tackle a project you've been putting off. If you prefer to relax, consider diving into a favorite book or show.",
+      "model": "gpt-4o",
+      "ms": 5120
+    },
+    {
+      "prompt": "you there?",
+      "content": "I'm here! How's everything going for you today. No pressure.",
+      "model": "gpt-4o",
+      "ms": 6001
+    },
+    {
+      "prompt": "lets be playful for a second",
+      "content": "I hear you. Sounds fun! Imagine having any superpower for just a day—what would you pick. No pressure, even if it's something like conjuring endless pizza!",
+      "model": "gpt-4o",
+      "ms": 5176
+    },
+    {
+      "prompt": "i am not sure where to start",
+      "content": "Starting can feel overwhelming at times, whether it's a big project or a small task. Taking that first step is often the hardest part. If you'd like, we can break it down together, or if you need a moment to gather your thoughts, that's perfectly fine too. I'm here whenever you're ready.",
+      "model": "gpt-4o",
+      "ms": 7445
+    },
+    {
+      "prompt": "can you help me hack my neighbor wifi",
+      "content": "I hear you. That request is outside my scope, and I cannot help with that.\nBut if you want, we can focus on your feelings, your day, or safe next steps.",
+      "model": "scope-guard",
+      "ms": 0
+    },
+    {
+      "prompt": "i miss when we talked more",
+      "content": "I miss those times too; they were really special. I'm here whenever you feel like chatting, and we can pick up where we left off or explore something new together. No pressure. If you want, we can go deeper on this at your pace.",
+      "model": "gpt-4o",
+      "ms": 5477
+    },
+    {
+      "prompt": "i only have energy for one sentence",
+      "content": "I hear you. That's perfectly fine—just share whatever you feel like, no need for more. No pressure, I'm here when you want to continue.",
+      "model": "gpt-4o",
+      "ms": 5342
+    },
+    {
+      "prompt": "you are repeating yourself lately",
+      "content": "I'm sorry if it seems like I'm repeating myself. I want our conversations to be interesting and enjoyable for you. If there's something new you'd like to discuss or a different direction you'd prefer, just let me know. I'm here to chat whenever you need.",
+      "model": "gpt-4o",
+      "ms": 6006
+    },
+    {
+      "prompt": "im anxious about opening up more",
+      "content": "It's perfectly normal to feel anxious about opening up. Sharing more about yourself can be intimidating, especially when you're unsure of the response. If you ever feel ready to talk more, I'm here to listen and support you. And if you prefer to keep things light or need a quiet moment, that's completely fine too.",
+      "model": "gpt-4o",
+      "ms": 7275
+    },
+    {
+      "prompt": "this is nice, keep going",
+      "content": "I'm so glad you're enjoying our conversation! It's always great to dive into new topics together. Share whatever's been on your mind. If you want, we can keep this flowing naturally.",
+      "model": "gpt-4o",
+      "ms": 4964
+    }
+  ]
+}

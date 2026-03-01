@@ -68,6 +68,9 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Keep JNI bridge methods intact to avoid runtime method lookup failures.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 

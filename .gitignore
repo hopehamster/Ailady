@@ -1,1 +1,22 @@
 girlai22/
+
+# Secrets & credentials (NEVER commit these!)
+.env
+.env.*
+*firebase-adminsdk*.json
+firebase-service-account.json
+*-service-account*.json
+girlai2-*.json
+*.p12
+*.pem
+
+# Temporary files / test recordings (never commit)
+tools/girlai2/docs/_tmp_aria_device_test/
+docs/live2d_extract/
+docs/bezzly_extract/
+deploy_err*.txt
+deploy_out*.txt
+
+# Optional source-only Live2D files (not required for runtime)
+tools/girlai2/assets/live2d/**/*.cmo3
+tools/girlai2/assets/live2d/**/*.psd

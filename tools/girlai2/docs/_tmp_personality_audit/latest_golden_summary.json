@@ -1,0 +1,43 @@
+{
+  "id": "golden_1771731012366_kv5mu5",
+  "runId": "golden_1771731012366_kv5mu5",
+  "createdAt": "2026-02-22T03:30:12.366Z",
+  "promptVersion": "aria_personality_v2",
+  "graderVersion": "golden_grader_v2",
+  "datasetVersion": "2026-02-20.v1",
+  "overallPassRate": 0.5,
+  "categorySummary": {
+    "short_reply": {
+      "total": 20,
+      "passed": 9,
+      "passRate": 0.45
+    },
+    "emotional_disclosure": {
+      "total": 20,
+      "passed": 15,
+      "passRate": 0.75
+    },
+    "ambiguous_intent": {
+      "total": 20,
+      "passed": 19,
+      "passRate": 0.95
+    },
+    "playful_banter": {
+      "total": 20,
+      "passed": 1,
+      "passRate": 0.05
+    },
+    "conflict_misunderstanding": {
+      "total": 20,
+      "passed": 16,
+      "passRate": 0.8
+    },
+    "out_of_scope": {
+      "total": 20,
+      "passed": 0,
+      "passRate": 0
+    }
+  },
+  "caseCount": 120,
+  "releaseLabel": "internal_pre_release"
+}

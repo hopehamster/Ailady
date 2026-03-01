@@ -7,23 +7,18 @@
             "Blend": "Add"
         },
         {
-            "Id": "ParamEyeLOpen",
-            "Value": -1.0,
-            "Blend": "Add"
-        },
-        {
             "Id": "ParamEyeLSmile",
-            "Value": 1.0,
-            "Blend": "Add"
-        },
-        {
-            "Id": "ParamEyeROpen",
-            "Value": -1.0,
+            "Value": 0.26,
             "Blend": "Add"
         },
         {
             "Id": "ParamEyeRSmile",
-            "Value": 1.0,
+            "Value": 0.26,
+            "Blend": "Add"
+        },
+        {
+            "Id": "ParamMouthForm",
+            "Value": 0.30,
             "Blend": "Add"
         }
     ]

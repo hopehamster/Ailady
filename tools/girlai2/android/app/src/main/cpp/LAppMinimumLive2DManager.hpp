@@ -87,6 +87,16 @@ public:
     */
     void SetParameter(const std::string& parameterId, Csm::csmFloat32 value) const;
 
+    /**
+    * @brief   Clear model parameter override by parameter id.
+    */
+    void ClearParameter(const std::string& parameterId) const;
+
+    /**
+    * @brief   Set bust-up framing transform for model view.
+    */
+    void SetViewTransform(Csm::csmFloat32 scale, Csm::csmFloat32 offsetX, Csm::csmFloat32 offsetY);
+
 private:
     /**
     * @brief  コンストラクタ
@@ -111,4 +121,7 @@ private:
     std::string _modelDirectoryName; ///< Current model directory name.
     std::string _modelName; ///< Current model base filename without extension.
     std::string _currentModelDirectory; ///< 現在のモデルのディレクトリ
+    Csm::csmFloat32 _viewScale;
+    Csm::csmFloat32 _viewOffsetX;
+    Csm::csmFloat32 _viewOffsetY;
 };

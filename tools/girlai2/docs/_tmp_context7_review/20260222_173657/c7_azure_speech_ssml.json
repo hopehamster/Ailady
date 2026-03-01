@@ -1,0 +1,214 @@
+### SSML for Dragon HD Omni style control with Express-As
+
+Source: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/high-definition-voices
+
+This SSML example showcases the 'mstts:express-as' element in Dragon HD Omni to control voice style using natural language descriptions. It allows for nuanced emotional expression by specifying a style like 'sick'.
+
+```ssml
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
+       xmlns:mstts="http://www.w3.org/2001/mstts" xml:lang="en-US">
+  <voice name="en-us-ava:DragonHDOmniLatestNeural">
+    <mstts:express-as style="sick">
+      Ugh… I'm not feeling so great today. My head's pounding, and even my voice sounds like it's been through a blender. I think I need to lie down for a bit… maybe some soup would help.
+    </mstts:express-as>
+  </voice>
+</speak>
+```
+
+--------------------------------
+
+### Using Speaking Styles, Style Degree, and Roles
+
+Source: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-voice_source=recommendations
+
+This section details the attributes for the `mstts:express-as` element, which allows for customization of neural voice output. You can control the speaking style, its intensity, and the role the voice imitates.
+
+```APIDOC
+## `mstts:express-as` Element Attributes
+
+### Description
+Controls the speaking style, style degree, and role for neural voices at the sentence level.
+
+### Method
+Not Applicable (SSML Element)
+
+### Endpoint
+Not Applicable (SSML Element)
+
+### Parameters
+#### Attributes
+- **style** (string) - Required - The voice-specific speaking style (e.g., `cheerful`, `angry`, `customerservice`). If invalid or missing, the element is ignored.
+- **styledegree** (number) - Optional - The intensity of the speaking style. Accepted range: `0.01` to `2`. Default is `1`. Ignored if missing or unsupported.
+- **role** (string) - Optional - The speaking role-play (e.g., imitating a different age or gender). Ignored if missing or unsupported.
+
+### Supported Styles
+
+#### Style
+- `advertisement_upbeat`: Excited and high-energy tone for promotions.
+- `affectionate`: Warm and affectionate tone, higher pitch and vocal energy.
+- `angry`: Angry and annoyed tone.
+- `assistant`: Warm and relaxed tone for digital assistants.
+- `calm`: Cool, collected, and composed attitude.
+- `chat`: Casual and relaxed tone.
+- `cheerful`: Positive and happy tone.
+- `customerservice`: Friendly and helpful tone for customer support.
+- `depressed`: Melancholic and despondent tone, lower pitch and energy.
+- `disgruntled`: Disdainful and complaining tone.
+- `documentary-narration`: Relaxed, interested, and informative style for documentaries.
+- `embarrassed`: Uncertain and hesitant tone.
+- `empathetic`: Sense of caring and understanding.
+- `envious`: Tone of admiration.
+- `excited`: Upbeat and hopeful tone.
+- `fearful`: Scared and nervous tone, higher pitch, energy, and faster rate.
+- `friendly`: Pleasant, inviting, and warm tone.
+- `gentle`: Mild, polite, and pleasant tone, lower pitch and vocal energy.
+- `hopeful`: Warm and yearning tone.
+- `lyrical`: Melodic and sentimental tone.
+- `narration-professional`: Professional, objective tone for content reading.
+- `narration-relaxed`: Soothing and melodious tone for content reading.
+- `newscast`: Formal and professional tone for narrating news.
+- `newscast-casual`: Versatile and casual tone for general news delivery.
+- `newscast-formal`: Formal, confident, and authoritative tone for news delivery.
+- `poetry-reading`: Emotional and rhythmic tone for reading poetry.
+- `sad`: Sorrowful tone.
+
+### Request Example
+```xml
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  <voice name="en-US-JennyNeural">
+    <mstts:express-as style="cheerful" styledegree="1.2" role="YoungAdultFemale">Hello world!</mstts:express-as>
+  </voice>
+</speak>
+```
+
+### Response
+#### Success Response (200)
+Audio output with the specified speaking style, degree, and role applied.
+
+#### Response Example
+(Binary audio data)
+```
+
+--------------------------------
+
+### SSML Prosody Element Examples
+
+Source: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-voice
+
+Demonstrates various ways to use the SSML 'prosody' element to adjust speech characteristics. This includes setting pitch, contour, range, rate, and volume using absolute, relative, and enumerated values. Note that pitch contour is best applied to longer phrases or sentences.
+
+```xml
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  <prosody pitch="600Hz">This is text with an absolute pitch.</prosody>
+  <prosody pitch="+80Hz">This is text with a relative pitch increase.</prosody>
+  <prosody pitch="-2st">This is text with a relative pitch decrease in semitones.</prosody>
+  <prosody pitch="50%">This is text with a relative pitch change of 50%.</prosody>
+  <prosody pitch="x-high">This is text with a very high pitch.</prosody>
+  <prosody contour="(0%,+20Hz) (10%,-2st) (40%,+10Hz)">This text has a pitch contour applied.</prosody>
+  <prosody range="10st">This text has a pitch range of 10 semitones.</prosody>
+  <prosody rate="0.5">This text is spoken at half the normal rate.</prosody>
+  <prosody rate="fast">This text is spoken at a fast rate.</prosody>
+  <prosody volume="silent">This text will be silent.</prosody>
+  <prosody volume="loud">This text will be spoken loudly.</prosody>
+  <prosody volume="+3%">This text has a 3% volume increase.</prosody>
+</speak>
+```
+
+--------------------------------
+
+### Prosody Element SSML
+
+Source: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/speech-synthesis-markup-voice_source=recommendations
+
+This example demonstrates how to use the 'prosody' element with various attributes to control speech synthesis output.
+
+```APIDOC
+## Adjust Prosody
+
+You can use the `prosody` element to specify changes to pitch, contour, range, rate, and volume for the text to speech output.
+
+### Method
+Not Applicable (SSML Element)
+
+### Endpoint
+Not Applicable (SSML Element)
+
+### Parameters
+#### Attributes of the `prosody` element:
+
+- **contour** (string) - Optional - Represents changes in pitch over time, defined by an array of targets with time positions and pitch change values. Example: `"(0%,+20Hz) (10%,-2st) (40%,+10Hz)"`
+- **pitch** (string) - Optional - Indicates the baseline pitch. Can be an absolute value (e.g., `"600Hz"`), a relative value (e.g., `"+80Hz"`, `"-2st"`, `"50%"`), or a constant value (`x-low`, `low`, `medium`, `high`, `x-high`).
+- **range** (string) - Optional - Represents the range of pitch. Accepts the same value formats as the `pitch` attribute.
+- **rate** (string) - Optional - Indicates the speaking rate. Can be a relative number (e.g., `1`, `0.5`, `2`), a percentage (e.g., `"50%"`, `"-50%"`), or a constant value (`x-slow`, `slow`, `medium`, `fast`, `x-fast`).
+- **volume** (string) - Optional - Indicates the volume level. Can be an absolute value (0.0 to 100.0, e.g., `75`), a relative value (e.g., `"+10"`, `"-5.5"`, `"50%"`, `"+3%"`), or a constant value (`silent`, `x-soft`, `soft`, `medium`, `loud`, `x-loud`).
+
+### Request Example
+```xml
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  <prosody pitch="high" rate="fast" volume="loud">
+    This is an example of adjusted prosody.
+  </prosody>
+  <prosody contour="(0%,+20Hz) (10%,-2st)" pitch="-10Hz" range="+5st" rate="1.2" volume="-3dB">
+    This sentence has more complex prosody adjustments.
+  </prosody>
+</speak>
+```
+
+### Response
+#### Success Response (200)
+- **Audio Output** (audio/mpeg) - The synthesized speech audio stream with applied prosody adjustments.
+
+#### Response Example
+(Binary audio data representing the synthesized speech)
+```
+
+--------------------------------
+
+### RealtimeAzureCustomVoice Configuration
+
+Source: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/voice-live-api-reference
+
+Configuration object for Azure custom voices. This allows specifying details like the voice name, endpoint ID, and optional parameters for accent, locale, style, pitch, rate, and volume.
+
+```APIDOC
+## POST /websites/learn_microsoft_en-us_azure_ai-services_speech-service
+
+### Description
+Configures Azure custom voices for real-time speech synthesis. This object allows for detailed customization of the voice output.
+
+### Method
+POST
+
+### Endpoint
+/websites/learn_microsoft_en-us_azure_ai-services_speech-service
+
+### Parameters
+#### Request Body
+- **type** (string) - Required - Must be `"azure-custom"`
+- **name** (string) - Required - Voice name (cannot be empty)
+- **endpoint_id** (string) - Required - Endpoint ID (cannot be empty)
+- **temperature** (number) - Optional - Temperature between 0.0 and 1.0
+- **custom_lexicon_url** (string) - Optional - URL to custom lexicon
+- **prefer_locales** (string[]) - Optional - Preferred locales for accents. If not set, default accents are used. Example: `["en-GB", "es-ES"]`
+- **locale** (string) - Optional - Enforces the locale for TTS output. If not set, the given locale is always used. Example: `en-US`
+- **style** (string) - Optional - Voice style (e.g., "cheerful")
+- **pitch** (string) - Optional - Pitch adjustment
+- **rate** (string) - Optional - Speech rate adjustment
+- **volume** (string) - Optional - Volume adjustment
+
+### Request Example
+```json
+{
+  "type": "azure-custom",
+  "name": "my-custom-voice",
+  "endpoint_id": "12345678-1234-1234-1234-123456789012",
+  "temperature": 0.7,
+  "style": "cheerful",
+  "locale": "en-US"
+}
+```
+
+### Response
+#### Success Response (200)
+- **message** (string) - Confirmation message of successful configuration.
+```
