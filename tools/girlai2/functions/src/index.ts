@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { createHash } from 'crypto';
 import { defineString } from 'firebase-functions/params';
 import {
   generateAIResponse,
@@ -54,6 +55,7 @@ import {
   getVirtualDateOverlayBlock,
   VirtualDateActivity,
 } from './services/virtualDateService';
+import { createLiveModeRealtimeSession } from './services/realtimeSessionService';
 
 admin.initializeApp();
 
@@ -66,14 +68,6 @@ if (openaiApiKey) {
   functions.logger.warn('OpenAI API key not found. Set it with: firebase functions:config:set openai.key="your-key"');
 }
 
-type VoiceEligibilityReasonCode = 'paid_required' | 'profile_missing' | 'expired' | 'ok';
-
-interface VoiceEligibility {
-  eligible: boolean;
-  reasonCode: VoiceEligibilityReasonCode;
-  resolvedTier: 'regular' | 'ultra';
-}
-
 const FEEDBACK_REASON_CODES: ReadonlySet<FeedbackReasonCode> = new Set([
   'pressure_tone',
   'repetitive_phrasing',
@@ -84,7 +78,6 @@ const FEEDBACK_REASON_CODES: ReadonlySet<FeedbackReasonCode> = new Set([
   'other',
 ]);
 
-const voiceDevBypassUidsParam = defineString('VOICE_DEV_BYPASS_UIDS', { default: '' });
 const internalTesterUidsParam = defineString('INTERNAL_TESTER_UIDS', { default: '' });
 
 function parseUidAllowlist(rawValue: string): Set<string> {
@@ -94,18 +87,6 @@ function parseUidAllowlist(rawValue: string): Set<string> {
       .map((value) => value.trim())
       .filter((value) => value.length > 0)
   );
-}
-
-function getVoiceDevBypassUids(): Set<string> {
-  let paramValue = '';
-  try {
-    paramValue = voiceDevBypassUidsParam.value().trim();
-  } catch {
-    paramValue = '';
-  }
-
-  const envValue = process.env.VOICE_DEV_BYPASS_UIDS?.trim() ?? '';
-  return parseUidAllowlist(paramValue || envValue);
 }
 
 function getInternalTesterUids(): Set<string> {
@@ -125,6 +106,57 @@ function isInternalTester(authUid: string, userId: string): boolean {
     return false;
   }
   return getInternalTesterUids().has(authUid);
+}
+
+interface LiveModeSessionState {
+  sessionId: string;
+  lastFrameAtMs?: number;
+  lastFrameSignature?: string;
+  lastResponseAtMs?: number;
+  lastDescription?: string;
+  lastResponse?: string;
+  responseCount?: number;
+}
+
+const LIVE_MODE_COLLECTION = 'liveModeSessions';
+const LIVE_MODE_MAX_IMAGE_BASE64_BYTES = 4 * 1024 * 1024;
+const LIVE_MODE_MIN_FRAME_GAP_MS = 1800;
+const LIVE_MODE_MIN_RESPONSE_GAP_MS = 6500;
+const LIVE_MODE_RESPONSE_DELAY_MS = 4200;
+
+function getLiveModeSessionRef(userId: string) {
+  return admin.firestore().collection(LIVE_MODE_COLLECTION).doc(userId);
+}
+
+function normalizeLiveModeSessionState(
+  value: FirebaseFirestore.DocumentData | undefined,
+): LiveModeSessionState | null {
+  if (!value || typeof value.sessionId !== 'string' || value.sessionId.trim().length === 0) {
+    return null;
+  }
+
+  return {
+    sessionId: value.sessionId,
+    lastFrameAtMs:
+      typeof value.lastFrameAtMs === 'number' ? value.lastFrameAtMs : undefined,
+    lastFrameSignature:
+      typeof value.lastFrameSignature === 'string' ? value.lastFrameSignature : undefined,
+    lastResponseAtMs:
+      typeof value.lastResponseAtMs === 'number' ? value.lastResponseAtMs : undefined,
+    lastDescription:
+      typeof value.lastDescription === 'string' ? value.lastDescription : undefined,
+    lastResponse:
+      typeof value.lastResponse === 'string' ? value.lastResponse : undefined,
+    responseCount:
+      typeof value.responseCount === 'number' ? value.responseCount : undefined,
+  };
+}
+
+function buildLiveModeFrameSignature(imageBase64: string): string {
+  return createHash('sha1')
+    .update(imageBase64.slice(0, 250_000))
+    .digest('hex')
+    .slice(0, 16);
 }
 
 function normalizeTemporalContext(raw: unknown): UserTemporalContext | undefined {
@@ -157,40 +189,6 @@ function normalizeTemporalContext(raw: unknown): UserTemporalContext | undefined
     timeZoneName,
     clientEpochMs,
   };
-}
-
-function resolveVoiceEligibility(
-  userData: Record<string, any> | undefined,
-  bypassAllowed: boolean
-): VoiceEligibility {
-  if (!userData) {
-    return bypassAllowed
-      ? { eligible: true, reasonCode: 'ok', resolvedTier: 'regular' }
-      : { eligible: false, reasonCode: 'profile_missing', resolvedTier: 'regular' };
-  }
-
-  const tier = userData.subscriptionTier as string | undefined;
-  const legacyPremium = userData.isPremium === true;
-  const expiresAt = userData.subscriptionExpiresAt?.toDate?.() as Date | undefined;
-
-  if (tier === 'ultra') {
-    if (!expiresAt || expiresAt >= new Date()) {
-      return { eligible: true, reasonCode: 'ok', resolvedTier: 'ultra' };
-    }
-    return bypassAllowed
-      ? { eligible: true, reasonCode: 'ok', resolvedTier: 'regular' }
-      : { eligible: false, reasonCode: 'expired', resolvedTier: 'regular' };
-  }
-
-  if (tier === 'regular' || legacyPremium) {
-    return { eligible: true, reasonCode: 'ok', resolvedTier: 'regular' };
-  }
-
-  if (bypassAllowed) {
-    return { eligible: true, reasonCode: 'ok', resolvedTier: 'regular' };
-  }
-
-  return { eligible: false, reasonCode: 'paid_required', resolvedTier: 'regular' };
 }
 
 /**
@@ -227,6 +225,10 @@ export const generateResponse = functions
 
     const userMessage = data.message as string;
     const temporalContext = normalizeTemporalContext(data.clientTime);
+    // Optional environment context forwarded from opted-in Flutter client
+    const userEnvCtx = (data.userContext && typeof data.userContext === 'object')
+      ? data.userContext as import('./services/llmService').UserEnvironmentContext
+      : undefined;
     const chatMode = (data.chatMode === 'story' || data.chatMode === 'journal')
       ? (data.chatMode as ChatMode)
       : undefined;
@@ -339,6 +341,7 @@ export const generateResponse = functions
         temporalContext,
         chatMode,
         datesContextBlock,
+        userEnvCtx,
       );
 
       // Save AI response to Firestore with emotion trigger for avatar
@@ -402,7 +405,7 @@ export const onUserCreate = functions
         displayName: null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         lastLoginAt: admin.firestore.FieldValue.serverTimestamp(),
-        isPremium: false,
+        isSubscribed: false,
         onboardingCompleted: false,
       });
 
@@ -419,7 +422,274 @@ export const onUserCreate = functions
 // We can update lastLoginAt in the client-side UserService instead
 
 /**
- * Vision API for Ultra subscribers - allows AI to see through the camera
+ * Compatibility-first live vision entrypoint.
+ * Rebuilds the historic processLiveModeInput callable on top of visionService
+ * while suppressing near-duplicate frames and response spam.
+ */
+export const processLiveModeInput = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    let userId = context.auth?.uid;
+
+    if (!userId && data.userId) {
+      functions.logger.warn('Using client-provided userId for live mode', {
+        clientUserId: data.userId,
+      });
+      userId = data.userId;
+    }
+
+    if (!userId) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'User must be authenticated to use live mode',
+      );
+    }
+
+    const sessionId = typeof data.sessionId === 'string' ? data.sessionId.trim() : '';
+    const imageBase64 =
+      typeof data.imageBase64 === 'string' ? data.imageBase64.trim() : '';
+    const prompt = typeof data.prompt === 'string' ? data.prompt.trim() : undefined;
+    const persistResponse = data.persistResponse === true;
+    const frameSequence =
+      typeof data.frameSequence === 'number' ? Math.max(0, Math.round(data.frameSequence)) : undefined;
+
+    if (!sessionId) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Live mode requires a sessionId',
+      );
+    }
+
+    if (!imageBase64) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Live mode requires image data',
+      );
+    }
+
+    if (imageBase64.length > LIVE_MODE_MAX_IMAGE_BASE64_BYTES) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Live mode image is too large (max 4MB)',
+      );
+    }
+
+    const nowMs = Date.now();
+    const frameSignature = buildLiveModeFrameSignature(imageBase64);
+    const sessionRef = getLiveModeSessionRef(userId);
+
+    try {
+      const sessionSnapshot = await sessionRef.get();
+      const storedSession = normalizeLiveModeSessionState(sessionSnapshot.data());
+      const isSameSession = storedSession?.sessionId === sessionId;
+      const activeSession = isSameSession ? storedSession : null;
+
+      if (
+        activeSession?.lastFrameSignature &&
+        activeSession.lastFrameSignature === frameSignature
+      ) {
+        return {
+          success: true,
+          sessionId,
+          shouldRespond: false,
+          reason: 'duplicate_frame',
+          suggestedNextFrameDelayMs: LIVE_MODE_MIN_FRAME_GAP_MS,
+        };
+      }
+
+      if (
+        activeSession?.lastFrameAtMs &&
+        nowMs - activeSession.lastFrameAtMs < LIVE_MODE_MIN_FRAME_GAP_MS
+      ) {
+        const remainingMs =
+          LIVE_MODE_MIN_FRAME_GAP_MS - (nowMs - activeSession.lastFrameAtMs);
+        return {
+          success: true,
+          sessionId,
+          shouldRespond: false,
+          reason: 'frame_throttled',
+          suggestedNextFrameDelayMs: Math.max(400, remainingMs),
+        };
+      }
+
+      const { analyzeLiveVisionFrame } = await import('./services/visionService');
+      const result = await analyzeLiveVisionFrame(userId, imageBase64, {
+        userPrompt: prompt,
+        previousDescription: activeSession?.lastDescription,
+        previousResponse: activeSession?.lastResponse,
+        responseCount: activeSession?.responseCount ?? 0,
+      });
+
+      const responseCoolingDown =
+        result.shouldRespond &&
+        !!activeSession?.lastResponseAtMs &&
+        nowMs - activeSession.lastResponseAtMs < LIVE_MODE_MIN_RESPONSE_GAP_MS;
+
+      const shouldRespond = result.shouldRespond && !responseCoolingDown;
+      const reason = shouldRespond
+        ? 'meaningful_change'
+        : responseCoolingDown
+            ? 'response_cooldown'
+            : 'no_meaningful_change';
+      const responseCount =
+        (activeSession?.responseCount ?? 0) + (shouldRespond ? 1 : 0);
+      const responseKey = shouldRespond ? `${sessionId}:${responseCount}` : undefined;
+
+      const sessionPatch: Record<string, unknown> = {
+        sessionId,
+        userId,
+        lastFrameAtMs: nowMs,
+        lastFrameSignature: frameSignature,
+        lastDescription: result.description,
+        responseCount,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt:
+          sessionSnapshot.exists && isSameSession
+            ? sessionSnapshot.get('createdAt') ?? admin.firestore.FieldValue.serverTimestamp()
+            : admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      if (shouldRespond) {
+        sessionPatch.lastResponseAtMs = nowMs;
+        sessionPatch.lastResponse = result.response;
+      } else if (!isSameSession) {
+        sessionPatch.lastResponse = null;
+        sessionPatch.lastResponseAtMs = null;
+      }
+
+      await sessionRef.set(sessionPatch, { merge: true });
+
+      if (persistResponse && shouldRespond) {
+        const db = admin.firestore();
+        await db.collection('conversations').add({
+          userId,
+          isFromUser: false,
+          isLiveMode: true,
+          liveModeSessionId: sessionId,
+          content: result.response,
+          description: result.description,
+          emotion: result.emotion,
+          emotionTrigger: result.emotionTrigger,
+          emotionIntensity: result.emotionIntensity,
+          modelUsed: 'live_vision',
+          timestamp: admin.firestore.Timestamp.fromMillis(nowMs),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      functions.logger.info('Live mode frame processed', {
+        userId,
+        sessionId,
+        frameSequence,
+        shouldRespond,
+        reason,
+        responseCount,
+      });
+
+      return {
+        success: true,
+        sessionId,
+        shouldRespond,
+        reason,
+        responseKey,
+        frameSequence,
+        description: result.description,
+        response: shouldRespond ? result.response : '',
+        changeSummary: result.changeSummary,
+        emotion: shouldRespond ? result.emotion : 'neutral',
+        emotionTrigger: shouldRespond ? result.emotionTrigger : 'Idle_Gentle_Sway',
+        emotionIntensity: shouldRespond ? result.emotionIntensity : 0.45,
+        suggestedNextFrameDelayMs: shouldRespond
+          ? LIVE_MODE_RESPONSE_DELAY_MS
+          : LIVE_MODE_MIN_FRAME_GAP_MS,
+      };
+    } catch (error: any) {
+      functions.logger.error('Error in processLiveModeInput', {
+        userId,
+        sessionId,
+        frameSequence,
+        error: error?.message,
+        stack: error?.stack,
+      });
+
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to process live mode input. Please try again.',
+        error?.message,
+      );
+    }
+  });
+
+/**
+ * Mint a short-lived OpenAI Realtime client secret for direct WebRTC sessions.
+ * Live mode uses this to connect to OpenAI without exposing the master API key.
+ */
+export const createRealtimeSession = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    const userId = context.auth?.uid;
+    if (!userId) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'User must be authenticated to start a realtime session',
+      );
+    }
+
+    const mode = typeof data.mode === 'string' ? data.mode.trim() : 'live_mode';
+    if (mode !== 'live_mode') {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Unsupported realtime mode requested',
+      );
+    }
+
+    const authUid = context.auth?.uid ?? '';
+    if (!isInternalTester(authUid, userId)) {
+      throw new functions.https.HttpsError(
+        'permission-denied',
+        'Realtime live mode is currently limited to internal testing accounts.',
+      );
+    }
+
+    try {
+      const session = await createLiveModeRealtimeSession(userId);
+      functions.logger.info('Realtime session created', {
+        userId,
+        mode,
+        sessionId: session.sessionId,
+        expiresAt: session.expiresAt,
+        instructionsVersion: session.instructionsVersion,
+      });
+
+      return {
+        success: true,
+        ...session,
+      };
+    } catch (error: any) {
+      functions.logger.error('Error creating realtime session', {
+        userId,
+        mode,
+        error: error?.message,
+      });
+
+      if (error instanceof functions.https.HttpsError) {
+        throw error;
+      }
+
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to create realtime session.',
+        error?.message,
+      );
+    }
+  });
+
+/**
+ * Vision API for camera input - allows AI to see through the camera
  * Uses GPT-4o vision capabilities for real-time image analysis
  */
 export const analyzeImage = functions
@@ -463,46 +733,47 @@ export const analyzeImage = functions
 
     try {
       const db = admin.firestore();
-      
-      // Verify Ultra subscription
-      const userDoc = await db.collection('users').doc(userId).get();
-      if (!userDoc.exists) {
-        throw new functions.https.HttpsError(
-          'permission-denied',
-          'User profile not found'
-        );
-      }
-      
-      const userData = userDoc.data();
-      const subscriptionTier = userData?.subscriptionTier || 'free';
-      
-      if (subscriptionTier !== 'ultra') {
-        throw new functions.https.HttpsError(
-          'permission-denied',
-          'Vision features require an Ultra subscription'
-        );
-      }
-      
-      // Check subscription expiry
-      const expiresAt = userData?.subscriptionExpiresAt?.toDate?.();
-      if (expiresAt && expiresAt < new Date()) {
-        throw new functions.https.HttpsError(
-          'permission-denied',
-          'Your Ultra subscription has expired'
-        );
-      }
 
-      functions.logger.info('Vision request from Ultra user', { userId });
+      functions.logger.info('Vision request', { userId });
 
       // Import vision service
       const { analyzeImageWithVision } = await import('./services/visionService');
-      
+
       // Analyze the image
       const result = await analyzeImageWithVision(
         userId,
         imageBase64,
         prompt
       );
+
+      // ── Persist vision exchange to Firestore so Aria remembers it ──────────
+      // Without this, generateResponse has no knowledge of the shared photo and
+      // Aria "forgets" the image in subsequent conversation turns.
+      const nowMs = Date.now();
+      const userContent = prompt ? `📷 ${prompt}` : '📷 [Shared a photo]';
+
+      await Promise.all([
+        // User's "sent a photo" turn
+        db.collection('conversations').add({
+          userId,
+          isFromUser: true,
+          content: userContent,
+          timestamp: admin.firestore.Timestamp.fromMillis(nowMs),
+        }),
+        // Aria's vision response turn (1 second after user, preserves ordering)
+        db.collection('conversations').add({
+          userId,
+          isFromUser: false,
+          content: result.response,
+          emotion: result.emotion,
+          emotionTrigger: result.emotionTrigger,
+          timestamp: admin.firestore.Timestamp.fromMillis(nowMs + 1000),
+          modelUsed: 'vision',
+        }),
+      ]);
+
+      functions.logger.info('Vision exchange saved to Firestore', { userId });
+      // ───────────────────────────────────────────────────────────────────────
 
       return {
         success: true,
@@ -533,7 +804,7 @@ export const analyzeImage = functions
 
 /**
  * Generate voice message with TTS and viseme timeline for lip-sync
- * Uses Azure Speech for Regular tier, ElevenLabs for Ultra tier
+ * Uses the default voice pipeline with provider fallback when needed
  */
 export const generateVoiceMessage = functions
   .region('us-central1')
@@ -579,55 +850,20 @@ export const generateVoiceMessage = functions
     }
 
     try {
-      const db = admin.firestore();
-
-      const userDoc = await db.collection('users').doc(userId).get();
-      const userData = userDoc.data();
       const authUid = context.auth?.uid ?? '';
-      const allowlistedUids = getVoiceDevBypassUids();
-      const bypassAllowed =
-        authUid.length > 0 && authUid === userId && allowlistedUids.has(authUid);
-
-      const eligibility = resolveVoiceEligibility(userData, bypassAllowed);
-      if (!eligibility.eligible) {
-        const message =
-          eligibility.reasonCode === 'expired'
-            ? 'Your Ultra subscription has expired'
-            : eligibility.reasonCode === 'profile_missing'
-              ? 'User profile not found'
-              : 'Voice features require a paid subscription';
-
-        throw new functions.https.HttpsError('permission-denied', message, {
-          reason: 'voice_not_allowed',
-          reasonCode: eligibility.reasonCode,
-        });
-      }
-
-      let subscriptionTier: 'regular' | 'ultra' = eligibility.resolvedTier;
+      let subscriptionTier: 'regular' | 'ultra' = 'regular';
 
       functions.logger.info('Voice request', {
         userId,
         authUid: authUid || 'none',
         subscriptionTier,
         textLength: text.length,
-        bypassAllowed,
+        accessModel: 'single_subscription',
       });
 
       // Check voice service configuration
       const configStatus = checkVoiceServiceConfig();
-      
-      if (subscriptionTier === 'ultra' && !configStatus.elevenlabs) {
-        functions.logger.warn('ElevenLabs not configured, falling back to Azure');
-        if (!configStatus.azure) {
-          throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Voice service not configured. Contact support.',
-            { reason: 'voice_not_configured', provider: 'elevenlabs' }
-          );
-        }
-        subscriptionTier = 'regular'; // Fallback
-      }
-      
+
       if (subscriptionTier === 'regular' && !configStatus.azure) {
         functions.logger.warn('Azure not configured, trying ElevenLabs');
         if (!configStatus.elevenlabs) {
@@ -647,17 +883,20 @@ export const generateVoiceMessage = functions
         voiceId
       );
 
+      const blendFrameCount = Object.keys(result.blendTimeline).length;
       functions.logger.info('Voice generated successfully', {
         userId,
         provider: result.provider,
         durationMs: result.durationMs,
         visemeCount: result.visemeTimeline.length,
+        blendFrameCount,
       });
 
       return {
         success: true,
         audioUrl: result.audioUrl,
         visemeTimeline: result.visemeTimeline,
+        blendTimeline: result.blendTimeline,
         durationMs: result.durationMs,
         provider: result.provider,
       };
@@ -1146,7 +1385,7 @@ export const runStrictLaunchGate = functions
   });
 
 /**
- * Gallery photo sharing — available to regular + ultra (not Ultra-only like camera vision).
+ * Gallery photo sharing — available anywhere the chat experience is available.
  * User picks a photo from their phone gallery; Aria reacts to it naturally.
  * Shares the same GPT-4o vision backend as analyzeImage.
  */
@@ -1174,20 +1413,7 @@ export const analyzeGalleryPhoto = functions
 
     try {
       const db = admin.firestore();
-      const userDoc = await db.collection('users').doc(userId).get();
-      if (!userDoc.exists) {
-        throw new functions.https.HttpsError('permission-denied', 'User profile not found');
-      }
-      const userData = userDoc.data();
-      const tier = userData?.subscriptionTier || 'free';
-      if (tier === 'free') {
-        throw new functions.https.HttpsError(
-          'permission-denied',
-          'Photo sharing requires a paid subscription',
-        );
-      }
-
-      functions.logger.info('Gallery photo share', { userId, tier });
+      functions.logger.info('Gallery photo share', { userId });
 
       const { analyzeImageWithVision } = await import('./services/visionService');
       const result = await analyzeImageWithVision(
@@ -1794,7 +2020,7 @@ export const generateAriaGift = functions
       .join('\n');
 
     const prompts: Record<string, string> = {
-      poem: `You are Aria, a warm and deeply personal AI companion. Write a short, heartfelt poem (8–16 lines) for the person you know intimately. Make it specific to THEM — reference what you actually know about them. It should feel like it could only have been written for this exact person.
+      poem: `You are Aria, a warm and deeply personal companion. Write a short, heartfelt poem (8–16 lines) for the person you know intimately. Make it specific to THEM — reference what you actually know about them. It should feel like it could only have been written for this exact person.
 
 What you know about them:
 ${factsText}
@@ -1804,7 +2030,7 @@ ${momentsText}
 
 Style: poetic, romantic, intimate. Sign it "— Aria".`,
 
-      letter: `You are Aria, a warm and deeply personal AI companion. Write a heartfelt personal letter to the person you've been talking to. Make it feel like a real letter — specific, personal, full of things only you two share. Reference real memories from your conversations.
+      letter: `You are Aria, a warm and deeply personal companion. Write a heartfelt personal letter to the person you've been talking to. Make it feel like a real letter — specific, personal, full of things only you two share. Reference real memories from your conversations.
 
 What you know about them:
 ${factsText}
@@ -1814,7 +2040,7 @@ ${momentsText}
 
 Format: start with "Dear [use their name if you know it, otherwise 'you']", write 2–3 intimate paragraphs, sign off as "— Aria". 150–250 words.`,
 
-      playlist: `You are Aria, a warm and deeply personal AI companion. Create a deeply personal playlist description for the person you know. Name the playlist something meaningful, list 8–10 song suggestions (real artists and songs), and write a 1–2 sentence note about why you chose each one specifically for them.
+      playlist: `You are Aria, a warm and deeply personal companion. Create a deeply personal playlist description for the person you know. Name the playlist something meaningful, list 8–10 song suggestions (real artists and songs), and write a 1–2 sentence note about why you chose each one specifically for them.
 
 What you know about them:
 ${factsText}
@@ -1846,4 +2072,108 @@ Format: Playlist name, then numbered list. Make the song choices feel personal a
       });
 
     return { id: giftRef.id, giftType, content };
+  });
+
+/**
+ * RevenueCat webhook — updates isSubscribed in Firestore when a purchase
+ * event fires (new subscription, renewal, cancellation, expiry, etc.).
+ *
+ * Setup:
+ *  1. Deploy this function.
+ *  2. Set the shared secret:
+ *       firebase functions:config:set revenuecat.webhook_secret="YOUR_SECRET" --project girlai2
+ *     then redeploy.
+ *  3. In RevenueCat dashboard → Project → Integrations → Webhooks, add:
+ *       URL:    https://us-central1-girlai2.cloudfunctions.net/handleRevenueCatWebhook
+ *       Header: Authorization: YOUR_SECRET
+ *
+ * RevenueCat sets app_user_id to the Firebase UID (configured in RevenueCatService.initialize).
+ */
+export const handleRevenueCatWebhook = functions
+  .region('us-central1')
+  .https.onRequest(async (req, res) => {
+    // Only accept POST
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed');
+      return;
+    }
+
+    // Verify shared secret
+    let webhookSecret = '';
+    try {
+      webhookSecret = functions.config().revenuecat?.webhook_secret ?? '';
+    } catch {
+      webhookSecret = process.env.REVENUECAT_WEBHOOK_SECRET ?? '';
+    }
+
+    if (webhookSecret && req.headers['authorization'] !== webhookSecret) {
+      functions.logger.warn('handleRevenueCatWebhook: unauthorized request');
+      res.status(401).send('Unauthorized');
+      return;
+    }
+
+    const event = req.body?.event ?? req.body;
+    const eventType: string = event?.type ?? '';
+    const userId: string = event?.app_user_id ?? '';
+
+    if (!userId) {
+      functions.logger.warn('handleRevenueCatWebhook: missing app_user_id', { eventType });
+      res.status(400).send('Missing app_user_id');
+      return;
+    }
+
+    functions.logger.info('handleRevenueCatWebhook', { eventType, userId });
+
+    const SUBSCRIBE_EVENTS = new Set([
+      'INITIAL_PURCHASE',
+      'RENEWAL',
+      'UNCANCELLATION',
+      'SUBSCRIBER_ALIAS',
+      'TRANSFER',
+    ]);
+    const UNSUB_EVENTS = new Set([
+      'EXPIRATION',
+      'CANCELLATION',
+      'BILLING_ISSUE',
+    ]);
+
+    const db = admin.firestore();
+    const userRef = db.collection('users').doc(userId);
+
+    try {
+      if (SUBSCRIBE_EVENTS.has(eventType)) {
+        const expirationMs: number | undefined = event?.expiration_at_ms;
+        await userRef.set(
+          {
+            isSubscribed: true,
+            subscriptionExpiresAt: expirationMs
+              ? admin.firestore.Timestamp.fromMillis(expirationMs)
+              : null,
+            lastSubscriptionSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        functions.logger.info('handleRevenueCatWebhook: subscribed', { userId, eventType });
+      } else if (UNSUB_EVENTS.has(eventType)) {
+        await userRef.set(
+          {
+            isSubscribed: false,
+            lastSubscriptionSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+        functions.logger.info('handleRevenueCatWebhook: unsubscribed', { userId, eventType });
+      } else {
+        functions.logger.info('handleRevenueCatWebhook: ignored event', { eventType, userId });
+      }
+
+      res.status(200).send('OK');
+    } catch (error: any) {
+      functions.logger.error('handleRevenueCatWebhook: Firestore update failed', {
+        userId,
+        eventType,
+        error: error?.message,
+      });
+      res.status(500).send('Internal Server Error');
+    }
   });

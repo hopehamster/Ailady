@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import '../exceptions/chat_exception.dart';
+import '../models/user_environment_context.dart';
 import '../utils/chat_error_handler.dart';
 import '../utils/debug_logger.dart';
 import '../utils/emulator_config.dart';
@@ -95,9 +96,13 @@ class FirebaseService {
 
   /// Call the Chat Cloud Function
   /// Throws ChatException with user-friendly message on error
+  ///
+  /// [userContext] is optional; when provided, Aria uses it to make naturally
+  /// grounded references to the user's time, place, and weather.
   Future<Map<String, dynamic>> generateResponse(
     String message, {
     String? chatMode,
+    UserEnvironmentContext? userContext,
   }) async {
     final startTime = DateTime.now();
     final messageId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -169,6 +174,7 @@ class FirebaseService {
           'timeZoneName': now.timeZoneName,
         },
         if (chatMode != null) 'chatMode': chatMode,
+        if (userContext != null) 'userContext': userContext.toMap(),
       }).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -301,6 +307,108 @@ class FirebaseService {
       throw const VoiceGenerationException(
         category: 'unknown',
         message: 'voice service',
+      );
+    }
+  }
+
+  /// Send a live camera frame to the rebuilt compatibility callable.
+  Future<LiveModeVisionResult> processLiveModeInput({
+    required String sessionId,
+    required String imageBase64,
+    int? frameSequence,
+    String? prompt,
+    bool persistResponse = false,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw ChatException('Please sign in to continue.');
+    }
+
+    final callable = _functions.httpsCallable(
+      'processLiveModeInput',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 45)),
+    );
+
+    final result = await callable.call(<String, dynamic>{
+      'sessionId': sessionId,
+      'imageBase64': imageBase64,
+      'frameSequence': frameSequence,
+      'prompt': prompt,
+      'persistResponse': persistResponse,
+      'userId': user.uid,
+    });
+
+    return LiveModeVisionResult.fromMap(Map<String, dynamic>.from(result.data));
+  }
+
+  /// Mint a short-lived OpenAI Realtime client secret for live mode.
+  Future<RealtimeSessionToken> createRealtimeSession({
+    String mode = 'live_mode',
+  }) async {
+    final startTime = DateTime.now();
+    final user = _auth.currentUser;
+    if (user == null) {
+      throw ChatException('Please sign in to continue.');
+    }
+
+    DebugLogger.log(
+      'FirebaseService.createRealtimeSession',
+      'Requesting realtime session',
+      data: {
+        'mode': mode,
+        'userId': user.uid,
+      },
+    );
+
+    try {
+      final callable = _functions.httpsCallable(
+        'createRealtimeSession',
+        options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
+      );
+
+      final result = await callable.call(<String, dynamic>{
+        'mode': mode,
+      });
+
+      final token = RealtimeSessionToken.fromMap(
+        Map<String, dynamic>.from(result.data),
+      );
+      final duration = DateTime.now().difference(startTime);
+      DebugLogger.log(
+        'FirebaseService.createRealtimeSession',
+        'Realtime session minted',
+        data: {
+          'durationMs': duration.inMilliseconds,
+          'sessionId': token.sessionId,
+          'voice': token.voice,
+        },
+      );
+      return token;
+    } on FirebaseFunctionsException catch (e) {
+      DebugLogger.logError(
+        'FirebaseService.createRealtimeSession',
+        e,
+        data: {
+          'mode': mode,
+          'code': e.code,
+        },
+      );
+      throw ChatException(
+        ChatErrorHandler.getErrorMessageFromCode(e.code),
+        original: e,
+      );
+    } catch (e, stack) {
+      DebugLogger.logError(
+        'FirebaseService.createRealtimeSession',
+        e,
+        stackTrace: stack,
+        data: {
+          'mode': mode,
+        },
+      );
+      throw ChatException(
+        ChatErrorHandler.getErrorMessage(e),
+        original: e,
       );
     }
   }
@@ -566,16 +674,116 @@ class FirebaseService {
   }
 }
 
-/// Result from voice generation including audio URL and viseme timeline
+class RealtimeSessionToken {
+  final bool success;
+  final String clientSecret;
+  final int expiresAt;
+  final String sessionId;
+  final String model;
+  final String voice;
+  final String imageDetail;
+  final int audioSampleRateHz;
+  final int recommendedFrameIntervalMs;
+  final String instructionsVersion;
+
+  const RealtimeSessionToken({
+    required this.success,
+    required this.clientSecret,
+    required this.expiresAt,
+    required this.sessionId,
+    required this.model,
+    required this.voice,
+    required this.imageDetail,
+    required this.audioSampleRateHz,
+    required this.recommendedFrameIntervalMs,
+    required this.instructionsVersion,
+  });
+
+  factory RealtimeSessionToken.fromMap(Map<String, dynamic> map) {
+    return RealtimeSessionToken(
+      success: map['success'] == true,
+      clientSecret: map['clientSecret'] as String? ?? '',
+      expiresAt: (map['expiresAt'] as num?)?.toInt() ?? 0,
+      sessionId: map['sessionId'] as String? ?? '',
+      model: map['model'] as String? ?? 'gpt-realtime',
+      voice: map['voice'] as String? ?? 'marin',
+      imageDetail: map['imageDetail'] as String? ?? 'low',
+      audioSampleRateHz: (map['audioSampleRateHz'] as num?)?.toInt() ?? 24000,
+      recommendedFrameIntervalMs:
+          (map['recommendedFrameIntervalMs'] as num?)?.toInt() ?? 2800,
+      instructionsVersion:
+          map['instructionsVersion'] as String? ?? 'realtime_live_mode_v1',
+    );
+  }
+}
+
+class LiveModeVisionResult {
+  final bool success;
+  final String sessionId;
+  final bool shouldRespond;
+  final String reason;
+  final String? responseKey;
+  final int? frameSequence;
+  final String? description;
+  final String? response;
+  final String? changeSummary;
+  final String emotion;
+  final String emotionTrigger;
+  final double emotionIntensity;
+  final int suggestedNextFrameDelayMs;
+
+  const LiveModeVisionResult({
+    required this.success,
+    required this.sessionId,
+    required this.shouldRespond,
+    required this.reason,
+    required this.responseKey,
+    required this.frameSequence,
+    required this.description,
+    required this.response,
+    required this.changeSummary,
+    required this.emotion,
+    required this.emotionTrigger,
+    required this.emotionIntensity,
+    required this.suggestedNextFrameDelayMs,
+  });
+
+  factory LiveModeVisionResult.fromMap(Map<String, dynamic> map) {
+    return LiveModeVisionResult(
+      success: map['success'] == true,
+      sessionId: map['sessionId'] as String? ?? '',
+      shouldRespond: map['shouldRespond'] == true,
+      reason: map['reason'] as String? ?? 'unknown',
+      responseKey: map['responseKey'] as String?,
+      frameSequence: (map['frameSequence'] as num?)?.toInt(),
+      description: map['description'] as String?,
+      response: map['response'] as String?,
+      changeSummary: map['changeSummary'] as String?,
+      emotion: map['emotion'] as String? ?? 'neutral',
+      emotionTrigger:
+          map['emotionTrigger'] as String? ?? 'Idle_Gentle_Sway',
+      emotionIntensity:
+          (map['emotionIntensity'] as num?)?.toDouble() ?? 0.45,
+      suggestedNextFrameDelayMs:
+          (map['suggestedNextFrameDelayMs'] as num?)?.toInt() ?? 1800,
+    );
+  }
+}
+
+/// Result from voice generation including audio URL, viseme timeline, and blendshape data
 class VoiceResult {
   final String audioUrl;
   final List<VisemeEvent> visemeTimeline;
+  /// FacialExpression blendshape timeline: frame index (60fps) →
+  /// [openY, funnel, pucker, mouthX, form]
+  final Map<int, List<double>> blendTimeline;
   final double durationMs;
   final String provider;
 
   VoiceResult({
     required this.audioUrl,
     required this.visemeTimeline,
+    required this.blendTimeline,
     required this.durationMs,
     required this.provider,
   });
@@ -586,9 +794,23 @@ class VoiceResult {
         .map((e) => VisemeEvent.fromMap(Map<String, dynamic>.from(e)))
         .toList();
 
+    // Parse blendTimeline: JSON object keys are strings, values are List<double>
+    final blendTimeline = <int, List<double>>{};
+    final rawBlend = map['blendTimeline'];
+    if (rawBlend is Map) {
+      rawBlend.forEach((key, value) {
+        final frameIdx = int.tryParse(key.toString());
+        if (frameIdx != null && value is List) {
+          blendTimeline[frameIdx] =
+              value.map((v) => (v as num).toDouble()).toList();
+        }
+      });
+    }
+
     return VoiceResult(
       audioUrl: map['audioUrl'] as String? ?? '',
       visemeTimeline: visemes,
+      blendTimeline: blendTimeline,
       durationMs: (map['durationMs'] as num?)?.toDouble() ?? 0,
       provider: map['provider'] as String? ?? 'unknown',
     );
@@ -597,6 +819,8 @@ class VoiceResult {
   Map<String, dynamic> toJson() => {
         'audioUrl': audioUrl,
         'visemeTimeline': visemeTimeline.map((e) => e.toJson()).toList(),
+        'blendTimeline':
+            blendTimeline.map((k, v) => MapEntry(k.toString(), v)),
         'durationMs': durationMs,
         'provider': provider,
       };
