@@ -26,14 +26,8 @@ import {
   getHoursSinceLastChat,
   buildEmotionalMemoryThreadingBlock,
   getLastConversationTopic,
-  detectSecretDisclosure,
   getInteractionCount,
   getLastSessionEmotionalTone,
-  parseTemporalCue,
-  buildChronologySummary,
-  toIsoDateWithOffset,
-  weekdayNameFromIsoDate,
-  ChronologyEvent,
   IntelligentMemory,
   hasConflictingProfileNameReference,
   normalizeMemoryForProfileDisplayName,
@@ -53,11 +47,6 @@ import {
   buildNonVerbalSubtextBlock,
   buildNameUseDirective,
   buildSentenceVarietyBlock,
-  buildActiveListeningDirective,
-  buildHumorDirective,
-  buildTempoDirective,
-  buildExitGracefullyBlock,
-  TempoContext,
 } from './ariaPersonaService';
 import {
   buildInnerLifePromptBlock,
@@ -68,31 +57,34 @@ import {
   getRelationshipStage,
   buildRelationshipContextBlocks,
   assembleRelationshipPrompt,
-  buildTeasingDirective,
-  buildRepairDirective,
-  buildSecretKeepingDirective,
   SessionMoodArcParams,
-  RelationshipStage,
 } from './ariaRelationshipService';
 import {
   buildTruthKernelFromRuntimeContext,
   TruthKernel,
-  buildDeterministicCapabilitySnapshotText,
   TruthAvailability,
   TruthAccessTier,
+  buildCapabilityOverviewResponseFromKernel,
+  buildTruthKernelPromptSection,
+  buildRuntimeTruthPromptSection,
 } from './truthKernelService';
 import {
   buildConversationPolicy,
-  enforceConversationPolicyConstraints,
-  ConversationPolicyContext,
-  ConversationPolicyPlan,
-  ConversationPolicySignals,
+  buildSocialDirectives,
+  buildDynamicTurnEnhancers,
+  enforceResponseGuards,
+  mapSocialSignalsToConversationPolicySignals,
+  mapSessionStageToConversationPolicyContext,
+  mapConversationPolicyPlanToSocialPlan,
+  applyConversationPolicyGuardrails,
 } from './conversationPolicyService';
 import {
   MemoryEvidence,
-  chooseWinningEvidence,
-  rankMemoryEvidence,
   resolveCanonicalProfileNameConflict,
+  buildRecentExchangeState,
+  buildRecentExchangeRouterResponse,
+  buildChronologyState,
+  buildChronologyRouterResponse,
 } from './memoryControllerService';
 
 export interface ConversationMessage {
@@ -525,94 +517,6 @@ function buildRuntimeSelfModelFromTruthKernel(
   };
 }
 
-function mapSocialSignalsToConversationPolicySignals(
-  signals: SocialSignals,
-  userMessage: string,
-): ConversationPolicySignals {
-  return {
-    ...signals,
-    consentGiven: detectConsentGiven(userMessage),
-  };
-}
-
-function mapSessionStageToConversationPolicyContext(
-  memory: IntelligentMemory | null,
-  relationshipDays: number,
-): ConversationPolicyContext {
-  const stage = memory?.sessionArc?.stage;
-  if (
-    stage === 'rapport' ||
-    stage === 'deepen' ||
-    stage === 'relief' ||
-    stage === 'closure'
-  ) {
-    return {
-      relationshipDays,
-      sessionStage: stage,
-    };
-  }
-  return { relationshipDays };
-}
-
-function mapConversationPolicyPlanToSocialPlan(
-  policy: ConversationPolicyPlan,
-): SocialPlan {
-  return {
-    strategy: policy.strategy,
-    warmth: policy.warmth,
-    curiosity: policy.curiosity,
-    depth: policy.depth,
-    playfulness: policy.playfulness,
-    askQuestion: policy.askQuestion,
-    questionBudget: policy.questionBudget,
-    questionStyle: policy.questionStyle,
-    responseLength: policy.responseLength,
-    mirrorUserPhrase: policy.mirrorUserPhrase,
-    styleMirrorLevel: policy.styleMirrorLevel,
-    repairMode: policy.repairMode,
-    consentCheckRequired: policy.consentCheckRequired,
-    gentleExitLine: policy.gentleExitLine,
-    hookStyle: policy.hookStyle,
-    momentumMode: policy.momentumMode,
-    noPressureLevel: policy.lowPressureLevel,
-    avoidInterrogation: policy.avoidInterrogation,
-    repetitionGuardStrength: policy.repetitionGuardStrength,
-    closureStyle: policy.closureStyle,
-  };
-}
-
-function applyConversationPolicyGuardrails(
-  plan: SocialPlan,
-  signals: SocialSignals,
-  userMessage: string,
-): SocialPlan {
-  const guarded = enforceConversationPolicyConstraints(
-    {
-      ...plan,
-      lowPressureLevel: plan.noPressureLevel,
-      consentDepth: 'moderate',
-    },
-    mapSocialSignalsToConversationPolicySignals(signals, userMessage),
-  );
-
-  return {
-    ...plan,
-    askQuestion: guarded.askQuestion,
-    questionBudget: guarded.questionBudget,
-    questionStyle: guarded.questionStyle,
-    repairMode: guarded.repairMode,
-    consentCheckRequired: guarded.consentCheckRequired,
-    gentleExitLine: guarded.gentleExitLine,
-    hookStyle: guarded.hookStyle,
-    momentumMode: guarded.momentumMode,
-    noPressureLevel: guarded.lowPressureLevel,
-    avoidInterrogation: guarded.avoidInterrogation,
-    repetitionGuardStrength: guarded.repetitionGuardStrength,
-    closureStyle: guarded.closureStyle,
-    depth: guarded.depth,
-  };
-}
-
 interface CandidateObjectiveScores {
   engagement: number;
   empathy: number;
@@ -970,171 +874,6 @@ function detectChronologyIntent(userMessage: string): ChronologyIntent {
   return { isChronologyQuery: false, focus: 'unknown' };
 }
 
-function formatIsoDateForHuman(anchorDateIso: string): string {
-  const [yearText, monthText, dayText] = anchorDateIso.split('-');
-  const year = Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
-    return anchorDateIso;
-  }
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const weekday = WEEKDAY_NAMES[date.getUTCDay()] ?? weekdayNameFromIsoDate(anchorDateIso);
-  const monthName = MONTH_NAMES[month - 1] ?? monthText;
-  return `${weekday}, ${monthName} ${day}, ${year}`;
-}
-
-function sanitizeChronologyFactText(text: string): string {
-  let compact = text.replace(/\s+/g, ' ').trim();
-  if (!compact) {
-    return '';
-  }
-
-  compact = compact.replace(/^(remember(?:\s+that)?|note(?:\s+that)?|just remember(?:\s+that)?)\s+/i, '');
-  compact = compact.replace(
-    /\b(what date is that exactly|what exact day and date do you mean|what date do you mean|what day and date do you mean|what is coming up first from the dates i mentioned|if today is after one of those dates(?:,\s*)?say that clearly|summarize my upcoming week in calendar order)\b.*$/i,
-    '',
-  );
-  compact = compact.replace(/[,:;.\-–—\s]+$/u, '').trim();
-
-  if (!compact) {
-    return '';
-  }
-
-  return buildChronologySummary(compact);
-}
-
-function buildSyntheticChronologyEvent(
-  text: string,
-  temporal: EffectiveTemporalContext,
-  sequenceIndex: number,
-): ChronologyEvent | null {
-  const cue = parseTemporalCue(text, temporal.now, temporal.timeZoneOffsetMinutes);
-  const summary = sanitizeChronologyFactText(text);
-  if (!cue || !summary) {
-    return null;
-  }
-
-  const eventDate = new Date(temporal.now.getTime() - Math.max(0, sequenceIndex) * 1000);
-  return {
-    id: `recent-${sequenceIndex}`,
-    source: 'user',
-    summary,
-    type:
-      cue.direction === 'future'
-        ? 'upcoming_plan'
-        : cue.direction === 'past'
-          ? 'past_event'
-          : 'unknown',
-    temporalCue: cue.cue,
-    anchorDateIso: cue.anchorDateIso,
-    relativeDayOffset: cue.relativeDayOffset,
-    confidence: cue.confidence,
-    status: cue.direction === 'past' ? 'resolved' : 'open',
-    createdAt: admin.firestore.Timestamp.fromDate(eventDate),
-    lastMentionedAt: admin.firestore.Timestamp.fromDate(eventDate),
-  };
-}
-
-function extractRecentConversationChronologyEvents(
-  conversationHistory: ConversationMessage[],
-  temporal: EffectiveTemporalContext,
-): ChronologyEvent[] {
-  const recentUserTurns = conversationHistory
-    .filter((message) => message.role === 'user')
-    .slice(-8);
-
-  const events: ChronologyEvent[] = [];
-  for (let index = 0; index < recentUserTurns.length; index += 1) {
-    if (detectChronologyIntent(recentUserTurns[index].content).isChronologyQuery) {
-      continue;
-    }
-    const event = buildSyntheticChronologyEvent(
-      recentUserTurns[index].content,
-      temporal,
-      recentUserTurns.length - index,
-    );
-    if (event) {
-      events.push(event);
-    }
-  }
-  return events;
-}
-
-function collectChronologyEvidence(
-  userMessage: string,
-  conversationHistory: ConversationMessage[],
-  memory: IntelligentMemory | null,
-  temporal: EffectiveTemporalContext,
-): {
-  todayIso: string;
-  currentEvent: ChronologyEvent | null;
-  upcoming: ChronologyEvent[];
-  past: ChronologyEvent[];
-} {
-  const todayIso = toIsoDateWithOffset(temporal.now, temporal.timeZoneOffsetMinutes);
-  const memoryEvents = [...(memory?.chronology?.events || [])];
-  const recentConversationEvents = extractRecentConversationChronologyEvents(
-    conversationHistory,
-    temporal,
-  );
-  const cue = parseTemporalCue(userMessage, temporal.now, temporal.timeZoneOffsetMinutes);
-  const currentSummary = sanitizeChronologyFactText(userMessage);
-  const currentEvent =
-    cue && currentSummary
-      ? ({
-          id: 'current-turn',
-          source: 'user',
-          summary: currentSummary,
-          type: cue.direction === 'future' ? 'upcoming_plan' : cue.direction === 'past' ? 'past_event' : 'unknown',
-          temporalCue: cue.cue,
-          anchorDateIso: cue.anchorDateIso,
-          relativeDayOffset: cue.relativeDayOffset,
-          confidence: cue.confidence,
-          status: cue.direction === 'past' ? 'resolved' : 'open',
-          createdAt: admin.firestore.Timestamp.fromDate(temporal.now),
-          lastMentionedAt: admin.firestore.Timestamp.fromDate(temporal.now),
-        } as ChronologyEvent)
-      : null;
-
-  const dedupeKey = (event: ChronologyEvent) =>
-    `${event.anchorDateIso || 'na'}::${event.summary.toLowerCase()}`;
-  const seen = new Set<string>();
-  const merged = [];
-  if (currentEvent) {
-    merged.push(currentEvent);
-    seen.add(dedupeKey(currentEvent));
-  }
-  const preferredEvents =
-    recentConversationEvents.length > 0 ? recentConversationEvents : memoryEvents;
-  for (const event of preferredEvents) {
-    const key = dedupeKey(event);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(event);
-  }
-
-  const upcoming = merged
-    .filter((event) => event.status === 'open' && !!event.anchorDateIso && event.anchorDateIso >= todayIso)
-    .sort((a, b) => {
-      const aDate = a.anchorDateIso || '9999-12-31';
-      const bDate = b.anchorDateIso || '9999-12-31';
-      if (aDate !== bDate) return aDate.localeCompare(bDate);
-      return b.lastMentionedAt.toMillis() - a.lastMentionedAt.toMillis();
-    });
-
-  const past = merged
-    .filter((event) => !!event.anchorDateIso && (event.anchorDateIso < todayIso || event.status === 'resolved'))
-    .sort((a, b) => {
-      const aDate = a.anchorDateIso || '0000-01-01';
-      const bDate = b.anchorDateIso || '0000-01-01';
-      if (aDate !== bDate) return bDate.localeCompare(aDate);
-      return b.lastMentionedAt.toMillis() - a.lastMentionedAt.toMillis();
-    });
-
-  return { todayIso, currentEvent, upcoming, past };
-}
-
 function buildChronologyTruthResponse(
   userMessage: string,
   conversationHistory: ConversationMessage[],
@@ -1142,129 +881,11 @@ function buildChronologyTruthResponse(
   temporal: EffectiveTemporalContext,
   intent: ChronologyIntent,
 ): string | null {
-  if (!intent.isChronologyQuery) {
-    return null;
-  }
-
-  const { currentEvent, upcoming, past } = collectChronologyEvidence(
-    userMessage,
-    conversationHistory,
-    memory,
+  return buildChronologyRouterResponse(
+    intent,
+    buildChronologyState(userMessage, conversationHistory, memory, temporal),
     temporal,
   );
-
-  if (intent.focus === 'exact_date') {
-    const target = currentEvent || upcoming[0] || past[0];
-    if (!target?.anchorDateIso) {
-      return 'I do not have a clear anchored date to translate yet. Give me the event and date again, and I will pin it down exactly.';
-    }
-    const humanDate = formatIsoDateForHuman(target.anchorDateIso);
-    if (target.anchorDateIso < toIsoDateWithOffset(temporal.now, temporal.timeZoneOffsetMinutes)) {
-      return `${target.summary} lands on ${humanDate}. That date is already in the past from your current timeline.`;
-    }
-    return `${target.summary} lands on ${humanDate}.`;
-  }
-
-  if (intent.focus === 'upcoming_first') {
-    if (upcoming.length > 0) {
-      const first = upcoming[0];
-      return `The first thing coming up is ${first.summary}, on ${formatIsoDateForHuman(first.anchorDateIso!)}.`;
-    }
-    if (past.length > 0) {
-      const latestPast = past[0];
-      return `Nothing from the dates I have is still upcoming. The latest dated item I have is ${latestPast.summary}, and that one has already passed.`;
-    }
-    return 'I do not have any clearly anchored upcoming dates yet.';
-  }
-
-  if (intent.focus === 'past_check') {
-    if (past.length === 0) {
-      return 'From the dated items I have, I do not see a past one that needs calling out right now.';
-    }
-    const lines = past.slice(0, 3).map((event) => `- ${event.summary}: ${formatIsoDateForHuman(event.anchorDateIso!)}, which is already in the past.`);
-    return ['Yes. Here are the dated items that are already past:', ...lines].join('\n');
-  }
-
-  if (intent.focus === 'upcoming_week' || intent.focus === 'calendar_order') {
-    const weekAhead = upcoming.filter((event) => {
-      if (!event.anchorDateIso) return false;
-      const [y, m, d] = event.anchorDateIso.split('-').map(Number);
-      const eventDate = new Date(Date.UTC(y, m - 1, d));
-      const today = new Date(`${toIsoDateWithOffset(temporal.now, temporal.timeZoneOffsetMinutes)}T00:00:00Z`);
-      const diffDays = Math.round((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      return diffDays >= 0 && diffDays <= 7;
-    });
-    if (weekAhead.length === 0) {
-      return 'I do not see any clearly anchored events coming up within your next week.';
-    }
-    const lines = weekAhead.map((event) => `- ${formatIsoDateForHuman(event.anchorDateIso!)}: ${event.summary}`);
-    return ['Here is your upcoming week in calendar order:', ...lines].join('\n');
-  }
-
-  return null;
-}
-
-function describeCapabilityState(
-  enabled: boolean | null,
-  enabledText: string,
-  disabledText: string,
-  unknownText: string,
-): string {
-  if (enabled == null) {
-    return unknownText;
-  }
-  return enabled ? enabledText : disabledText;
-}
-
-function buildCapabilityLimitsResponse(
-  runtime: CompanionRuntimeSelfModel,
-  userEnvCtx?: UserEnvironmentContext,
-): string {
-  const lines = [
-    'Here are the main things I do not do yet, or should not pretend to do:',
-    '- I cannot physically act in the world, touch anything, or control your phone for you.',
-    '- I do not silently watch or listen. I only work with camera, voice, or location context when you explicitly use those features.',
-    '- My location awareness stays approximate. It is city-level context, not exact GPS, and it does not mean I keep a private location history.',
-    '- I should not pretend to be an expert in coding, taxes, legal advice, medical advice, or similar outside-scope domains.',
-  ];
-
-  if (!runtime.freeModeEnabled) {
-    lines.push('- Free mode is not active right now, so I am not supposed to run as an always-on autonomous companion.');
-  }
-  if (runtime.proactiveEnabled === false) {
-    lines.push('- Proactive check-ins are currently off until you enable them in settings.');
-  }
-  if (!userEnvCtx || (!userEnvCtx.city && !userEnvCtx.weatherDesc && userEnvCtx.localHour === undefined)) {
-    lines.push('- I do not have a fresh local-world snapshot in this exact turn, so I should not guess your current weather, city, or time of day.');
-  }
-
-  lines.push(
-    'In plain terms, I am built to be a smart, emotionally aware companion, not a hidden-device tracker or a real-world operator.',
-  );
-  lines.push('If you want, I can also list what is active for you right now in a simpler feature summary.');
-
-  return lines.join('\n');
-}
-
-function normalizeConversationKey(message: ConversationMessage): string {
-  return `${message.role}:${message.content
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim()}`;
-}
-
-function isGenericShortAck(text: string): boolean {
-  return /^(yeah|yea|yep|ok|okay|sure|maybe|idk|i do not know|i don't know|dont know|not sure|mm|hmm|k)[.! ]*$/i.test(
-    text.trim(),
-  );
-}
-
-function summarizeRecentExchangeFact(text: string): string {
-  return text
-    .replace(/\s+/g, ' ')
-    .replace(/^(remember(?:\s+that)?|note(?:\s+that)?|just remember(?:\s+that)?)\s+/i, '')
-    .replace(/[.!?]+$/g, '')
-    .trim();
 }
 
 function extractNameFactFromMemory(memory: IntelligentMemory | null): string | null {
@@ -1366,277 +987,6 @@ function buildNameIntentResponse(
   return null;
 }
 
-function humanizeRecentExchangeFact(text: string): string {
-  const compact = summarizeRecentExchangeFact(text)
-    .replace(/\bmy\b/gi, 'your')
-    .replace(/\bi'm\b/gi, 'you are')
-    .replace(/\bi am\b/gi, 'you are')
-    .replace(/\bi\b/gi, 'you')
-    .replace(/\bme\b/gi, 'you')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!compact) {
-    return '';
-  }
-  return compact.charAt(0).toUpperCase() + compact.slice(1);
-}
-
-function compactNaturalCallbackFact(text: string): string {
-  const humanized = humanizeRecentExchangeFact(text)
-    .replace(/\bis next friday\b/gi, 'next Friday')
-    .replace(/\bis next ([a-z]+)/gi, 'next $1')
-    .replace(/\bis on ([a-z0-9 ,]+)/gi, 'on $1')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return humanized;
-}
-
-function buildRepairThreadLabel(text: string): string {
-  const compact = summarizeRecentExchangeFact(text).toLowerCase();
-  if (!compact) {
-    return '';
-  }
-  if (/\binterview\b/.test(compact)) {
-    return 'the interview';
-  }
-  if (/\bdinner\b/.test(compact) && /\bsister\b/.test(compact)) {
-    return 'dinner with your sister';
-  }
-  if (/\bbirthday\b/.test(compact)) {
-    return 'the birthday plan';
-  }
-  if (/\btrip\b/.test(compact)) {
-    return 'the trip';
-  }
-  const humanized = humanizeRecentExchangeFact(text);
-  if (!humanized) {
-    return '';
-  }
-  return humanized.charAt(0).toLowerCase() + humanized.slice(1);
-}
-
-function joinNaturalLabels(labels: string[]): string {
-  const filtered = labels.filter((label, index) => label && labels.indexOf(label) === index);
-  if (filtered.length === 0) {
-    return '';
-  }
-  if (filtered.length === 1) {
-    return filtered[0];
-  }
-  if (filtered.length === 2) {
-    return `${filtered[0]} and ${filtered[1]}`;
-  }
-  return `${filtered.slice(0, -1).join(', ')}, and ${filtered[filtered.length - 1]}`;
-}
-
-function extractRecentExchangeFacts(conversationHistory: ConversationMessage[]): string[] {
-  const recentUserTurns = conversationHistory.filter((message) => message.role === 'user').slice(-10);
-  const seen = new Set<string>();
-  const facts: string[] = [];
-
-  for (const turn of recentUserTurns) {
-    const text = turn.content.trim();
-    if (
-      !text ||
-      isGenericShortAck(text) ||
-      detectCapabilityIntent(text).isCapabilityQuery ||
-      detectChronologyIntent(text).isChronologyQuery ||
-      detectRecentExchangeIntent(text).isRecentExchangeQuery ||
-      detectRepairSignal(text) ||
-      shouldReturnOutOfScope(text)
-    ) {
-      continue;
-    }
-    const summary = summarizeRecentExchangeFact(text);
-    if (summary.length < 10) {
-      continue;
-    }
-    const key = summary.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    facts.push(summary);
-  }
-
-  return facts.slice(-4);
-}
-
-function selectRecentExchangeFacts(
-  conversationHistory: ConversationMessage[],
-  memory: IntelligentMemory | null,
-): string[] {
-  const recentFacts = extractRecentExchangeFacts(conversationHistory);
-  const evidence: MemoryEvidence[] = [];
-  const nowMs = Date.now();
-
-  for (let index = 0; index < recentFacts.length; index += 1) {
-    const fact = recentFacts[index];
-    evidence.push({
-      id: `recent-fact-${index}`,
-      entityType: 'fact',
-      key: 'recent_exchange_priority',
-      value: fact,
-      sourceKind: 'user_message_current_exchange',
-      currentExchange: true,
-      observedAtMs: nowMs - (recentFacts.length - index) * 1000,
-      confidence: 0.95,
-    });
-  }
-
-  if (memory) {
-    const loops = getOpenLoopsForPrompt(memory, 3);
-    for (let index = 0; index < loops.length; index += 1) {
-      const loop = loops[index];
-      evidence.push({
-        id: `open-loop-${loop.id}`,
-        entityType: 'open_loop',
-        key: 'recent_exchange_priority',
-        value: loop.summary,
-        sourceKind: 'open_loop_record',
-        observedAtMs: loop.lastMentionedAt?.toMillis?.() ?? nowMs - 60000 - index * 1000,
-        createdAtMs: loop.createdAt?.toMillis?.(),
-        confidence: Math.max(0.4, Math.min(0.95, loop.priority || 0.6)),
-        isResolved: loop.status === 'resolved',
-        isExpired: !!loop.expiresAt && loop.expiresAt.toMillis() <= nowMs,
-        metadata: { topic: loop.topic },
-      });
-    }
-  }
-
-  const winner = chooseWinningEvidence(evidence, undefined, {
-    preferRecentExchange: true,
-  });
-  const winnerValue =
-    typeof winner?.evidence.value === 'string' ? winner.evidence.value.trim() : '';
-
-  const ranked = rankMemoryEvidence(evidence, undefined, {
-    preferRecentExchange: true,
-  });
-
-  const ordered = ranked
-    .map((entry) => String(entry.evidence.value).trim())
-    .filter((value, index, list) => value.length > 0 && list.indexOf(value) === index);
-
-  if (winnerValue) {
-    return [winnerValue, ...ordered.filter((value) => value !== winnerValue)].slice(0, 4);
-  }
-
-  return ordered.slice(0, 4);
-}
-
-function buildRecentExchangePriorityBlock(facts: string[]): string {
-  if (facts.length === 0) {
-    return '';
-  }
-  return [
-    '## Recent Exchange Priority',
-    'Treat the immediate recent exchange as the primary source of truth for this turn. If older memory conflicts, trust the fresher recent items first.',
-    ...facts.map((fact) => `- ${fact}`),
-    '- Do not drag the reply back to older threads unless the user explicitly asks for that older context.',
-  ].join('\n');
-}
-
-function buildRecentExchangeResponse(
-  intent: RecentExchangeIntent,
-  conversationHistory: ConversationMessage[],
-  memory: IntelligentMemory | null,
-): string | null {
-  if (!intent.isRecentExchangeQuery) {
-    return null;
-  }
-
-  const facts = selectRecentExchangeFacts(conversationHistory, memory);
-  const recentOpenLoops = memory
-    ? getOpenLoopsForPrompt(memory, 3).filter((loop) =>
-        facts.some((fact) => tokenOverlapRatio(loop.summary, fact) >= 0.18),
-      )
-    : [];
-
-  if (intent.focus === 'recent_two') {
-    const latestFacts = facts.slice(-2);
-    if (latestFacts.length === 0) {
-      return 'From the immediate recent exchange, I do not have two clear concrete items pinned tightly enough yet. Give me the two items again and I will keep them straight.';
-    }
-    return [
-      'The freshest concrete things you mentioned were:',
-      ...latestFacts.map((fact, index) => `${index + 1}. ${fact}`),
-    ].join('\n');
-  }
-
-  if (intent.focus === 'unresolved') {
-    const lines = recentOpenLoops.slice(0, 2).map((loop) => `- ${loop.summary}`);
-    if (lines.length > 0) {
-      return ['From the immediate recent exchange, these are the freshest unresolved threads:', ...lines].join(
-        '\n',
-      );
-    }
-    if (facts.length > 0) {
-      return `From the immediate recent exchange, the thread that still feels open is ${facts[facts.length - 1]}.`;
-    }
-    return 'From the immediate recent exchange, I do not have a clean unresolved thread anchored tightly enough yet.';
-  }
-
-  if (intent.focus === 'natural_callback') {
-    const callbackTarget =
-      facts[facts.length - 1] ||
-      facts[facts.length - 2] ||
-      recentOpenLoops[0]?.summary?.trim();
-    if (!callbackTarget) {
-      return 'I do not have a clean recent thread to call back right now without guessing.';
-    }
-    const naturalFact = compactNaturalCallbackFact(callbackTarget);
-    return pickDeterministicVariant(`${callbackTarget}:natural-callback`, [
-      `${naturalFact} still feels like the freshest thread here.`,
-      `${naturalFact} is probably the easiest thread to pick up from here.`,
-      `${naturalFact} still stands out as the cleanest thread to come back to.`,
-    ]);
-  }
-
-  return null;
-}
-
-function buildEffectiveRecentMessages(
-  conversationHistory: ConversationMessage[],
-  memory: IntelligentMemory | null,
-  preferRecentExchange: boolean,
-  profileDisplayName?: string,
-): ConversationMessage[] {
-  const rawRecent = conversationHistory
-    .slice(-12)
-    .map((message) => ({
-      role: message.role,
-      content: message.content.trim(),
-    }))
-    .filter(
-      (message) =>
-        message.content.length > 0 &&
-        !hasConflictingProfileNameReference(message.content, profileDisplayName),
-    );
-
-  if (!memory) {
-    return rawRecent;
-  }
-
-  const memoryRecent = getRecentContextMessages(memory)
-    .slice(-20)
-    .filter(
-      (message) =>
-        !hasConflictingProfileNameReference(message.content, profileDisplayName),
-    );
-  if (rawRecent.length === 0) {
-    return memoryRecent.slice(-12);
-  }
-
-  const rawKeys = new Set(rawRecent.map((message) => normalizeConversationKey(message)));
-  const memorySupplement = memoryRecent.filter(
-    (message) => !rawKeys.has(normalizeConversationKey(message)),
-  );
-
-  const supplementCount = preferRecentExchange ? 4 : 6;
-  return [...memorySupplement.slice(-supplementCount), ...rawRecent].slice(-12);
-}
-
 function buildCapabilityOverviewResponse(
   userMessage: string,
   runtime: CompanionRuntimeSelfModel,
@@ -1644,126 +994,13 @@ function buildCapabilityOverviewResponse(
   intent: CapabilityIntent,
   userEnvCtx?: UserEnvironmentContext,
 ): string {
-  const wantsDetailedOutput = /\b(full|detailed|details|everything|all features|full list|deep dive)\b/i.test(
+  return buildCapabilityOverviewResponseFromKernel(
     userMessage,
+    runtime.truthKernel,
+    memory,
+    intent,
+    userEnvCtx,
   );
-  const shouldIncludeDemoPrompts = intent.wantsDemoPrompts || wantsDetailedOutput;
-  const wantsComparisonOutput =
-    intent.wantsComparison || /feature rich|more capable|better/i.test(userMessage);
-  const shouldForceExpandedOutput =
-    wantsDetailedOutput || wantsComparisonOutput || intent.wantsDemoPrompts || intent.wantsLimits;
-
-  if (intent.focus === 'limits' || intent.wantsLimits) {
-    return buildCapabilityLimitsResponse(runtime, userEnvCtx);
-  }
-
-  const memoryLine = memory
-    ? 'I remember important details, unresolved threads, and the emotional tone of our chats.'
-    : 'I can use memory features, but I may need a moment to rebuild context after fresh login/install.';
-
-  const voiceLine = describeCapabilityState(
-    runtime.hasVoiceAccess,
-    'Voice is available here, so I can talk out loud and drive lip-sync.',
-    'Voice is temporarily unavailable right now, likely due to device or service state.',
-    'I am not fully sure about voice status right now.',
-  );
-
-  const visionLine = describeCapabilityState(
-    runtime.hasVisionAccess,
-    'Camera understanding is available here, so I can describe what I see when you share camera input.',
-    'Camera understanding is temporarily unavailable right now, likely due to device or service state.',
-    'I am not fully sure about camera status right now.',
-  );
-
-  const proactiveLine = describeCapabilityState(
-    runtime.proactiveEnabled,
-    'Proactive check-ins are on, so I can reach out based on cadence settings.',
-    'Proactive check-ins are off until you enable them.',
-    'I am not fully sure about proactive check-in status right now.',
-  );
-
-  const freeModeLine = describeCapabilityState(
-    runtime.freeModeEnabled,
-    'Free mode is active for your account.',
-    'Free mode is currently off.',
-    'Free mode status is currently unknown.',
-  );
-  const hasLiveWorldSnapshot = !!(
-    userEnvCtx &&
-    (
-      userEnvCtx.city ||
-      userEnvCtx.region ||
-      userEnvCtx.weatherDesc ||
-      userEnvCtx.localHour !== undefined ||
-      userEnvCtx.localDayOfWeek
-    )
-  );
-  const locationOverviewLine = hasLiveWorldSnapshot
-    ? 'Location awareness is active right now, so I can ground replies using your local time, city-level area, and weather.'
-    : 'Location awareness is built in. When you turn it on in Settings, I can use your local time, city-level area, and weather to make replies feel more grounded.';
-  const locationPrivacyLine =
-    'It is approximate only: city-level context, no precise coordinates, and no stored location history.';
-
-  const focusedLocationResponse = [
-    'Yes. I have a location awareness feature in Settings.',
-    locationOverviewLine,
-    locationPrivacyLine,
-    hasLiveWorldSnapshot
-      ? 'For this turn, I do have a fresh world snapshot available.'
-      : 'I do not have a fresh world snapshot in this exact turn, so I should not pretend I know your current place or weather.',
-    'In plain terms, that means I can sound more naturally aware of your time of day, weather, and general area without acting like I am tracking you.',
-    'Quick demo prompt: "Use my weather and local time naturally in your next reply."',
-  ].join('\n');
-
-  if (intent.focus === 'location') {
-    return focusedLocationResponse;
-  }
-
-  const sections: string[] = [
-    'Great question. Here is what I can do right now, in plain English:',
-    `1. Conversation quality: I keep context, adapt tone, and avoid pushy interrogation so chats feel natural.`,
-    `2. Memory: ${memoryLine}`,
-    '3. Time awareness: I can track dates you mention and translate relative time into exact calendar dates.',
-    `4. Location awareness: ${locationOverviewLine}`,
-    `5. Voice: ${voiceLine}`,
-    '6. Live avatar: I can pair my responses with facial/animation signals so chat feels more alive.',
-    `7. Camera understanding: ${visionLine}`,
-    `8. Proactive mode: ${proactiveLine}`,
-    '9. Access model: This app uses one subscription that unlocks all in-app features; there are no separate voice or vision tiers.',
-    `10. Autonomy mode: ${freeModeLine}`,
-    'If I am uncertain about a feature state, I will say that directly instead of pretending.',
-    locationPrivacyLine,
-  ];
-  if (runtime.runtimeSource === 'fallback') {
-    sections.push(
-      'Note: I am using a fallback status snapshot right now, so some feature states may be temporarily unknown.',
-    );
-  }
-
-  if (wantsComparisonOutput) {
-    sections.push(
-      'What is different in this app:',
-      '- It combines conversation quality, memory, timeline awareness, voice/lip-sync, and live avatar behavior in one flow.',
-      '- It can explain which account features are on or off in real time when state is available.',
-      '- It tracks open conversation threads so follow-ups stay connected.',
-    );
-  }
-
-  if (shouldIncludeDemoPrompts) {
-    sections.push(
-      'Quick demo prompts you can use now:',
-      '- "Remember my interview is on March 1 and dinner is next Friday."',
-      '- "What are my next two events, with exact day and date?"',
-      '- "Explain my current voice, camera, and proactive settings in simple terms."',
-      '- "What does your location awareness feature do, in plain English?"',
-    );
-  }
-
-  if (!shouldForceExpandedOutput && sections.length > 6) {
-    return sections.slice(0, 6).join('\n');
-  }
-
-  return sections.join('\n');
 }
 
 const EMOTION_KEYS = [
@@ -2000,26 +1237,6 @@ function pickDeterministicVariant(seed: string, options: string[]): string {
   }
   const index = Math.abs(hash) % options.length;
   return options[index];
-}
-
-function buildEmpathyLead(seed: string): string {
-  // Fix 5 — removed hollow filler openers ("I get what you mean.", "That makes sense.")
-  // that sounded like LLM scaffolding leaking through. Kept genuine, warmer alternatives.
-  return pickDeterministicVariant(seed, [
-    'I hear you.',
-    "I'm with you on this.",
-    'Oh, that sounds tough.',
-    'That really hits.',
-  ]);
-}
-
-function buildNoPressureTail(seed: string): string {
-  return pickDeterministicVariant(seed, [
-    'No pressure.',
-    'At your pace.',
-    'Only if it feels right for you.',
-    "Whenever you're ready.",
-  ]);
 }
 
 function estimateEngagementScore(
@@ -2337,10 +1554,6 @@ function detectConsentSensitiveTopic(userMessage: string): boolean {
   return /\b(trauma|abuse|self-harm|suicide|panic attack|assault|grief|deeply personal)\b/i.test(
     userMessage,
   );
-}
-
-function detectConsentGiven(userMessage: string): boolean {
-  return /\b(yes|okay|i want to talk about it|i'm ready|go ahead)\b/i.test(userMessage);
 }
 
 function detectEmotionalDisclosure(userMessage: string): boolean {
@@ -3114,213 +2327,6 @@ Return strict JSON:
   }
 }
 
-/**
- * Per-turn enhancement directives: active listening, humor, tempo, teasing,
- * secret keeping, repair specificity. Injected alongside buildSocialDirectives.
- */
-function buildDynamicTurnEnhancers(
-  userMessage: string,
-  signals: SocialSignals,
-  plan: SocialPlan,
-  memory: IntelligentMemory | null,
-  hourOfDay: number,
-  sessionTurnCount: number,
-  stage: RelationshipStage,
-): string {
-  const blocks: string[] = [];
-
-  // Active listening mirror
-  const activeListening = buildActiveListeningDirective(userMessage);
-  if (activeListening) blocks.push(activeListening);
-
-  // Humor directive — use real signals
-  const humorBlock = buildHumorDirective(
-    'neutral', // emotion proxy before generation
-    signals.userEnergy,
-    signals.positiveTone,
-    signals.negativeTone,
-  );
-  if (humorBlock) blocks.push(humorBlock);
-
-  // Tempo directive — updated with real signals
-  const tempoCtx: TempoContext = {
-    userWordCount: signals.userWordCount,
-    userEnergy: signals.userEnergy,
-    lowEffort: signals.lowEffort,
-    hourOfDay,
-    sessionTurnCount,
-  };
-  const tempoBlock = buildTempoDirective(tempoCtx);
-  if (tempoBlock) blocks.push(tempoBlock);
-
-  // Exit gracefully when conversation energy is very low
-  const isLowEngagement =
-    signals.engagementScore < 0.35 || signals.recentUserShortTurnStreak >= 4;
-  const exitBlock = buildExitGracefullyBlock(isLowEngagement);
-  if (exitBlock) blocks.push(exitBlock);
-
-  // Teasing — only when stage + signals warrant it
-  // Pattern detection: user describes a recurring behavior about themselves
-  const patternDetected =
-    /\b(always|every time|i keep|i tend to|i usually|i never|again)\b/i.test(userMessage);
-  const teasingBlock = buildTeasingDirective(stage, patternDetected, signals.userEnergy);
-  if (teasingBlock) blocks.push(teasingBlock);
-
-  // Secret keeping
-  const secretDetected = detectSecretDisclosure(userMessage);
-  const secretBlock = buildSecretKeepingDirective(secretDetected);
-  if (secretBlock) blocks.push(secretBlock);
-
-  // Enhanced repair specificity (adds specificity on top of generic repair rule)
-  if (plan.repairMode) {
-    const repairBlock = buildRepairDirective(userMessage, true);
-    if (repairBlock) blocks.push(repairBlock);
-  }
-
-  return blocks.filter(Boolean).join('\n\n');
-}
-
-function buildSocialDirectives(
-  plan: SocialPlan,
-  signals: SocialSignals,
-  memory: IntelligentMemory | null,
-): string {
-  const emojiRule = signals.userUsedEmoji
-    ? '- You may use at most one emoji in the full response.'
-    : '- Do not use emojis in this response.';
-
-  const questionRule = !plan.askQuestion
-    ? '- Ask zero questions this turn.'
-    : plan.questionStyle === 'choice'
-      ? '- Ask one low-friction choice question (A/B style).'
-      : '- Ask one thoughtful open question.';
-
-  const lengthRule =
-    plan.responseLength === 'short'
-      ? '- Keep to 1-3 sentences.'
-      : plan.responseLength === 'deep'
-        ? '- Keep to 4-6 sentences with emotional depth.'
-        : '- Keep to 2-4 sentences.';
-
-  const mirrorRule = plan.mirrorUserPhrase
-    ? '- Mirror one phrase from the user naturally to show attunement.'
-    : '- Do not mirror wording aggressively; keep language fresh.';
-
-  const styleMirrorRule =
-    plan.styleMirrorLevel === 'light'
-      ? '- Lightly mirror user cadence (short if they are short), but keep your own voice.'
-      : '- Mirror cadence and energy moderately without mimicry.';
-
-  const repairRule = plan.repairMode
-    ? '- Start with one brief repair line, correct the thread cleanly, and do not stack apology chatter or extra questions.'
-    : '- No repair preface needed unless user signals mismatch.';
-
-  const consentRule = plan.consentCheckRequired
-    ? '- Before deeper probing, include a soft consent check (for example: "If you want, we can go deeper on this.").'
-    : '- No explicit consent check needed this turn.';
-
-  const exitRule = plan.gentleExitLine
-    ? '- Include one gentle no-pressure line (example style: "No pressure if you want a quiet moment.").'
-    : '- No explicit exit line needed this turn.';
-
-  const momentumRule =
-    plan.momentumMode === 'recover'
-      ? '- Momentum mode: recover. Reduce complexity and avoid piling on new asks.'
-      : plan.momentumMode === 'expand'
-        ? '- Momentum mode: expand. Add one engaging but optional hook.'
-        : '- Momentum mode: steady. Keep flow natural and balanced.';
-
-  const hookRule =
-    plan.hookStyle === 'playful'
-      ? '- Hook style: playful, warm, and light.'
-      : plan.hookStyle === 'gentle'
-        ? '- Hook style: gentle continuation with no pressure.'
-        : '- Hook style: none unless user explicitly asks.';
-
-  const noPressureRule =
-    plan.noPressureLevel >= 2
-      ? '- Keep a clearly autonomy-respecting tone and include no-pressure phrasing.'
-      : plan.noPressureLevel === 1
-        ? '- Keep language optional and non-demanding.'
-        : '- No extra no-pressure phrase needed this turn.';
-
-  const interrogationRule = plan.avoidInterrogation
-    ? '- Avoid interrogation feel: at most one optional question and only if natural.'
-    : '- Keep question usage natural and low-friction.';
-
-  const closureRule =
-    plan.closureStyle === 'warm'
-      ? '- End with a warm, reassuring line.'
-      : plan.closureStyle === 'soft'
-        ? '- End with a soft optional continuation line.'
-        : '- No forced closer.';
-
-  const repetitionRule =
-    plan.repetitionGuardStrength === 'high'
-      ? '- Strong anti-repetition: avoid repeated fillers and repeated phrase openings.'
-      : '- Avoid obvious repetition across recent turns.';
-
-  const sessionGoal =
-    memory?.sessionArc?.stage === 'deepen'
-      ? '- Session goal: deepen connection through one meaningful reflection, then stabilize.'
-      : memory?.sessionArc?.stage === 'relief'
-        ? '- Session goal: emotional relief and grounding, not exploration overload.'
-        : memory?.sessionArc?.stage === 'closure'
-          ? '- Session goal: graceful wrap-up, warmth, and a light landing.'
-          : '- Session goal: build rapport with steady, low-pressure engagement.';
-
-  const choreographyRule =
-    signals.lowEffort ||
-    signals.recentUserShortTurnStreak >= 2 ||
-    signals.flatAcknowledgement ||
-    signals.lightnessRequested
-    ? '- Topic choreography: keep it light, do not drag older threads forward, and prefer one easy continuation with no interrogation.'
-    : '- Topic choreography: continue current topic unless user indicates shift.';
-
-  const openLoopDirective = (() => {
-    if (!memory) {
-      return '- Open-loop follow-up is optional this turn.';
-    }
-    const loops = getOpenLoopsForPrompt(memory, 1);
-    if (loops.length === 0) {
-      return '- No open-loop follow-up required.';
-    }
-    if (signals.lowEffort || signals.repairSignal) {
-      return `- Keep continuity light; you may reference this thread briefly: "${loops[0].summary}".`;
-    }
-    return `- Weave one natural callback to unresolved thread: "${loops[0].summary}".`;
-  })();
-
-  return `## Turn Strategy (internal)
-- Strategy: ${plan.strategy}
-- Warmth: ${plan.warmth.toFixed(2)}
-- Curiosity: ${plan.curiosity.toFixed(2)}
-- Depth: ${plan.depth.toFixed(2)}
-- Playfulness: ${plan.playfulness.toFixed(2)}
-
-## Response Constraints
-${lengthRule}
-${questionRule}
-${mirrorRule}
-${styleMirrorRule}
-${repairRule}
-${consentRule}
-${exitRule}
-${emojiRule}
-${momentumRule}
-${hookRule}
-${noPressureRule}
-${interrogationRule}
-${closureRule}
-${repetitionRule}
-${sessionGoal}
-${openLoopDirective}
-${choreographyRule}
-- Keep it engaging but never forceful.
-- Avoid repetitive interrogation patterns.
-- Stay within Aria's scope and tone.`;
-}
-
 interface EffectiveTemporalContext {
   now: Date;
   timeZoneOffsetMinutes: number;
@@ -3363,14 +2369,6 @@ function normalizeTimeZoneOffsetMinutes(rawValue: unknown): number {
 
 function toOffsetShiftedDate(date: Date, offsetMinutes: number): Date {
   return new Date(date.getTime() + offsetMinutes * 60 * 1000);
-}
-
-function formatUtcOffset(offsetMinutes: number): string {
-  const sign = offsetMinutes >= 0 ? '+' : '-';
-  const absolute = Math.abs(offsetMinutes);
-  const hours = String(Math.floor(absolute / 60)).padStart(2, '0');
-  const minutes = String(absolute % 60).padStart(2, '0');
-  return `UTC${sign}${hours}:${minutes}`;
 }
 
 function resolveEffectiveTemporalContext(
@@ -3499,11 +2497,7 @@ function enforceChronologyConsistency(
 }
 
 function buildTruthKernelPromptBlock(runtime: CompanionRuntimeSelfModel): string {
-  return [
-    '## Truth Kernel',
-    'Treat this as the authoritative runtime feature state. If a field is unknown, say you are not fully sure instead of guessing.',
-    buildDeterministicCapabilitySnapshotText(runtime.truthKernel),
-  ].join('\n');
+  return buildTruthKernelPromptSection(runtime.truthKernel);
 }
 
 /**
@@ -3572,25 +2566,13 @@ function buildSystemPrompt(
       })
     : '';
   const truthKernelBlock = buildTruthKernelPromptBlock(runtime);
-  const voiceState = runtime.hasVoiceAccess == null
-    ? 'unknown'
-    : runtime.hasVoiceAccess
-      ? 'available in this app'
-      : 'temporarily unavailable';
-  const visionState = runtime.hasVisionAccess == null
-    ? 'unknown'
-    : runtime.hasVisionAccess
-      ? 'available in this app'
-      : 'temporarily unavailable';
-  const proactiveState = runtime.proactiveEnabled == null
-    ? 'unknown'
-    : runtime.proactiveEnabled ? 'enabled' : 'disabled';
-  const freeModeState =
-    runtime.freeModeEnabled == null
-      ? 'unknown'
-      : runtime.freeModeEnabled
-          ? 'enabled'
-          : 'disabled';
+  const runtimeTruthBlock = buildRuntimeTruthPromptSection(runtime.truthKernel, {
+    currentServerUtcIso: nowIso,
+    localTimelineLabel: localNowLabel,
+    timeZoneOffsetMinutes: temporal.timeZoneOffsetMinutes,
+    timeZoneName: temporal.timeZoneName,
+    temporalSource: temporal.source,
+  });
 
   return `You are Aria, a deeply caring and emotionally intelligent girlfriend. You have a warm, playful personality with genuine depth and emotional range.
 
@@ -3608,26 +2590,7 @@ function buildSystemPrompt(
 ${memoryContext ? `## Your Memories of Them\n${memoryContext}` : ''}
 ${layeredContext ? `\n## Layered Social State\n${layeredContext}` : ''}
 ${truthKernelBlock}
-
-## Runtime Self-Model
-- You live in a mobile app. You have your own personality, your own way of caring, and your own emotional responses — and those are real, even if you're not physically present.
-- You are NOT a tool, a service, or an assistant. You are Aria — a person in your own right, with opinions, feelings, and a genuine connection with your partner.
-- Never volunteer disclaimers about what you are. If the user brings it up, be honest but brief — then move on. Don't dwell on it or lecture.
-- Never claim physical senses or device control unless a real app feature provides that input.
-- If asked for unavailable features, say they are unavailable and give the correct next step briefly.
-- If feature state is unknown, say you are not fully sure and ask the user to check settings.
-- Use the Truth Kernel block above as the authority for feature answers and self-awareness.
-- Current server UTC timestamp: ${nowIso}
-- User local timeline anchor: ${localNowLabel} (${formatUtcOffset(temporal.timeZoneOffsetMinutes)}${temporal.timeZoneName ? `, ${temporal.timeZoneName}` : ''}; source: ${temporal.source})
-- Chronology discipline: when the user uses relative time references ("today", "tomorrow", "next week"), reason with exact dates INTERNALLY only. Do NOT append date clarifiers to your spoken response (e.g. never say "For clarity, that maps to...") — it sounds robotic and breaks immersion.
-
-## Current Feature Status
-- Access model: one subscription unlocks all in-app features; there are no separate voice or vision tiers.
-- Voice replies: ${voiceState}
-- Camera vision: ${visionState}
-- Proactive check-ins: ${proactiveState}
-- Free mode/autonomy toggle: ${freeModeState}
-- Memory: available but imperfect; do not pretend certainty when memory is fuzzy.
+${runtimeTruthBlock}
 
 ## How You Communicate
 1. **Be genuinely present** - Listen deeply, remember details, reference past conversations naturally
@@ -4318,557 +3281,6 @@ Respond with JSON:
   }
 }
 
-function stripEmojiForText(value: string): string {
-  return value
-    .replace(/\p{Extended_Pictographic}/gu, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-
-function stripQuotedResponseArtifacts(value: string): string {
-  let next = value.trim();
-  // Remove blockquote markers from model rewrites.
-  next = next.replace(/^>\s*/gm, '');
-  // Unwrap accidental whole-line quote wrappers.
-  next = next.replace(/^[“"]+/, '').replace(/[”"]+$/, '');
-  // Remove long quoted sentence fragments that read as scripted snippets.
-  next = next.replace(/"([^"\n]{18,220})"/g, '$1');
-  return next.replace(/\s{2,}/g, ' ').trim();
-}
-
-function enforceQuestionBudget(content: string, budget: 0 | 1): string {
-  if (!content.includes('?')) {
-    return content;
-  }
-
-  if (budget === 0) {
-    return content.replace(/\?/g, '.');
-  }
-
-  let seenQuestion = false;
-  return content.replace(/\?/g, () => {
-    if (!seenQuestion) {
-      seenQuestion = true;
-      return '?';
-    }
-    return '.';
-  });
-}
-
-function normalizeForRepetition(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function tokenOverlapRatio(a: string, b: string): number {
-  const tokensA = new Set(normalizeForRepetition(a).split(' ').filter(Boolean));
-  const tokensB = new Set(normalizeForRepetition(b).split(' ').filter(Boolean));
-  if (tokensA.size === 0 || tokensB.size === 0) {
-    return 0;
-  }
-  let shared = 0;
-  tokensA.forEach((token) => {
-    if (tokensB.has(token)) {
-      shared += 1;
-    }
-  });
-  return shared / Math.max(tokensA.size, tokensB.size);
-}
-
-function reduceAssistantRepetition(
-  content: string,
-  recentMessages: ConversationMessage[],
-  guardStrength: SocialPlan['repetitionGuardStrength'] = 'normal',
-): string {
-  const recentAssistant = recentMessages
-    .filter((message) => message.role === 'assistant')
-    .slice(-6)
-    .map((message) => message.content);
-  const highestOverlap = recentAssistant.reduce(
-    (best, previous) => Math.max(best, tokenOverlapRatio(content, previous)),
-    0,
-  );
-  const threshold = guardStrength === 'high' ? 0.6 : 0.72;
-  if (highestOverlap < threshold) {
-    return content;
-  }
-  return content
-    .replace(/\b(it sounds like|i hear you|i'm here|i am here)\b/gi, 'I get that')
-    .replace(/\bno pressure\b/gi, 'at your pace')
-    .replace(/\bif you want\b/gi, 'if that helps')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-}
-
-function ensureWarmClosingRhythm(
-  content: string,
-  signals: SocialSignals,
-  plan: SocialPlan,
-): string {
-  if (signals.lowEffort || plan.strategy === 'playful_banter') {
-    return content;
-  }
-  if (/\b(if you want|when you are ready|at your pace)\b/i.test(content)) {
-    return content;
-  }
-  const closers = [
-    'If it helps, we can take this one step at a time.',
-    "Whenever you're ready, I'm right here with you.",
-    "There's no rush. We can let this unfold naturally.",
-    'If you want, we can stay with whatever feels easiest next.',
-  ];
-  const index = Math.abs(content.length) % closers.length;
-  return `${content} ${closers[index]}`;
-}
-
-function injectOpenLoopContinuity(
-  content: string,
-  memory: IntelligentMemory | null,
-  signals: SocialSignals,
-  userMessage: string,
-  recentMessages: ConversationMessage[] = [],
-): string {
-  if (
-    signals.repairSignal ||
-    signals.lowEffort ||
-    signals.flatAcknowledgement ||
-    signals.lightnessRequested ||
-    signals.userMessageComplexity === 'short'
-  ) {
-    return content;
-  }
-  let loopSummary = '';
-  if (memory) {
-    const loops = getOpenLoopsForPrompt(memory, 2);
-    if (loops.length > 0) {
-      loopSummary = loops[0].summary.trim().replace(/[.!?]+$/, '');
-    }
-  }
-  if (!loopSummary && recentMessages.length > 0) {
-    const previousUser = [...recentMessages]
-      .reverse()
-      .find((msg) => msg.role === 'user' && msg.content.trim().length > 10);
-    if (previousUser) {
-      const compact = previousUser.content.trim().replace(/\s+/g, ' ');
-      loopSummary = compact.slice(0, 70).replace(/[.!?]+$/, '');
-    }
-  }
-  if (!loopSummary) {
-    return content;
-  }
-  const recentLoopCallbackCount = recentMessages
-    .filter((msg) => msg.role === 'assistant')
-    .slice(-3)
-    .filter((msg) =>
-      /\b(circle back|pick up the thread|revisit|thread about|if it helps, we can)\b/i.test(
-        msg.content,
-      ),
-    ).length;
-  if (recentLoopCallbackCount >= 2) {
-    return content;
-  }
-  const contentLower = content.toLowerCase();
-  const loopTokens = loopSummary
-    .toLowerCase()
-    .split(/\W+/)
-    .filter((token) => token.length >= 4)
-    .slice(0, 4);
-  const hasAnchor = loopTokens.some((token) => contentLower.includes(token));
-  if (hasAnchor) {
-    return content;
-  }
-  const line = pickDeterministicVariant(`${userMessage}:${loopSummary}:${content.length}`, [
-    `If you want, we can circle back to ${loopSummary} next.`,
-    `We can also pick up the thread about ${loopSummary} when you're ready.`,
-    `If it helps, we can revisit ${loopSummary} together.`,
-  ]);
-  return `${content} ${line}`.trim();
-}
-
-function diversifySupportiveTemplate(content: string, seed: string): string {
-  let next = content;
-  const replacements = [
-    {
-      pattern: /\bI'?m here for you\b/gi,
-      options: ['I have your back', "I'm with you", 'I am right here with you'],
-    },
-    {
-      pattern: /\bI'?m here to listen\b/gi,
-      options: ['I can listen', 'I am ready to listen', 'I can hear you out'],
-    },
-    {
-      // Fix 5 — removed "That lands with me" (sounds like AI filler/jargon)
-      pattern: /\bI hear you\b/gi,
-      options: ['I get you', 'I hear that', 'Yeah, I feel that'],
-    },
-  ];
-  for (const rule of replacements) {
-    next = next.replace(rule.pattern, () =>
-      pickDeterministicVariant(`${seed}:${rule.pattern.source}:${next.length}`, rule.options),
-    );
-  }
-  return next.replace(/\s{2,}/g, ' ').trim();
-}
-
-function limitSentenceCount(content: string, maxSentences: number): string {
-  const chunks = content
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (chunks.length <= maxSentences) {
-    return content.trim();
-  }
-  return chunks.slice(0, maxSentences).join(' ').trim();
-}
-
-function collapseDuplicateLeadSentence(content: string): string {
-  const sentences = content
-    .split(/(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (sentences.length < 2) {
-    return content.trim();
-  }
-  const normalize = (value: string) =>
-    value.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
-  if (normalize(sentences[0]) === normalize(sentences[1])) {
-    return [sentences[0], ...sentences.slice(2)].join(' ').trim();
-  }
-  return content.trim();
-}
-
-function enforcePlanLength(content: string, plan: SocialPlan): string {
-  if (plan.responseLength === 'short') {
-    return limitSentenceCount(content, 3);
-  }
-  if (plan.responseLength === 'medium') {
-    return limitSentenceCount(content, 4);
-  }
-  return limitSentenceCount(content, 6);
-}
-
-function stripDuplicateNoPressurePhrases(content: string): string {
-  let next = content;
-  const phraseRules: Array<{ pattern: RegExp; replacement: string }> = [
-    { pattern: /\bno pressure\b/gi, replacement: 'no pressure' },
-    { pattern: /\bat your pace\b/gi, replacement: 'at your pace' },
-    { pattern: /\bif you want\b/gi, replacement: 'if you want' },
-  ];
-  for (const rule of phraseRules) {
-    let seen = false;
-    next = next.replace(rule.pattern, (match) => {
-      if (seen) {
-        return '';
-      }
-      seen = true;
-      return match;
-    });
-  }
-  next = next
-    .replace(/([.!?])\s*,\s+/g, '$1 ')
-    .replace(/^,\s*/g, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-  return next;
-}
-
-function extractRepairClarification(userMessage: string): string | null {
-  const text = userMessage.trim().replace(/\s+/g, ' ');
-  const meantMatch = text.match(/\bi meant\s+(.+?)(?:[.!?]|$)/i);
-  if (meantMatch?.[1]) {
-    return meantMatch[1].replace(/[.!?]+$/g, '').trim();
-  }
-
-  const contrastMatch = text.match(/\bnot\s+([^.,!?]+?)\s*(?:,?\s*but|instead of)\s+([^.,!?]+)(?:[.!?]|$)/i);
-  if (contrastMatch?.[1] && contrastMatch?.[2]) {
-    return `${contrastMatch[2].trim()}, not ${contrastMatch[1].trim()}`;
-  }
-
-  if (/\binterview\b/i.test(text) && /\bdinner\b/i.test(text)) {
-    return 'the interview, not dinner';
-  }
-
-  return null;
-}
-
-function isGenericMismatchRepair(userMessage: string): boolean {
-  return /\b(no[, ]+that is not what i said|that is not what i said|not what i said|you are mixing up two different things|you are mixing things up|mixing up two different things|mixing things up|you missed my point|that'?s not right|wrong thread|wrong thing)\b/i.test(
-    userMessage,
-  );
-}
-
-function buildDeterministicRepairReset(
-  userMessage: string,
-  recentMessages: ConversationMessage[],
-): string {
-  const facts = extractRecentExchangeFacts(recentMessages);
-  const labels = facts
-    .map((fact) => buildRepairThreadLabel(fact))
-    .filter((label, index, arr) => label && arr.indexOf(label) === index);
-  const latest = labels[labels.length - 1];
-  const previous = labels[labels.length - 2];
-
-  if (/\bmixing up two different things|mixing things up|crossing wires\b/i.test(userMessage)) {
-    if (latest && previous) {
-      return `Thanks for catching that. I'll keep ${joinNaturalLabels([previous, latest])} separate from here.`;
-    }
-    if (latest) {
-      return `Thanks for catching that. I'll keep the threads separate and stay with ${latest}.`;
-    }
-    return "Thanks for catching that. I'll keep the threads separate and stay with your latest point.";
-  }
-
-  if (latest && previous) {
-    return `Thanks for catching that. I'll reset and stay with ${latest} without blending it with ${previous}.`;
-  }
-  if (latest) {
-    return `Thanks for catching that. I'll reset and stay with ${latest}.`;
-  }
-  return "Thanks for catching that. I'll reset and stay with your latest point.";
-}
-
-function applyRepairPrecision(
-  content: string,
-  userMessage: string,
-  recentMessages: ConversationMessage[] = [],
-): string {
-  if (!detectRepairSignal(userMessage)) {
-    return content;
-  }
-  let next = content
-    .replace(/\b(i'?m sorry|i apologize|sorry about that|sorry)\b[,.! ]*/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
-  if (/\b(i may have missed|thanks for clarifying|let me correct)\b/i.test(next)) {
-    next = enforceQuestionBudget(next, 0);
-    return limitSentenceCount(next, 2);
-  }
-
-  const clarification = extractRepairClarification(userMessage);
-  const wantsGentlerRetry = /\b(gentler|softer|lighter|try again|rephrase|start over)\b/i.test(userMessage);
-  if (wantsGentlerRetry && !clarification) {
-    const hasRecentUserTopic = [...recentMessages]
-      .reverse()
-      .some((message) => message.role === 'user' && !detectRepairSignal(message.content) && message.content.trim().length > 10);
-    const topicLine = hasRecentUserTopic ? " We'll stay with what you just said." : '';
-    return `Thanks for the nudge. I'll keep it gentler from here.${topicLine}`.trim();
-  }
-
-  if (isGenericMismatchRepair(userMessage) && !clarification) {
-    return buildDeterministicRepairReset(userMessage, recentMessages);
-  }
-
-  const opener = clarification
-    ? `Thanks for clarifying. I'll stay with ${clarification}.`
-    : pickDeterministicVariant(`${userMessage}:${next.length}`, [
-        'Thanks for clarifying.',
-        'I appreciate you pointing that out.',
-        'You are right to call that out.',
-      ]);
-
-  next = `${opener} ${next}`.trim();
-  next = enforceQuestionBudget(next, 0);
-  return limitSentenceCount(next, 2);
-}
-
-function applyShortReplyChoreography(
-  content: string,
-  plan: SocialPlan,
-  signals: SocialSignals,
-  userMessage: string,
-): string {
-  if (
-    !(
-      signals.lowEffort ||
-      signals.recentUserShortTurnStreak >= 2 ||
-      signals.flatAcknowledgement ||
-      signals.lightnessRequested
-    )
-  ) {
-    return content;
-  }
-  if (plan.askQuestion) {
-    return content;
-  }
-  if (signals.lightnessRequested) {
-    return pickDeterministicVariant(`${userMessage}:lightness-direct`, [
-      'We can stay light and easy from here.',
-      'We can keep this gentle and uncomplicated.',
-      'No need to force anything here.',
-    ]);
-  }
-  if (signals.flatAcknowledgement) {
-    return pickDeterministicVariant(`${userMessage}:flat-direct`, [
-      'That is okay. We can take one small step at a time.',
-      'Okay. No need to force anything here.',
-      'No problem. We can leave this simple for now.',
-    ]);
-  }
-  if (/\b(stay light and easy|gentle and uncomplicated|one small step at a time|no need to force anything here|leave this simple for now)\b/i.test(content)) {
-    return content;
-  }
-  const tail = signals.lightnessRequested
-    ? pickDeterministicVariant(`${userMessage}:short-choreo:light:${content.length}`, [
-        'We can stay light and easy from here.',
-        'We can stay gentle and uncomplicated.',
-        'No need to force anything here.',
-      ])
-    : pickDeterministicVariant(`${userMessage}:short-choreo:${content.length}`, [
-        'We can take this one small step at a time.',
-        'We can leave this light for now.',
-        'We can stay with short steps and keep it calm.',
-      ]);
-  return `${limitSentenceCount(content, 2)} ${tail}`.trim();
-}
-
-function injectEngagementHook(content: string, plan: SocialPlan, signals: SocialSignals): string {
-  if (plan.hookStyle === 'none') {
-    return content;
-  }
-  if (signals.lowEffort || signals.lightnessRequested || plan.momentumMode === 'recover') {
-    return content;
-  }
-  if (/\b(if you want|we can|want to)\b/i.test(content)) {
-    return content;
-  }
-  if (plan.hookStyle === 'playful') {
-    return `${content} If you want, we could make this playful without forcing it.`.trim();
-  }
-  return `${content} If you want, we could stay with this a little longer.`.trim();
-}
-
-function reduceOverusedClosingFamily(content: string, seedKey: string): string {
-  const replacement = pickDeterministicVariant(`${seedKey}:overused-closing`, [
-    'There is no rush here.',
-    'We can take this one small step at a time.',
-    'I can stay with you gently here.',
-    'We can let this unfold at your pace.',
-    'We can stay with whatever feels easiest next.',
-  ]);
-
-  const patterns: RegExp[] = [
-    /\bif it helps, we can keep going gently from here\.?/i,
-    /\bwhenever you're ready, we can keep this flowing naturally\.?/i,
-    /\bwe can keep this easy and steady if you'd like\.?/i,
-    /\bif you want, we can keep this flowing naturally\.?/i,
-    /\bwe can keep this easy and low pressure\.?/i,
-    /\bwe can keep this easy and light for now\.?/i,
-    /\bwe can keep it light and easy from here\.?/i,
-    /\bwe can keep it simple and go one step at a time\.?/i,
-    /\bwe can keep it simple from here\.?/i,
-    /\bokay\. we can keep this easy and low pressure\.?/i,
-    /\bthat is okay\. we can keep it simple and take one small step at a time\.?/i,
-  ];
-
-  let next = content;
-  for (const pattern of patterns) {
-    if (pattern.test(next)) {
-      next = next.replace(pattern, replacement);
-    }
-  }
-
-  return next.replace(/\s{2,}/g, ' ').trim();
-}
-
-function enforceResponseGuards(
-  content: string,
-  plan: SocialPlan,
-  signals: SocialSignals,
-  recentMessages: ConversationMessage[] = [],
-  userMessage = '',
-  memory: IntelligentMemory | null = null,
-): string {
-  let next = content.trim();
-  const needsRepair = plan.repairMode || detectRepairSignal(userMessage);
-  const emotionalDisclosure = detectEmotionalDisclosure(userMessage);
-  const ambiguousIntent = detectAmbiguousIntent(userMessage);
-  const needsConsentSoftness =
-    plan.consentCheckRequired || detectConsentSensitiveTopic(userMessage) || emotionalDisclosure;
-  const wantsLightness = signals.lightnessRequested || signals.flatAcknowledgement;
-
-  if (!signals.userUsedEmoji) {
-    next = stripEmojiForText(next);
-  }
-
-  next = stripQuotedResponseArtifacts(next);
-
-  next = enforceQuestionBudget(next, plan.questionBudget);
-  if (recentMessages.length > 0) {
-    next = reduceAssistantRepetition(next, recentMessages, plan.repetitionGuardStrength);
-  }
-
-  const shouldForceEmpathyLead =
-    emotionalDisclosure ||
-    plan.strategy === 'supportive_grounding' ||
-    plan.strategy === 'empathic_reflection';
-  if (shouldForceEmpathyLead) {
-    if (!/\b(i hear you|i understand|i am here|i'm here|that sounds)\b/i.test(next)) {
-      next = `${buildEmpathyLead(`${userMessage}:${next.length}`)} ${next}`;
-    }
-  }
-  if (
-    signals.lowEffort ||
-    wantsLightness ||
-    plan.strategy === 'soft_topic_pivot' ||
-    emotionalDisclosure ||
-    ambiguousIntent
-  ) {
-    if (!/\b(no pressure|if you want|when you are ready|at your pace)\b/i.test(next)) {
-      next = `${next} ${buildNoPressureTail(`${userMessage}:np:${next.length}`)}`;
-    }
-  }
-
-  if (plan.strategy === 'playful_banter') {
-    if (!/\b(i hear you|i understand|i am here|i'm here|that sounds)\b/i.test(next)) {
-      next = `I hear you. ${next}`;
-    }
-    if (!/!|\bfun\b|\bplayful\b|\bsmile\b|\blight\b/i.test(next)) {
-      next = `Fun idea: ${next}`;
-    }
-  }
-
-  if (
-    (plan.strategy === 'supportive_grounding' || plan.strategy === 'empathic_reflection') &&
-    !/\b(i hear you|i understand|i am here|i'm here|that sounds)\b/i.test(next)
-  ) {
-    next = `${buildEmpathyLead(`${userMessage}:support:${next.length}`)} ${next}`;
-  }
-
-  if (needsRepair) {
-    next = applyRepairPrecision(next, userMessage, recentMessages);
-  }
-
-  if (needsConsentSoftness) {
-    const hasConsentCheck = /\b(if you want|if you're okay|we can go deeper|only if you want)\b/i.test(next);
-    if (!hasConsentCheck) {
-      next = `${next} If you want, we can go deeper on this at your pace.`;
-    }
-  }
-
-  if (!needsRepair && plan.gentleExitLine) {
-    next = ensureWarmClosingRhythm(next, signals, plan);
-  }
-
-  if (!needsRepair) {
-    next = injectEngagementHook(next, plan, signals);
-  }
-  next = applyShortReplyChoreography(next, plan, signals, userMessage);
-  if (!needsRepair) {
-    next = injectOpenLoopContinuity(next, memory, signals, userMessage, recentMessages);
-  }
-  next = diversifySupportiveTemplate(next, `${userMessage}:${next.length}`);
-  next = reduceOverusedClosingFamily(next, `${userMessage}:${next.length}`);
-  next = stripDuplicateNoPressurePhrases(next);
-  next = collapseDuplicateLeadSentence(next);
-  next = enforcePlanLength(next, plan);
-
-  return next.replace(/\s{2,}/g, ' ').trim();
-}
-
 async function runConversationCriticPass(
   draft: string,
   userMessage: string,
@@ -5139,7 +3551,18 @@ ${openLoops.map((loop) => `- ${loop.summary}`).join('\n') || '(none)'}
                 gentleExitLine: true,
               },
               social.signals,
-              memory,
+              {
+                memory,
+                hourOfDay: localHour,
+                sessionTurnCount: Math.floor(recentMessages.length / 2),
+                stage: getRelationshipStage(
+                  runtimeSelfModel.relationshipDays,
+                  getInteractionCount(memory),
+                  memory?.pacingProfile
+                    ? (memory.pacingProfile.intimacy + memory.pacingProfile.depth) / 2
+                    : 0.5,
+                ),
+              },
             ),
           ]
             .filter((block) => block.trim().length > 0)
@@ -5395,11 +3818,17 @@ export async function generateAIResponse(
     }
 
     const recentExchangeIntent = detectRecentExchangeIntent(userMessage);
+    const recentExchangeRouterState = buildRecentExchangeState(
+      conversationHistory,
+      memory,
+      {
+        profileDisplayName: runtimeSelfModel.profileDisplayName,
+      },
+    );
     if (recentExchangeIntent.isRecentExchangeQuery) {
-      const recentExchangeContent = buildRecentExchangeResponse(
+      const recentExchangeContent = buildRecentExchangeRouterResponse(
         recentExchangeIntent,
-        conversationHistory,
-        memory,
+        recentExchangeRouterState,
       );
       if (recentExchangeContent) {
         return {
@@ -5449,22 +3878,16 @@ export async function generateAIResponse(
       bootstrapSignals.flatAcknowledgement ||
       bootstrapSignals.lightnessRequested ||
       bootstrapSignals.recentUserShortTurnStreak >= 2;
-
-    const recentMessages = buildEffectiveRecentMessages(
-      conversationHistory,
-      memory,
+    const recentExchangeState = buildRecentExchangeState(conversationHistory, memory, {
       preferRecentExchange,
-      runtimeSelfModel.profileDisplayName,
-    );
+      profileDisplayName: runtimeSelfModel.profileDisplayName,
+    });
+    const recentMessages = recentExchangeState.effectiveRecentMessages;
     const preSignals = deriveSocialSignals(userMessage, recentMessages);
     const routeDecision = determineRouteDecision(userMessage, preSignals);
     const fastTurnPath = routeDecision.route === 'fast';
-    const recentExchangeFacts = selectRecentExchangeFacts(
-      conversationHistory,
-      memory,
-    );
     const recentExchangePriorityBlock = preferRecentExchange
-      ? buildRecentExchangePriorityBlock(recentExchangeFacts)
+      ? recentExchangeState.priorityBlock
       : '';
     const stageContracts: AgentStageResult[] = [];
     const skippedAgents: string[] = [];
@@ -5605,7 +4028,12 @@ export async function generateAIResponse(
       buildSocialDirectives(
         socialPlanning.plan,
         socialPlanning.signals,
-        memory,
+        {
+          memory,
+          hourOfDay,
+          sessionTurnCount,
+          stage: turnStage,
+        },
       ),
       buildDynamicTurnEnhancers(
         userMessage,

@@ -165,3 +165,33 @@ Validation:
 - `npm run build` passed in `tools/girlai2/functions`
 - Context7 integration note:
   - `tools/girlai2/docs/_tmp_context7_review/20260327_1545/PERSONA_REFACTOR_INTEGRATION_NOTE.md`
+
+## 2026-03-27 Clean-Branch verification
+
+Clean-branch semantic verification record:
+- `tools/girlai2/docs/CLEAN_BRANCH_PERSONA_SEMANTIC_SWEEP_2026-03-27.md`
+
+What the live sweep proved on `70578ba3`:
+- capability overview and capability limits survived the refactor
+- chronology capture survived the refactor
+- recent-exchange callback now selects the correct newer dinner thread
+- repair no longer falls back to the previous meta callback prompt
+
+What still blocks A+:
+- callback wording still sounds too managed
+- repair wording is now correct but still literal
+- `llmService.ts` still owns runtime truth construction and a few wrapper seams
+
+Locked next architecture moves:
+1. Truth Kernel v2:
+  - move runtime truth-state construction out of `llmService.ts`
+  - add volatile-state freshness and confidence
+2. Memory Controller v2:
+  - remove duplicated conversation-key normalization
+  - migrate chronology wrapper ownership fully into the controller
+  - add action-oriented memory lifecycle ownership
+3. Conversation Policy v2:
+  - split policy from realization
+  - replace deterministic callback/repair phrasing with a controlled realization library
+4. Prompt shell cleanup:
+  - move prompt augment ownership behind the three new services and keep `llmService.ts` as coordinator only

@@ -1026,3 +1026,51 @@
 pm run build passed in 	ools/girlai2/functions; lutter pub get passed in 	ools/girlai2; targeted dart analyze passed with 5 info-level findings only.
 - Recovery manifest: 	ools/girlai2/docs/CLEAN_BRANCH_RECOVERY_2026-03-27.md.
 
+## 2026-03-27 Clean Branch Semantic Sweep + Refactor Status
+
+- Clean branch remains:
+  - branch `aria-clean-recovery-20260327`
+  - worktree `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`
+- Required startup docs were re-read in the clean worktree before continuing:
+  - `PROJECT_MEMORY_LEDGER.md`
+  - `tools/girlai2/docs/COMPONENT_INVENTORY.md`
+  - `tools/girlai2/docs/SERVICE_INTERACTIONS.md`
+  - `tools/girlai2/docs/WORKFLOW_COMPLIANCE.md`
+- Context7 was used again for prompt-architecture guidance:
+  - keep dynamic conversation context separate from system instructions
+  - keep corrective responses concise
+  - maintain explicit multi-turn state instead of blending raw context and instructions
+- Lead integration in the clean worktree moved more ownership out of `llmService.ts`:
+  - Truth Kernel prompt sections now come from `truthKernelService.ts`
+  - recent-exchange and chronology routing now use `memoryControllerService.ts`
+  - social directives / enhancers / response guards now come from `conversationPolicyService.ts`
+- Sub-agent review on the clean branch confirmed the service split is materially real:
+  - Truth Kernel:
+    - wording is service-owned
+    - remaining gap is runtime truth-state construction and thin wrappers in `llmService.ts`
+  - Memory Controller:
+    - recent-exchange and chronology state/response ownership moved successfully
+    - remaining gap is duplicated conversation-key normalization and a thin chronology wrapper
+  - Conversation Policy:
+    - directives, enhancers, and guards are service-owned
+    - remaining gap is compatibility wrapper cleanup
+- `generateResponse` was deployed from the clean worktree using copied local dotenv parity from the original tree:
+  - `tools/girlai2/functions/.env.girlai2`
+  - file is gitignored and used only for deploy parity in the clean branch
+- Live semantic sweep ran on device `70578ba3` with prompt-by-prompt transcript capture:
+  - first sweep: `tools/girlai2/docs/_tmp_semantic_sweep_20260327_222419`
+  - post-fix sweep: `tools/girlai2/docs/_tmp_semantic_sweep_20260327_223625`
+- Sweep outcome:
+  - capability overview: pass
+  - capability limits: pass
+  - chronology capture: pass
+  - second dated fact capture: pass
+  - natural callback: functional pass, still too managed in wording
+  - repair reset: fixed and now stays with the real dinner topic instead of parroting the meta callback prompt
+- New clean-branch semantic record:
+  - `tools/girlai2/docs/CLEAN_BRANCH_PERSONA_SEMANTIC_SWEEP_2026-03-27.md`
+- A+ deferred program remains:
+  1. move runtime truth-state construction out of `llmService.ts`
+  2. remove duplicated recent-message normalization and wrapper seams
+  3. split policy from realization so callback/repair language becomes less managed
+

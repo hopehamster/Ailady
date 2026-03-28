@@ -794,3 +794,25 @@ Reason:
 1. move more prompt-assembly truth/capability wording behind the Truth Kernel
 2. migrate memory lifecycle mutations to the Memory Controller action model
 3. shrink `llmService.ts` further by moving policy prompt assembly into the Conversation Policy layer
+
+## 2026-03-27 Clean Branch Semantic Sweep
+
+Primary record:
+- `tools/girlai2/docs/CLEAN_BRANCH_PERSONA_SEMANTIC_SWEEP_2026-03-27.md`
+
+Current clean-branch status on `70578ba3`:
+- capability overview: pass
+- capability limits: pass
+- chronology capture: pass
+- second dated fact capture: pass
+- natural callback: functional pass, but still too managed in tone
+- repair reset: pass after fix; now anchors to the dinner topic instead of the meta callback prompt
+
+Immediate architecture follow-ups from the sweep:
+1. move runtime truth-state construction out of `llmService.ts`
+2. remove duplicated conversation-key normalization and the thin chronology wrapper seam
+3. split policy from realization so callback and repair language stop sounding managed
+
+Current decision:
+- keep developing from the clean branch
+- treat the original dirty `sdk-updates` tree as quarantine/source only until later archive review
