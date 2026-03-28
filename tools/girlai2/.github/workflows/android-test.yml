@@ -1,0 +1,36 @@
+name: Android Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.27.1'
+        channel: 'stable'
+
+    - name: Install dependencies
+      run: flutter pub get
+
+    - name: Verify Flutter setup
+      run: flutter doctor -v
+
+    - name: Run Flutter tests
+      run: flutter test
+
+    - name: Build Android APK (debug)
+      run: flutter build apk --debug
+
+    - name: Build Android App Bundle (release)
+      run: flutter build appbundle --release
+      continue-on-error: true  # May fail without signing config

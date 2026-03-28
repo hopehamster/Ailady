@@ -40,6 +40,7 @@ public final class JniBridgeJava {
     public static native void nativeLoadModel(String modelJsonPath);
     public static native void nativeSetExpression(String expressionName);
     public static native void nativeSetParameter(String parameterId, float value);
+    public static native void nativeSetBackgroundColor(float r, float g, float b);
     public static native void nativeClearParameter(String parameterId);
     public static native void nativeSetViewTransform(float scale, float offsetX, float offsetY);
     public static native boolean nativeHasModel();

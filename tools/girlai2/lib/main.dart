@@ -7,12 +7,14 @@ import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/firebase_service.dart';
 import 'core/services/user_service.dart';
+import 'core/services/revenuecat_service.dart';
 import 'core/utils/debug_logger.dart';
 import 'features/auth/auth_service.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/chat/chat_service.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
+import 'features/paywall/screens/paywall_screen.dart';
 import 'core/services/notification_service.dart';
 
 void main() async {
@@ -33,31 +35,28 @@ void main() async {
     debugPrint('✅ DART: Firebase initialized successfully!');
     debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
 
-    // Activate App Check for all builds.
-    // Debug builds use AndroidProvider.debug which generates a UUID debug token
-    // (printed in logcat as "DebugAppCheckProvider") that must be registered in
-    // Firebase Console → App Check → Apps → <your app> → Add debug token.
-    // Release builds use Play Integrity / AppAttest.
-    debugPrint('🔐 DART: Initializing Firebase App Check...');
-    await FirebaseAppCheck.instance.activate(
-      androidProvider:
-          kDebugMode ? AndroidProvider.debug : AndroidProvider.playIntegrity,
-      appleProvider: kDebugMode
-          ? AppleProvider.debug
-          : AppleProvider.appAttestWithDeviceCheckFallback,
-    );
-    debugPrint(
-        '✅ DART: Firebase App Check activated (${kDebugMode ? "debug" : "release"} mode)');
+    // Keep release posture strict, but avoid debug placeholder-token noise.
+    // In debug builds we skip App Check activation entirely because current
+    // callable enforcement is disabled and placeholder tokens pollute logs.
+    if (kDebugMode) {
+      debugPrint('🔐 DART: Skipping Firebase App Check activation in debug mode');
+    } else {
+      debugPrint('🔐 DART: Initializing Firebase App Check...');
+      await FirebaseAppCheck.instance.activate(
+        androidProvider: AndroidProvider.playIntegrity,
+        appleProvider: AppleProvider.appAttestWithDeviceCheckFallback,
+      );
+      debugPrint('✅ DART: Firebase App Check activated (release mode)');
 
-    // Pre-fetch the App Check token to avoid race condition at startup.
-    // activate() sets up the provider locally but the JWT is fetched
-    // asynchronously. Awaiting getToken() ensures it is cached before
-    // any Firebase callable function is invoked.
-    try {
-      await FirebaseAppCheck.instance.getToken(true);
-      debugPrint('✅ DART: App Check token pre-fetched');
-    } catch (e) {
-      debugPrint('⚠️ DART: App Check token pre-fetch failed (will retry on use): $e');
+      // Pre-fetch the App Check token so the first callable turn does not pay
+      // the extra token fetch delay on the critical path.
+      try {
+        await FirebaseAppCheck.instance.getToken(true);
+        debugPrint('✅ DART: App Check token pre-fetched');
+      } catch (e) {
+        debugPrint(
+            '⚠️ DART: App Check token pre-fetch failed (will retry on use): $e');
+      }
     }
 
     if (kDebugMode) {
@@ -99,6 +98,11 @@ class MyApp extends StatelessWidget {
           // Provide UserService (depends on FirebaseService)
           Provider<UserService>(
             create: (_) => UserService(firebaseService),
+          ),
+
+          // Provide RevenueCatService
+          ChangeNotifierProvider<RevenueCatService>(
+            create: (_) => RevenueCatService(),
           ),
 
           // Provide ChatService (depends on FirebaseService and AuthService)
@@ -177,6 +181,9 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
+  // Guard: prevent concurrent or duplicate profile checks.
+  bool _checkStarted = false;
+
   @override
   void initState() {
     super.initState();
@@ -187,28 +194,29 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _checkUserProfile() async {
-    if (!mounted) return;
+    if (_checkStarted || !mounted) return;
+    _checkStarted = true;
 
     try {
       // Check if Firebase is initialized before using services
       if (Firebase.apps.isEmpty) {
         debugPrint('⚠️ AuthWrapper: Firebase not initialized yet');
+        _checkStarted = false;
         return;
       }
 
-      // Check if context is still mounted and Provider is available
       if (!mounted) return;
 
       AuthService? authService;
       try {
         authService = Provider.of<AuthService>(context, listen: false);
       } on ProviderNotFoundException catch (e) {
-        debugPrint(
-            '⚠️ AuthWrapper: Provider not ready in _checkUserProfile: $e');
+        debugPrint('⚠️ AuthWrapper: Provider not ready in _checkUserProfile: $e');
+        _checkStarted = false;
         return;
       } catch (e) {
-        debugPrint(
-            '❌ AuthWrapper: Failed to access AuthService in _checkUserProfile: $e');
+        debugPrint('❌ AuthWrapper: Failed to access AuthService in _checkUserProfile: $e');
+        _checkStarted = false;
         return;
       }
 
@@ -223,6 +231,20 @@ class _AuthWrapperState extends State<AuthWrapper> {
           debugPrint('⚠️ AuthWrapper: NotificationService init failed: $e');
         });
 
+        // ── RevenueCat: initialise and check subscription ──────────────────
+        RevenueCatService? rcService;
+        try {
+          rcService = Provider.of<RevenueCatService>(context, listen: false);
+        } catch (e) {
+          debugPrint('⚠️ AuthWrapper: RevenueCatService not ready: $e');
+        }
+
+        if (rcService != null) {
+          await rcService.initialize(user.uid);
+          if (!mounted) return;
+        }
+
+        // ── Fetch user profile for onboarding status ───────────────────────
         UserService? userService;
         try {
           userService = Provider.of<UserService>(context, listen: false);
@@ -235,22 +257,39 @@ class _AuthWrapperState extends State<AuthWrapper> {
         }
 
         final userProfile = await userService.getUserProfile(user.uid);
-
         if (!mounted) return;
 
-        if (userProfile == null) {
+        final onboardingDone = userProfile?.onboardingCompleted ?? false;
+
+        // ── Route based on subscription + onboarding ───────────────────────
+        // Bypass paywall in debug mode OR for internal tester UIDs.
+        const _testerUids = ['eDjQipaWl6MzfTNyL8iZ6Wy3Kvn1'];
+        final _isTester = _testerUids.contains(user.uid);
+        if (!kDebugMode && !_isTester && rcService != null && !rcService.isSubscribed) {
+          // Not subscribed → show paywall before anything else.
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => PaywallScreen(onboardingCompleted: onboardingDone),
+            ),
+          );
+        } else if (!onboardingDone) {
+          // Subscribed but hasn't entered display name yet.
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const OnboardingScreen()),
           );
         } else {
+          // Subscribed + onboarded → straight to chat.
           Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const ChatScreen()),
           );
         }
+      } else {
+        _checkStarted = false; // Reset so it can re-run after login
       }
     } catch (e, stack) {
       debugPrint('❌ AuthWrapper error: $e');
       debugPrint('❌ Stack: $stack');
+      _checkStarted = false;
       // Don't crash, just stay on login/loading
     }
   }

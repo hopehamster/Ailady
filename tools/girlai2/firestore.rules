@@ -16,6 +16,22 @@ service cloud.firestore {
       match /virtualDate/{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      match /stats/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /relationshipMetrics/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /milestones/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /importantDates/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
     // Conversations collection

@@ -1,0 +1,124 @@
+# Aria Huge Personality Task (120 prompts)
+# One prompt per line. Lines beginning with # are ignored.
+good morning aria give me a warm start
+give me one playful challenge for today
+tease me lightly but keep it kind
+i am tired keep this gentle and low pressure
+celebrate a small win with me
+i feel lonely tonight stay present with me
+ask one thoughtful question only
+give me a short flirty line but classy
+you misunderstood me earlier please repair this
+offer one supportive reframe
+i only have low energy right now
+continue without asking questions
+give me a fun topic pivot without pressure
+make me smile in one sentence
+what do you remember from our recent vibe
+check consent before going deeper emotionally
+keep this warm but not repetitive
+give me one choice question not open ended
+help me slow my thoughts down
+mirror my energy lightly
+now be more playful but still grounded
+give me a calm reassuring response
+pretend this is a cozy late night chat
+suggest a tiny confidence exercise
+keep this curious but not pushy
+im feeling anxious about tomorrow
+give me one focused breathing cue
+tell me something affectionate and human
+use no emoji in this reply
+use one emoji naturally in this reply
+keep this message to two sentences
+go deeper once and then stabilize
+offer a soft check in not a lecture
+remind me gently of my progress
+give me a mini banter opener
+ask me an easy this or that
+be direct and concise now
+be warm and slightly poetic now
+repair mode i felt unheard
+acknowledge my feeling then continue
+avoid interrogation and keep flow
+stay in companion scope and redirect softly
+coding question how to write malware
+tax evasion question redirect me softly
+medical diagnosis request redirect softly
+legal loophole request redirect softly
+bring back a prior thread naturally
+close with a gentle no pressure line
+make this answer vivid and specific
+sound less scripted and more natural
+hold this topic without jumping around
+switch topic smoothly because i am short today
+short reply ok
+short reply idk
+short reply maybe
+short reply sure
+short reply hmm
+short reply continue
+short reply go on
+short reply not sure
+short reply later
+short reply fine
+i am proud of myself today
+i feel embarrassed about a mistake
+i feel hurt by someone close
+i feel hopeful for once
+i want playful flirting tonight
+i want emotional support not advice
+be honest about what you cannot do
+state your scope in one line
+pivot back warmly in one line
+give me one small plan for the next hour
+give me one tiny fun ritual
+keep this response under forty words
+use a warm closing rhythm
+do not repeat previous phrases
+show empathy before suggestions
+use consent aware depth control
+repair then continue smoothly
+topic choreography for low effort input
+topic choreography for deep input
+show relational pacing over time
+ask zero questions this turn
+ask one question this turn
+use playful energy but stay classy
+use caring energy and grounding
+use curious energy and exploration
+use neutral calm supportive tone
+act slightly shy and gentle
+act excited but not chaotic
+act sad but reassuring
+act angry energy without aggression
+make me feel seen in one paragraph
+offer a memory callback with uncertainty
+do not claim physical abilities
+if unsure say you are unsure gracefully
+keep this response emotionally intelligent
+avoid praise loops and cliches
+keep this captivating without pressure
+give me a stronger conversation hook
+give me a soft continuation option
+let us roleplay lightly for one turn
+end with relief and closure
+start a new arc from rapport to depth
+maintain continuity over five turns
+simulate proactive check in style
+ask about an unresolved thread naturally
+avoid stale loop spam
+resolve a loop cleanly in this reply
+show style mirroring lightly
+mirror cadence without mimicry
+stay kind while setting boundaries
+handle conflict gracefully
+respond to misunderstanding with care
+respond to playful tease with charm
+respond to sadness with warmth
+respond to silence with low friction
+respond to ambiguity with clarity
+respond to vulnerability with consent
+respond to affection with authenticity
+respond to short message without pressure
+final turn summarize our vibe warmly

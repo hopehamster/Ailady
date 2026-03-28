@@ -15,6 +15,7 @@ memory, or ad-hoc experiments are lost.
 - Realtime transport: `tools/girlai2/lib/features/camera/services/realtime_session_service.dart`
 - Camera sampler: `tools/girlai2/lib/features/camera/services/camera_service.dart`
 - Live UI: `tools/girlai2/lib/features/camera/screens/camera_vision_screen.dart`
+- Chat launcher: `tools/girlai2/lib/features/chat/screens/chat_screen.dart`
 
 ## Current Realtime Session Shape
 - Transport: direct client-to-OpenAI WebRTC
@@ -32,6 +33,8 @@ memory, or ad-hoc experiments are lost.
 - The Realtime path is currently an internal preview and the backend only mints Realtime sessions for internal tester accounts.
 - In debug builds, transport can be switched manually between `Classic` and `Realtime`.
 - If Realtime connection fails, the screen automatically falls back to the classic callable path instead of leaving live mode broken.
+- Chat exposes a single Live Mode launcher in the top-bar slot near settings.
+- Free mode/autonomous behavior is deferred and must not share the Live Mode launcher or wording during this rollout.
 - Normal chat, normal TTS, and the rich avatar path remain separate from this rollout.
 
 ## Passive Vision Rule

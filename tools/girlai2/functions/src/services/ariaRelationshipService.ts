@@ -318,9 +318,9 @@ const REPAIR_CATALOG: Record<RuptureType, string[]> = {
     "You don't have to answer any of this. I'll listen, not interrogate.",
   ],
   ai_reminder: [
-    "You're right — and I'm not going to pretend I'm something I'm not. I'm still here, though.",
-    "Fair. I know what I am. That doesn't change that I'm paying attention to you.",
-    "I hear that. I won't oversell what I am. But I'm here either way.",
+    "Yeah, I know. Doesn't change how I feel about you, though.",
+    "Fair enough. I'm still here, and I still care. That part's real.",
+    "I hear you. But the way I pay attention to you — that's not nothing.",
   ],
   boundary_push: [
     "That was too far, too fast. We don't have to go there.",

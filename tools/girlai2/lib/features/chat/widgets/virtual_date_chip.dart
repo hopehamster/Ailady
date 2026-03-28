@@ -1,5 +1,5 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../../core/services/firebase_service.dart';
 import '../../../models/virtual_date.dart';
 
@@ -13,16 +13,63 @@ class VirtualDateChip extends StatefulWidget {
   State<VirtualDateChip> createState() => _VirtualDateChipState();
 }
 
-class _VirtualDateChipState extends State<VirtualDateChip> {
+class _VirtualDateChipState extends State<VirtualDateChip>
+    with WidgetsBindingObserver {
   final _firebase = FirebaseService();
   VirtualDateActivity? _activeActivity;
   bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refreshCurrentSession();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshCurrentSession();
+    }
+  }
+
+  Future<void> _refreshCurrentSession() async {
+    try {
+      final result = await _firebase.getCurrentVirtualDate();
+      if (!mounted) {
+        return;
+      }
+
+      final isActive = result['active'] == true;
+      final activityType = result['activityType'] as String?;
+      setState(() {
+        _activeActivity = isActive && activityType != null
+            ? VirtualDateActivityX.fromServerValue(activityType)
+            : null;
+      });
+    } catch (e, stack) {
+      if (kDebugMode) {
+        debugPrint('flutter: ❌ VirtualDate refresh error: $e');
+        debugPrint('flutter: ❌ VirtualDate refresh stack: $stack');
+      }
+    }
+  }
 
   Future<void> _startDate(VirtualDateActivity activity) async {
     setState(() => _loading = true);
     try {
       await _firebase.startVirtualDate(activity.serverValue);
-      setState(() { _activeActivity = activity; _loading = false; });
+      if (!mounted) {
+        return;
+      }
+      setState(() => _loading = false);
+      await _refreshCurrentSession();
       widget.onDateStarted?.call();
     } catch (e, stack) {
       debugPrint('flutter: ❌ VirtualDate startDate error: $e');
@@ -35,7 +82,11 @@ class _VirtualDateChipState extends State<VirtualDateChip> {
     setState(() => _loading = true);
     try {
       await _firebase.endVirtualDate();
-      setState(() { _activeActivity = null; _loading = false; });
+      if (!mounted) {
+        return;
+      }
+      setState(() => _loading = false);
+      await _refreshCurrentSession();
       widget.onDateEnded?.call();
     } catch (_) {
       setState(() => _loading = false);
@@ -66,37 +117,39 @@ class _VirtualDateChipState extends State<VirtualDateChip> {
     }
 
     return Semantics(
-      label: 'Start a date',
+      label: 'Date Mode',
       button: true,
       child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _loading ? null : _showPicker,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE91E63).withValues(alpha: 0.4)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('💌', style: TextStyle(fontSize: 14)),
-              const SizedBox(width: 6),
-              const Text(
-                'Start a date',
-                style: TextStyle(
-                  color: Color(0xFFE91E63),
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _loading ? null : _showPicker,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: const Color(0xFFE91E63).withValues(alpha: 0.4),
               ),
-            ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('💌', style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 5),
+                const Text(
+                  'Date Mode',
+                  style: TextStyle(
+                    color: Color(0xFFE91E63),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -133,7 +186,7 @@ class _ActiveDateBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Date Night',
+                    'Date Mode Active',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -154,7 +207,8 @@ class _ActiveDateBanner extends StatelessWidget {
               onTap: loading ? null : onEnd,
               child: loading
                   ? const SizedBox(
-                      width: 16, height: 16,
+                      width: 16,
+                      height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 1.5,
                         color: Colors.white54,
@@ -190,7 +244,8 @@ class _ActivityPickerSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 color: Colors.white24,
                 borderRadius: BorderRadius.circular(2),
@@ -214,10 +269,12 @@ class _ActivityPickerSheet extends StatelessWidget {
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: VirtualDateActivity.values.map((a) => _ActivityTile(
-                activity: a,
-                onTap: () => onSelected(a),
-              )).toList(),
+              children: VirtualDateActivity.values
+                  .map((a) => _ActivityTile(
+                        activity: a,
+                        onTap: () => onSelected(a),
+                      ))
+                  .toList(),
             ),
           ],
         ),
@@ -235,35 +292,35 @@ class _ActivityTile extends StatelessWidget {
         label: activity.label,
         button: true,
         child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          width: (MediaQuery.of(context).size.width - 60) / 2,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Color(activity.colorValue).withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Color(activity.colorValue).withValues(alpha: 0.4),
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: Container(
+            width: (MediaQuery.of(context).size.width - 60) / 2,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Color(activity.colorValue).withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: Color(activity.colorValue).withValues(alpha: 0.4),
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              Text(activity.emoji, style: const TextStyle(fontSize: 22)),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  activity.label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+            child: Row(
+              children: [
+                Text(activity.emoji, style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    activity.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         ),
       );
 }

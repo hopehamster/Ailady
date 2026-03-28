@@ -5,6 +5,10 @@
     <!-- Microphone permission for Voice Input (STT) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
 
+    <!-- Location permissions for Location Awareness (city-level only) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+
     <!-- Camera permissions for Vision feature (Ultra subscribers) -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>

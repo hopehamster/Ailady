@@ -2,6 +2,20 @@ import 'package:flutter/material.dart';
 import '../../../models/message.dart';
 import '../../../core/theme/app_theme.dart';
 
+/// Strips the machine-readable [VISUAL_CONTEXT]...[/VISUAL_CONTEXT] block
+/// from Aria's response text before it is shown to the user.
+String _stripVisualContext(String text) {
+  return text
+      .replaceAll(
+        RegExp(
+          r'\s*\[VISUAL_CONTEXT\].*?\[/VISUAL_CONTEXT\]',
+          dotAll: true,
+        ),
+        '',
+      )
+      .trimRight();
+}
+
 class MessageBubble extends StatelessWidget {
   final Message message;
   final ValueChanged<bool>? onFeedback;
@@ -88,56 +102,60 @@ class MessageBubble extends StatelessWidget {
                       ),
                     if (message.content.isNotEmpty)
                       Text(
-                        message.content,
+                        message.isFromUser
+                            ? message.content
+                            : _stripVisualContext(message.content),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: Colors.white,
                             ),
                       ),
+                    // Feedback buttons live inside the bubble so their
+                    // accessibility bounds are always within the message node.
+                    if (canShowFeedback)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Opacity(
+                          opacity: feedbackPending ? 0.6 : 1.0,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                splashRadius: 18,
+                                icon: Icon(
+                                  Icons.thumb_up_alt_rounded,
+                                  size: 18,
+                                  color: thumbsUpSelected
+                                      ? Colors.greenAccent
+                                      : Colors.white70,
+                                ),
+                                tooltip: 'Helpful',
+                                onPressed: feedbackPending
+                                    ? null
+                                    : () => onFeedback!.call(true),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                splashRadius: 18,
+                                icon: Icon(
+                                  Icons.thumb_down_alt_rounded,
+                                  size: 18,
+                                  color: thumbsDownSelected
+                                      ? Colors.orangeAccent
+                                      : Colors.white70,
+                                ),
+                                tooltip: 'Not helpful',
+                                onPressed: feedbackPending
+                                    ? null
+                                    : () => onFeedback!.call(false),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
-              if (canShowFeedback)
-                Padding(
-                  padding: const EdgeInsets.only(top: 6, left: 4),
-                  child: Opacity(
-                    opacity: feedbackPending ? 0.6 : 1.0,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          splashRadius: 18,
-                          icon: Icon(
-                            Icons.thumb_up_alt_rounded,
-                            size: 18,
-                            color: thumbsUpSelected
-                                ? Colors.greenAccent
-                                : Colors.white70,
-                          ),
-                          tooltip: 'Helpful',
-                          onPressed: feedbackPending
-                              ? null
-                              : () => onFeedback!.call(true),
-                        ),
-                        IconButton(
-                          visualDensity: VisualDensity.compact,
-                          splashRadius: 18,
-                          icon: Icon(
-                            Icons.thumb_down_alt_rounded,
-                            size: 18,
-                            color: thumbsDownSelected
-                                ? Colors.orangeAccent
-                                : Colors.white70,
-                          ),
-                          tooltip: 'Not helpful',
-                          onPressed: feedbackPending
-                              ? null
-                              : () => onFeedback!.call(false),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
             ],
           ),
         ],

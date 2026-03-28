@@ -121,6 +121,11 @@ public:
     */
     LAppMinimumView* GetView() { return _view; }
 
+    /**
+    * @brief   背景クリアカラーを設定する。
+    */
+    void SetBackgroundColor(float r, float g, float b);
+
 private:
     /**
     * @brief   コンストラクタ
@@ -144,4 +149,7 @@ private:
     bool _frameworkInitialized;                  ///< CubismFramework::Initialize has run
     float _mouseY;                               ///< マウスY座標
     float _mouseX;                               ///< マウスX座標
+    float _bgR;                                  ///< 背景クリアカラー R
+    float _bgG;                                  ///< 背景クリアカラー G
+    float _bgB;                                  ///< 背景クリアカラー B
 };

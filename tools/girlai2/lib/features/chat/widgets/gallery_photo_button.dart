@@ -7,9 +7,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 /// A photo-picker button that lets users share gallery images with Aria.
 ///
-/// - Available to regular + ultra subscribers (not free).
-/// - Picks from gallery → compresses → sends base64 to `analyzeGalleryPhoto`.
-/// - Aria's reaction arrives via the Firestore real-time stream automatically.
+/// Picks from gallery → compresses → sends base64 to `analyzeGalleryPhoto`.
+/// Aria's reaction arrives via the Firestore real-time stream automatically.
 ///
 /// Callbacks:
 /// - [onSending]: called when upload starts (show loading state)
@@ -19,14 +18,12 @@ class GalleryPhotoButton extends StatefulWidget {
   final VoidCallback? onSending;
   final VoidCallback? onSent;
   final void Function(String error)? onError;
-  final bool hasAccess; // false for free tier → shows upgrade dialog
 
   const GalleryPhotoButton({
     super.key,
     this.onSending,
     this.onSent,
     this.onError,
-    this.hasAccess = true,
   });
 
   @override
@@ -38,10 +35,6 @@ class _GalleryPhotoButtonState extends State<GalleryPhotoButton> {
   final ImagePicker _picker = ImagePicker();
 
   Future<void> _pickAndSend() async {
-    if (!widget.hasAccess) {
-      _showUpgradeDialog();
-      return;
-    }
     if (_sending) return;
 
     HapticFeedback.selectionClick();
@@ -49,7 +42,7 @@ class _GalleryPhotoButtonState extends State<GalleryPhotoButton> {
     try {
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 75,       // Compress before base64
+        imageQuality: 75,
         maxWidth: 1280,
         maxHeight: 1280,
       );
@@ -79,41 +72,11 @@ class _GalleryPhotoButtonState extends State<GalleryPhotoButton> {
 
   String _friendlyError(Object e) {
     final raw = e.toString().toLowerCase();
-    if (raw.contains('permission')) return 'Photo sharing requires a paid subscription.';
     if (raw.contains('too large')) return 'Photo is too large. Please choose a smaller one.';
     if (raw.contains('network') || raw.contains('unavailable')) {
       return 'Network error. Please try again.';
     }
     return 'Could not share photo. Please try again.';
-  }
-
-  void _showUpgradeDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.photo_library, color: Colors.pinkAccent),
-            SizedBox(width: 8),
-            Text('Photo Sharing'),
-          ],
-        ),
-        content: const Text(
-          'Share photos with Aria — she\'ll react just like a real girlfriend would!\n\n'
-          'Available to Regular and Ultra subscribers.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Maybe Later'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Upgrade'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -135,10 +98,10 @@ class _GalleryPhotoButtonState extends State<GalleryPhotoButton> {
     return IconButton(
       icon: Icon(
         Icons.photo_library_outlined,
-        color: widget.hasAccess ? Colors.pinkAccent.withValues(alpha: 0.85) : Colors.grey,
+        color: Colors.pinkAccent.withValues(alpha: 0.85),
         size: 22,
       ),
-      tooltip: widget.hasAccess ? 'Share a photo' : 'Upgrade to share photos',
+      tooltip: 'Share a photo',
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
       onPressed: _pickAndSend,

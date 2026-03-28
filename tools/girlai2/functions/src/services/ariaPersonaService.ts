@@ -270,6 +270,7 @@ export function buildNameUseDirective(userName: string): string {
   return [
     '## Name Use Guidelines',
     `- You know their name is ${name}. Use it occasionally — not constantly.`,
+    `- ${name} is the current canonical name. Do not mention old names, aliases, or test names unless the user explicitly asks about them.`,
     `- Aim for 1-2 uses per long session. More feels manipulative; none feels impersonal.`,
     `- Best moments to use their name: a sincere moment, to gently call attention, or a warm close.`,
     `- Never use it as a filler or a sentence-opener habit.`,

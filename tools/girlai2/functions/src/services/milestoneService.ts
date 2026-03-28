@@ -6,7 +6,10 @@
  *   users/{uid}/milestones/{milestoneId}
  *
  * Stats are maintained under:
- *   users/{uid}/stats  (totalMessages, currentStreak, longestStreak, …)
+ *   users/{uid}/stats/relationship
+ *
+ * Relationship metrics are maintained under:
+ *   users/{uid}/relationshipMetrics/current
  *
  * Called from index.ts on every new message Firestore write.
  */
@@ -137,6 +140,23 @@ export interface AwardedMilestone {
   pendingDisplay: boolean;
 }
 
+export interface RelationshipDashboardRepairResult {
+  repaired: boolean;
+  totalMessages: number;
+  milestonesAwarded: number;
+  level: number;
+  bondPoints: number;
+}
+
+interface RelationshipMetricsSnapshot {
+  xp?: number;
+  bondPoints?: number;
+  level?: number;
+  trust?: number;
+  intimacy?: number;
+  empathy?: number;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function todayIso(): string {
@@ -186,6 +206,115 @@ function updateStreak(
   return { currentStreak: 1, longestStreak: stats.longestStreak, lastStreakDate: today };
 }
 
+function computeEarnedMilestoneIds(
+  totalMessages: number,
+  currentStreak: number,
+  daysTogether: number,
+): string[] {
+  const earned: string[] = [];
+  if (totalMessages >= 1) earned.push('first_message');
+  if (totalMessages >= 10) earned.push('messages_10');
+  if (totalMessages >= 50) earned.push('messages_50');
+  if (totalMessages >= 100) earned.push('messages_100');
+  if (totalMessages >= 500) earned.push('messages_500');
+  if (totalMessages >= 1000) earned.push('messages_1000');
+  if (currentStreak >= 3) earned.push('streak_3');
+  if (currentStreak >= 7) earned.push('streak_7');
+  if (currentStreak >= 30) earned.push('streak_30');
+  if (daysTogether >= 7) earned.push('days_7');
+  if (daysTogether >= 30) earned.push('days_30');
+  if (daysTogether >= 90) earned.push('days_90');
+  return earned;
+}
+
+function computeStreakStats(dateKeys: string[]): {
+  currentStreak: number;
+  longestStreak: number;
+  lastStreakDate: string | null;
+} {
+  if (dateKeys.length === 0) {
+    return { currentStreak: 0, longestStreak: 0, lastStreakDate: null };
+  }
+
+  const sorted = Array.from(new Set(dateKeys)).sort();
+  let longest = 1;
+  let running = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const previous = new Date(sorted[i - 1]);
+    const current = new Date(sorted[i]);
+    const diffDays = Math.round(
+      (current.getTime() - previous.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diffDays === 1) {
+      running += 1;
+      if (running > longest) longest = running;
+    } else if (diffDays > 1) {
+      running = 1;
+    }
+  }
+
+  let currentStreak = 1;
+  for (let i = sorted.length - 1; i > 0; i--) {
+    const previous = new Date(sorted[i - 1]);
+    const current = new Date(sorted[i]);
+    const diffDays = Math.round(
+      (current.getTime() - previous.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (diffDays === 1) {
+      currentStreak += 1;
+    } else {
+      break;
+    }
+  }
+
+  return {
+    currentStreak,
+    longestStreak: longest,
+    lastStreakDate: sorted[sorted.length - 1],
+  };
+}
+
+function extractMessageTimestamp(
+  data: FirebaseFirestore.DocumentData,
+): FirebaseFirestore.Timestamp | null {
+  const timestamp = data.timestamp as FirebaseFirestore.Timestamp | undefined;
+  if (timestamp != null) return timestamp;
+
+  const createdAt = data.createdAt as FirebaseFirestore.Timestamp | undefined;
+  if (createdAt != null) return createdAt;
+
+  return null;
+}
+
+function shouldRepairExistingDashboardState(
+  stats: UserRelationshipStats | undefined,
+  metrics: RelationshipMetricsSnapshot | undefined,
+): boolean {
+  if (!stats || !metrics) {
+    return true;
+  }
+
+  const hasConversationStats =
+    (stats.totalMessages ?? 0) > 0 ||
+    stats.firstMessageAt != null ||
+    stats.lastMessageAt != null ||
+    (stats.currentStreak ?? 0) > 0 ||
+    (stats.longestStreak ?? 0) > 0 ||
+    !!stats.lastStreakDate;
+
+  const hasRelationshipMetrics =
+    (metrics.xp ?? 0) > 0 ||
+    (metrics.bondPoints ?? 0) > 0 ||
+    (metrics.level ?? 1) > 1 ||
+    (metrics.trust ?? 0) > 0 ||
+    (metrics.intimacy ?? 0) > 0 ||
+    (metrics.empathy ?? 0) > 0;
+
+  return !(hasConversationStats || hasRelationshipMetrics);
+}
+
 // ─── Main export: called on every new user message ───────────────────────────
 
 /**
@@ -199,9 +328,10 @@ export async function checkAndAwardMilestones(
   userId: string,
 ): Promise<AwardedMilestone[]> {
   const db = admin.firestore();
-  const statsRef = db.doc(`users/${userId}/stats/relationship`);
-  const milestonesCol = db.collection(`users/${userId}/milestones`);
-  const metricsRef = db.doc(`users/${userId}/relationshipMetrics`);
+  const userRef = db.collection('users').doc(userId);
+  const statsRef = userRef.collection('stats').doc('relationship');
+  const milestonesCol = userRef.collection('milestones');
+  const metricsRef = userRef.collection('relationshipMetrics').doc('current');
 
   return db.runTransaction(async (tx) => {
     // ── 1. Read current stats ──────────────────────────────────────────────
@@ -322,6 +452,192 @@ export async function checkAndAwardMilestones(
 }
 
 /**
+ * Repairs / bootstraps the relationship dashboard documents for existing users
+ * when older path bugs prevented stats and metrics from being written.
+ */
+export async function ensureRelationshipDashboardState(
+  userId: string,
+): Promise<RelationshipDashboardRepairResult> {
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(userId);
+  const statsRef = userRef.collection('stats').doc('relationship');
+  const metricsRef = userRef.collection('relationshipMetrics').doc('current');
+  const milestonesCol = userRef.collection('milestones');
+
+  const [statsSnap, metricsSnap] = await Promise.all([
+    statsRef.get(),
+    metricsRef.get(),
+  ]);
+
+  if (statsSnap.exists && metricsSnap.exists) {
+    const metrics = metricsSnap.data() as RelationshipMetricsSnapshot | undefined;
+    const stats = statsSnap.data() as UserRelationshipStats | undefined;
+
+    if (!shouldRepairExistingDashboardState(stats, metrics)) {
+      return {
+        repaired: false,
+        totalMessages: stats?.totalMessages ?? 0,
+        milestonesAwarded: 0,
+        level: metrics?.level ?? 1,
+        bondPoints: metrics?.bondPoints ?? 0,
+      };
+    }
+  }
+
+  const [conversationSnap, milestoneSnap] = await Promise.all([
+    db.collection('conversations')
+      .where('userId', '==', userId)
+      .get(),
+    milestonesCol.get(),
+  ]);
+
+  const orderedMessages = conversationSnap.docs
+    .slice()
+    .sort((left, right) => {
+      const leftTs = extractMessageTimestamp(left.data());
+      const rightTs = extractMessageTimestamp(right.data());
+
+      if (leftTs == null && rightTs == null) return 0;
+      if (leftTs == null) return 1;
+      if (rightTs == null) return -1;
+
+      return leftTs.toMillis() - rightTs.toMillis();
+    });
+
+  const userMessages = orderedMessages.filter(
+    (doc) => doc.data().isFromUser === true,
+  );
+
+  if (userMessages.length === 0) {
+    await Promise.all([
+      statsRef.set({
+        totalMessages: 0,
+        firstMessageAt: null,
+        lastMessageAt: null,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastStreakDate: null,
+      }, { merge: true }),
+      metricsRef.set({
+        xp: 0,
+        bondPoints: 0,
+        level: 1,
+        trust: 0,
+        intimacy: 0,
+        empathy: 0,
+      }, { merge: true }),
+    ]);
+
+    return {
+      repaired: true,
+      totalMessages: 0,
+      milestonesAwarded: 0,
+      level: 1,
+      bondPoints: 0,
+    };
+  }
+
+  const firstMessage = userMessages[0];
+  const lastMessage = userMessages[userMessages.length - 1];
+  const firstTimestamp =
+    extractMessageTimestamp(firstMessage.data()) ??
+    admin.firestore.Timestamp.now();
+  const lastTimestamp =
+    extractMessageTimestamp(lastMessage.data()) ??
+    firstTimestamp;
+
+  const dateKeys = userMessages
+    .map((doc) => {
+      const stamp = extractMessageTimestamp(doc.data());
+      if (stamp == null) return null;
+      return stamp.toDate().toISOString().split('T')[0];
+    })
+    .filter((value): value is string => typeof value === 'string');
+
+  const streakStats = computeStreakStats(dateKeys);
+  const daysTogether = Math.max(
+    0,
+    Math.floor(
+      (Date.now() - firstTimestamp.toDate().getTime()) /
+        (1000 * 60 * 60 * 24),
+    ),
+  );
+
+  const totalMessages = userMessages.length;
+  const existingMilestoneIds = new Set(milestoneSnap.docs.map((doc) => doc.id));
+  const earnedMilestoneIds = computeEarnedMilestoneIds(
+    totalMessages,
+    streakStats.currentStreak,
+    daysTogether,
+  );
+  const missingMilestoneIds = earnedMilestoneIds.filter(
+    (id) => !existingMilestoneIds.has(id),
+  );
+
+  const LEVEL_THRESHOLDS = [0, 100, 250, 500, 1000, 2000, 3500, 5500, 8000, 12000];
+  const awardedMilestoneCount = existingMilestoneIds.size + missingMilestoneIds.length;
+  const xp = (totalMessages * 5) + (awardedMilestoneCount * 100);
+  const bondPoints = Math.floor(xp / 10);
+
+  let level = 1;
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (xp >= LEVEL_THRESHOLDS[i]) {
+      level = i + 1;
+      break;
+    }
+  }
+
+  const trust = Math.min(
+    100,
+    streakStats.currentStreak * 3 + awardedMilestoneCount * 3,
+  );
+  const intimacy = Math.min(100, Math.floor(daysTogether * 1.5));
+  const empathy = Math.min(100, Math.floor(totalMessages / 10));
+
+  const batch = db.batch();
+  batch.set(statsRef, {
+    totalMessages,
+    firstMessageAt: firstTimestamp,
+    lastMessageAt: lastTimestamp,
+    currentStreak: streakStats.currentStreak,
+    longestStreak: streakStats.longestStreak,
+    lastStreakDate: streakStats.lastStreakDate,
+  }, { merge: true });
+  batch.set(metricsRef, {
+    xp,
+    bondPoints,
+    level,
+    trust,
+    intimacy,
+    empathy,
+  }, { merge: true });
+
+  const now = admin.firestore.Timestamp.now();
+  for (const milestoneId of missingMilestoneIds) {
+    const def = MILESTONE_MAP.get(milestoneId);
+    if (!def) continue;
+    batch.set(milestonesCol.doc(milestoneId), {
+      milestoneId,
+      title: def.title,
+      emoji: def.emoji,
+      ariaMessage: def.ariaMessage,
+      awardedAt: now,
+      pendingDisplay: false,
+    } as AwardedMilestone);
+  }
+
+  await batch.commit();
+
+  return {
+    repaired: true,
+    totalMessages,
+    milestonesAwarded: missingMilestoneIds.length,
+    level,
+    bondPoints,
+  };
+}
+
+/**
  * Called by the Flutter client after showing the milestone overlay card.
  * Marks the milestone as displayed so it won't show again.
  */
@@ -331,7 +647,10 @@ export async function markMilestoneDisplayed(
 ): Promise<void> {
   await admin
     .firestore()
-    .doc(`users/${userId}/milestones/${milestoneId}`)
+    .collection('users')
+    .doc(userId)
+    .collection('milestones')
+    .doc(milestoneId)
     .update({ pendingDisplay: false });
 }
 
@@ -344,7 +663,9 @@ export async function getPendingMilestones(
 ): Promise<AwardedMilestone[]> {
   const snap = await admin
     .firestore()
-    .collection(`users/${userId}/milestones`)
+    .collection('users')
+    .doc(userId)
+    .collection('milestones')
     .where('pendingDisplay', '==', true)
     .orderBy('awardedAt', 'asc')
     .get();

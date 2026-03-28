@@ -43,6 +43,7 @@ class _RelationshipScreenState extends State<RelationshipScreen>
       parent: _xpBarController,
       curve: Curves.easeOutCubic,
     );
+    _ensureRelationshipDashboardReady();
     _loadImportantDates();
     _loadAllMilestones();
   }
@@ -74,7 +75,9 @@ class _RelationshipScreenState extends State<RelationshipScreen>
       final uid = context.read<AuthService>().user?.uid;
       if (uid == null) return;
       final snap = await FirebaseFirestore.instance
-          .collection('users/$uid/milestones')
+          .collection('users')
+          .doc(uid)
+          .collection('milestones')
           .orderBy('awardedAt', descending: false)
           .get();
       if (mounted) {
@@ -88,6 +91,40 @@ class _RelationshipScreenState extends State<RelationshipScreen>
     } catch (_) {
       if (mounted) setState(() => _milestonesLoading = false);
     }
+  }
+
+  Future<void> _ensureRelationshipDashboardReady() async {
+    try {
+      final result = await _firebaseService.ensureRelationshipDashboard();
+      final repaired = result['repaired'] == true;
+      final milestonesAwarded =
+          (result['milestonesAwarded'] as num?)?.toInt() ?? 0;
+      if (repaired && milestonesAwarded > 0 && mounted) {
+        _loadAllMilestones();
+      }
+    } catch (_) {
+      // The screen can still render from live Firestore streams even if the
+      // one-time repair callable fails.
+    }
+  }
+
+  Map<String, dynamic>? _safeDocumentMap(DocumentSnapshot snapshot) {
+    try {
+      if (!snapshot.exists) {
+        return null;
+      }
+      final data = snapshot.data();
+      if (data is Map<String, dynamic>) {
+        return data;
+      }
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+    } catch (_) {
+      // If the document payload is malformed, keep the dashboard alive and
+      // let the UI fall back to null sections instead of throwing.
+    }
+    return null;
   }
 
   void _animateXpBar(double newFraction) {
@@ -192,18 +229,30 @@ class _RelationshipScreenState extends State<RelationshipScreen>
             ? const Center(child: CircularProgressIndicator())
             : StreamBuilder<DocumentSnapshot>(
                 stream: FirebaseFirestore.instance
-                    .doc('users/$uid/relationshipMetrics')
+                    .collection('users')
+                    .doc(uid)
+                    .collection('relationshipMetrics')
+                    .doc('current')
                     .snapshots(),
                 builder: (context, metricsSnap) {
                   return StreamBuilder<DocumentSnapshot>(
                     stream: FirebaseFirestore.instance
-                        .doc('users/$uid/stats/relationship')
+                        .collection('users')
+                        .doc(uid)
+                        .collection('stats')
+                        .doc('relationship')
                         .snapshots(),
                     builder: (context, statsSnap) {
-                      final metrics = metricsSnap.hasData &&
-                              metricsSnap.data!.exists
-                          ? RelationshipMetrics.fromFirestore(metricsSnap.data!)
-                          : null;
+                      RelationshipMetrics? metrics;
+                      try {
+                        metrics = metricsSnap.hasData && metricsSnap.data!.exists
+                            ? RelationshipMetrics.fromFirestore(
+                                metricsSnap.data!,
+                              )
+                            : null;
+                      } catch (_) {
+                        metrics = null;
+                      }
 
                       // XP bar animation trigger
                       if (metrics != null) {
@@ -214,8 +263,8 @@ class _RelationshipScreenState extends State<RelationshipScreen>
                         }
                       }
 
-                      final stats = statsSnap.hasData && statsSnap.data!.exists
-                          ? statsSnap.data!.data() as Map<String, dynamic>?
+                      final stats = statsSnap.hasData
+                          ? _safeDocumentMap(statsSnap.data!)
                           : null;
 
                       return SingleChildScrollView(
@@ -228,6 +277,29 @@ class _RelationshipScreenState extends State<RelationshipScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
+                            if (metricsSnap.hasError || statsSnap.hasError)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 14),
+                                child: Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.orangeAccent
+                                          .withValues(alpha: 0.35),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Some relationship data is still syncing. '
+                                    'The dashboard will keep loading what is available.',
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             // ── Level + XP Bar ─────────────────────────────
                             _LevelXpCard(
                               metrics: metrics,

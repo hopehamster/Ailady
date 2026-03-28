@@ -82,6 +82,13 @@ public final class Live2DGLSurfaceView extends GLSurfaceView {
         queueEvent(() -> JniBridgeJava.nativeSetParameter(parameterId, value));
     }
 
+    public void setBackgroundColor(float r, float g, float b) {
+        if (isDisposed.get()) {
+            return;
+        }
+        queueEvent(() -> JniBridgeJava.nativeSetBackgroundColor(r, g, b));
+    }
+
     public void clearParameter(String parameterId) {
         if (isDisposed.get()) {
             return;
@@ -184,10 +191,13 @@ public final class Live2DGLSurfaceView extends GLSurfaceView {
         isSurfaceReady.set(false);
         pendingModelJsonPath = null;
         lastModelJsonPath = null;
-        // Flutter may dispose and recreate platform views across app switches.
-        // Native Live2D state is process-global, so disposal must not destroy
-        // shared renderer resources here.
         onPause();
+        // Flutter can fully dispose and recreate the PlatformView across app
+        // switches. Keeping the old native renderer/model state alive leaves
+        // the next surface bound to stale resources and results in a blank
+        // avatar after relaunch. Treat disposal as a true native stop so the
+        // next PlatformView starts from a clean delegate/model state.
+        JniBridgeJava.nativeOnStop();
     }
 
     @Override

@@ -190,7 +190,10 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
       color = Colors.transparent;
     }
 
-    return GestureDetector(
+    return Semantics(
+      label: isListening ? 'Stop voice input' : 'Voice input',
+      button: true,
+      child: GestureDetector(
       onTap: _toggleListening,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
@@ -210,6 +213,7 @@ class _VoiceInputButtonState extends State<VoiceInputButton>
         ),
         child: Center(child: icon),
       ),
+    ),
     );
   }
 }

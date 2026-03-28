@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../core/services/context_service.dart';
 import '../../core/services/firebase_service.dart';
 import '../../core/utils/debug_logger.dart';
 import '../../core/constants/app_constants.dart';
@@ -23,6 +24,16 @@ class ChatService extends ChangeNotifier {
   String _currentEmotionTrigger = 'Idle_Gentle_Sway';
   double _currentEmotionIntensity = 0.5;
 
+  // Visual context extracted from the latest [VISUAL_CONTEXT] block
+  String _currentMood = 'calm';
+  String _currentBackground = '';
+
+  static final _visualContextRegex = RegExp(
+    r'\[VISUAL_CONTEXT\](.*?)\[/VISUAL_CONTEXT\]',
+    dotAll: true,
+  );
+  static final _keyValueRegex = RegExp(r'^(\w+):\s*(.+)$', multiLine: true);
+
   // Callback for avatar system to listen to emotion changes
   EmotionTriggerCallback? onEmotionTrigger;
 
@@ -39,6 +50,31 @@ class ChatService extends ChangeNotifier {
   String get currentEmotion => _currentEmotion;
   String get currentEmotionTrigger => _currentEmotionTrigger;
   double get currentEmotionIntensity => _currentEmotionIntensity;
+  String get currentMood => _currentMood;
+  String get currentBackground => _currentBackground;
+
+  /// Scans the most recent Aria message for a [VISUAL_CONTEXT] block and
+  /// updates [_currentMood] / [_currentBackground] accordingly.
+  void _parseVisualContext(List<Message> messages) {
+    final ariaMsg = messages.firstWhere(
+      (m) => !m.isFromUser,
+      orElse: () => messages.first,
+    );
+    if (ariaMsg.isFromUser) return;
+
+    final match = _visualContextRegex.firstMatch(ariaMsg.content);
+    if (match == null) return;
+
+    final block = match.group(1) ?? '';
+    final kvMatches = _keyValueRegex.allMatches(block);
+    for (final kv in kvMatches) {
+      final key = kv.group(1)?.trim();
+      final value = kv.group(2)?.trim();
+      if (key == null || value == null) continue;
+      if (key == 'mood') _currentMood = value;
+      if (key == 'background') _currentBackground = value;
+    }
+  }
 
   void _initializeSubscription() {
     // Check if Firebase is ready before subscribing
@@ -80,6 +116,7 @@ class ChatService extends ChangeNotifier {
         (snapshot) {
           _messages =
               snapshot.docs.map((doc) => Message.fromFirestore(doc)).toList();
+          if (_messages.isNotEmpty) _parseVisualContext(_messages);
           notifyListeners();
         },
         onError: (error) {
@@ -140,10 +177,14 @@ class ChatService extends ChangeNotifier {
               Duration(seconds: retryCount)); // Exponential backoff
         }
 
+        // Gather environment context (fire-and-forget safe — returns null on failure)
+        final userContext = await ContextService.instance.getContext();
+
         // Call Cloud Function which handles saving both user message and AI response
         final response = await _firebaseService.generateResponse(
           content,
           chatMode: chatMode,
+          userContext: userContext,
         );
 
         // Update emotion state from AI response for avatar animations

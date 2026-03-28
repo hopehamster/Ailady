@@ -14,6 +14,13 @@ export interface VirtualDateSession {
   active: boolean;
 }
 
+export interface VirtualDateSessionSnapshot {
+  active: boolean;
+  activityType?: VirtualDateActivity;
+  label?: string;
+  emoji?: string;
+}
+
 const ACTIVITY_CONFIGS: Record<
   VirtualDateActivity,
   { label: string; emoji: string; overlay: string }
@@ -151,5 +158,42 @@ export async function getVirtualDateOverlayBlock(userId: string): Promise<string
     return config.overlay;
   } catch {
     return '';
+  }
+}
+
+export async function getCurrentVirtualDateSession(
+  userId: string
+): Promise<VirtualDateSessionSnapshot> {
+  try {
+    const db = admin.firestore();
+    const doc = await db
+      .collection('users')
+      .doc(userId)
+      .collection('virtualDate')
+      .doc('current')
+      .get();
+
+    if (!doc.exists) {
+      return { active: false };
+    }
+
+    const session = doc.data() as VirtualDateSession;
+    if (!session.active) {
+      return { active: false };
+    }
+
+    const config = ACTIVITY_CONFIGS[session.activityType];
+    if (!config) {
+      return { active: false };
+    }
+
+    return {
+      active: true,
+      activityType: session.activityType,
+      label: config.label,
+      emoji: config.emoji,
+    };
+  } catch {
+    return { active: false };
   }
 }

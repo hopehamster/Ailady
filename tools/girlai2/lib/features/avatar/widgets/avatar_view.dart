@@ -7,6 +7,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
 import '../../chat/chat_service.dart';
@@ -17,12 +18,21 @@ import '../live2d/live2d_bridge.dart';
 class AvatarView extends StatefulWidget {
   final bool isSpeaking;
   final String visemeTimelineJson;
+
+  /// FacialExpression blendshape timeline: frame index (60fps) →
+  /// [openY, funnel, pucker, mouthX, form]. Empty map = use viseme-ID fallback.
+  final Map<int, List<double>> blendTimeline;
+
+  /// The app's AudioPlayer — used as the master clock for blendshape sync.
+  final AudioPlayer? audioPlayer;
   final VoidCallback? onStopSpeaking;
 
   const AvatarView({
     super.key,
     this.isSpeaking = false,
     this.visemeTimelineJson = '{}',
+    this.blendTimeline = const {},
+    this.audioPlayer,
     this.onStopSpeaking,
   });
 
@@ -33,9 +43,11 @@ class AvatarView extends StatefulWidget {
 class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   static const String _modelPath =
       'flutter_assets/assets/live2d/bezzly/bezzly.model3.json';
-  static const double _bustUpScale = 2.22;
+  static const double _bustUpScale = 2.56;
   static const double _bustUpOffsetX = 0.04;
-  static const double _bustUpOffsetY = -0.58;
+  static const double _bustUpOffsetY = -0.70;
+  static const Duration _animationFrameInterval = Duration(milliseconds: 16);
+  static const Duration _fallbackLipSyncInterval = Duration(milliseconds: 66);
   static const Map<String, double> _idlePoseRange = <String, double>{
     'Param28': 0.54, // Arm 1
     'Param29': 0.50, // Arm 2
@@ -102,6 +114,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     gestureBase: 0.52,
     gestureScale: 0.34,
     headScale: 0.64,
+    bodyScale: 0.72,
     armScale: 0.58,
     handScale: 0.52,
     nodSpeed: 1.05,
@@ -115,6 +128,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     gestureBase: 0.78,
     gestureScale: 0.55,
     headScale: 1.0,
+    bodyScale: 1.04,
     armScale: 1.0,
     handScale: 0.95,
     nodSpeed: 1.40,
@@ -128,6 +142,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     gestureBase: 1.02,
     gestureScale: 0.66,
     headScale: 1.28,
+    bodyScale: 1.18,
     armScale: 1.42,
     handScale: 1.30,
     nodSpeed: 1.75,
@@ -164,11 +179,17 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   double _targetMouthForm = 0.0;
   double _targetMouthPucker = 0.0;
   double _targetMouthFunnel = 0.0;
+  double _targetMouthX = 0.0;
+  double _speechEnergyTarget = 0.0;
+  double _speechEnergyCurrent = 0.0;
   double _currentMouthForm = 0.0;
   double _currentMouthPucker = 0.0;
   double _currentMouthFunnel = 0.0;
+  double _currentMouthX = 0.0;
   Timer? _mouthBlendTimer;
   Timer? _fallbackLipSyncTimer;
+  Timer? _blendPlaybackTimer;
+  int _lastBlendFrame = -1;
   Timer? _idleBehaviorTimer;
   Timer? _blinkScheduleTimer;
   Timer? _healthCheckTimer;
@@ -190,6 +211,10 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   bool _blinkInProgress = false;
   int _healthMissStreak = 0;
   int _stalledFrameStreak = 0;
+  // Stuck-loading recovery: if _modelLoaded stays false for > 12 s despite
+  // retry attempts, force-recreate the native PlatformView from scratch.
+  Timer? _stuckLoadingTimer;
+  int _platformRebuildGeneration = 0;
   final Map<String, double> _idlePoseCurrent = <String, double>{
     for (final key in _idlePoseRange.keys) key: 0.0,
   };
@@ -225,9 +250,17 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     }
 
     if (widget.isSpeaking &&
-        widget.visemeTimelineJson != oldWidget.visemeTimelineJson) {
+        (widget.visemeTimelineJson != oldWidget.visemeTimelineJson ||
+            !identical(widget.blendTimeline, oldWidget.blendTimeline))) {
       if (_modelLoaded) {
-        _scheduleVisemeEvents();
+        _stopBlendPlayback();
+        _cancelVisemeTimers();
+        if (widget.blendTimeline.isNotEmpty && widget.audioPlayer != null) {
+          _stopFallbackLipSync();
+          _startBlendPlayback();
+        } else {
+          _scheduleVisemeEvents();
+        }
       } else {
         _queuedVisemeTimelineJson = widget.visemeTimelineJson;
       }
@@ -284,6 +317,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _cancelVisemeTimers();
+    _stopBlendPlayback();
     _stopFallbackLipSync();
     _stopMouthBlendLoop();
     _stopSpeakingMicroMotion();
@@ -292,6 +326,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     _stopHealthChecks();
     _modelRetryTimer?.cancel();
     _modelRetryTimer = null;
+    _cancelStuckLoadingTimer();
 
     if (_boundChatService?.onEmotionTrigger == _handleEmotionTrigger) {
       _boundChatService?.onEmotionTrigger = null;
@@ -480,7 +515,8 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       'hug',
       'there for you',
     ])) {
-      return const _EmotionMapping(baseExpression: 'Neutral', style: 'comforting');
+      return const _EmotionMapping(
+          baseExpression: 'Neutral', style: 'comforting');
     }
 
     if (_containsAny(value, const <String>[
@@ -667,13 +703,31 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
 
   void _onPlatformViewCreated(int id) {
     _platformViewReady = true;
+    if (_modelLoaded) {
+      setState(() {
+        _modelLoaded = false;
+      });
+    }
+    _startStuckLoadingTimer();
     _initializeModel();
   }
 
-  void _scheduleModelRetry() {
+  bool _isGenerationCurrent(int generation) {
+    return mounted &&
+        generation == _platformRebuildGeneration &&
+        _platformViewReady &&
+        _bridge.isSupported;
+  }
+
+  bool _hasRecentFrames(int frameAgeMs, {int maxAgeMs = 2200}) {
+    return frameAgeMs >= 0 && frameAgeMs <= maxAgeMs;
+  }
+
+  void _scheduleModelRetry({int? generation}) {
+    final retryGeneration = generation ?? _platformRebuildGeneration;
     _modelRetryTimer?.cancel();
     _modelRetryTimer = Timer(const Duration(milliseconds: 220), () async {
-      if (!mounted || !_platformViewReady || _modelLoaded) {
+      if (!_isGenerationCurrent(retryGeneration) || _modelLoaded) {
         return;
       }
       await _initializeModel(forceReload: true);
@@ -681,6 +735,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   }
 
   Future<void> _initializeModel({bool forceReload = false}) async {
+    final generation = _platformRebuildGeneration;
     if ((!forceReload && _modelLoaded) ||
         !_platformViewReady ||
         !_bridge.isSupported ||
@@ -693,14 +748,20 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
 
     try {
       final surfaceReady = await _bridge.isSurfaceReady();
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       if (!surfaceReady) {
-        _scheduleModelRetry();
+        _scheduleModelRetry(generation: generation);
         return;
       }
 
       final loadOk = await _bridge.loadModel(_modelPath);
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       if (!loadOk) {
-        _scheduleModelRetry();
+        _scheduleModelRetry(generation: generation);
         return;
       }
 
@@ -709,8 +770,11 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
         offsetX: _bustUpOffsetX,
         offsetY: _bustUpOffsetY,
       );
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       if (!viewTransformOk) {
-        _scheduleModelRetry();
+        _scheduleModelRetry(generation: generation);
         return;
       }
 
@@ -729,16 +793,32 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
         'ParamEyeLSmile': 0.0,
         'ParamEyeRSmile': 0.0,
       });
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       if (!expressionOk || !neutralParamsOk) {
-        _scheduleModelRetry();
+        _scheduleModelRetry(generation: generation);
         return;
       }
 
       // Allow native model manager to finish setup before treating as loaded.
       await Future<void>.delayed(const Duration(milliseconds: 70));
-      final hasModel = await _bridge.hasNativeModel();
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
+      var hasModel = await _bridge.hasNativeModel();
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       if (!hasModel) {
-        _scheduleModelRetry();
+        final frameAgeMs = await _bridge.getRenderFrameAgeMs();
+        if (!_isGenerationCurrent(generation)) {
+          return;
+        }
+        hasModel = _hasRecentFrames(frameAgeMs, maxAgeMs: 1800);
+      }
+      if (!hasModel) {
+        _scheduleModelRetry(generation: generation);
         return;
       }
 
@@ -755,10 +835,11 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       _stalledFrameStreak = 0;
       _blinkInProgress = false;
 
-      if (mounted) {
+      if (_isGenerationCurrent(generation)) {
         setState(() {
           _modelLoaded = true;
         });
+        _cancelStuckLoadingTimer();
 
         _lastExpression = _pendingExpression;
         _activeExpression = _pendingExpression;
@@ -779,6 +860,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   }
 
   Future<void> _recoverAfterResume() async {
+    final generation = _platformRebuildGeneration;
     if (!_platformViewReady ||
         !_bridge.isSupported ||
         _resumeRecoveryInProgress ||
@@ -791,13 +873,20 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       setState(() {
         _modelLoaded = false;
       });
+      _startStuckLoadingTimer();
     }
 
     try {
       await _bridge.resume();
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       await _initializeModel(forceReload: true);
+      if (!_isGenerationCurrent(generation)) {
+        return;
+      }
       if (!_modelLoaded) {
-        _scheduleModelRetry();
+        _scheduleModelRetry(generation: generation);
         return;
       }
       await _bridge.setExpression(_activeExpression);
@@ -830,7 +919,14 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     _triggerSpeakingGestureBurst(baseStrength: 0.66);
     _ensureMouthBlendLoop();
     _startSpeakingMicroMotion();
-    _scheduleVisemeEvents();
+    // FacialExpression blendshapes (premium): use audio-clock polling.
+    // Fall back to wall-clock viseme timers when blendTimeline is empty.
+    if (widget.blendTimeline.isNotEmpty && widget.audioPlayer != null) {
+      _stopFallbackLipSync();
+      _startBlendPlayback();
+    } else {
+      _scheduleVisemeEvents();
+    }
   }
 
   void _stopSpeaking() {
@@ -838,6 +934,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     if (!_wasSpeaking) return;
     _wasSpeaking = false;
     _syncMotionState(interaction: true);
+    _stopBlendPlayback();
     _stopFallbackLipSync();
     _stopSpeakingMicroMotion();
     _clearGestureBurst();
@@ -848,6 +945,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       'MouthPucker': 0.0,
       'MouthFunnel': 0.0,
     });
+    _speechEnergyTarget = 0.0;
     _ensureMouthBlendLoop();
   }
 
@@ -976,6 +1074,19 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     _targetMouthFunnel = (params['MouthFunnel'] ?? _targetMouthFunnel)
         .clamp(0.0, 1.0)
         .toDouble();
+    _targetMouthX =
+        (params['MouthX'] ?? _targetMouthX).clamp(-1.0, 1.0).toDouble();
+    _speechEnergyTarget = (_targetMouthOpen * 0.82 +
+            (_targetMouthForm.abs() * 0.12) +
+            (((_targetMouthPucker + _targetMouthFunnel) * 0.5) * 0.06))
+        .clamp(0.0, 1.0)
+        .toDouble();
+
+    if (_wasSpeaking && _speechEnergyTarget >= 0.68) {
+      _triggerSpeakingGestureBurst(
+        baseStrength: 0.40 + (_speechEnergyTarget * 0.18),
+      );
+    }
   }
 
   void _ensureMouthBlendLoop() {
@@ -983,27 +1094,37 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       return;
     }
 
-    _mouthBlendTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
-      final alpha = _wasSpeaking ? 0.58 : 0.32;
+    _mouthBlendTimer = Timer.periodic(_animationFrameInterval, (_) {
+      // In FacialExpression blend mode the targets are already smooth 60fps data,
+      // so use a higher alpha to track closely. Viseme-ID mode uses a softer alpha
+      // since targets jump discretely every 100ms+.
+      final bool isBlendMode = _wasSpeaking && widget.blendTimeline.isNotEmpty;
+      final alpha = isBlendMode ? 0.78 : (_wasSpeaking ? 0.58 : 0.32);
 
       _lastMouthOpen += (_targetMouthOpen - _lastMouthOpen) * alpha;
       _currentMouthForm += (_targetMouthForm - _currentMouthForm) * alpha;
       _currentMouthPucker += (_targetMouthPucker - _currentMouthPucker) * alpha;
       _currentMouthFunnel += (_targetMouthFunnel - _currentMouthFunnel) * alpha;
+      _currentMouthX += (_targetMouthX - _currentMouthX) * alpha;
+      final speechAlpha = _wasSpeaking ? 0.52 : 0.20;
+      _speechEnergyCurrent +=
+          (_speechEnergyTarget - _speechEnergyCurrent) * speechAlpha;
 
       _bridge.setParameters(<String, double>{
         'ParamMouthOpenY': _lastMouthOpen.clamp(0.0, 1.0),
         'ParamMouthForm': _currentMouthForm.clamp(-1.0, 1.0),
         'MouthPucker': _currentMouthPucker.clamp(0.0, 1.0),
         'MouthFunnel': _currentMouthFunnel.clamp(0.0, 1.0),
-        'MouthX': 0.0,
+        'MouthX': _currentMouthX.clamp(-1.0, 1.0),
       });
 
       if (!_wasSpeaking) {
+        _speechEnergyTarget = 0.0;
         final settled = (_lastMouthOpen - _targetMouthOpen).abs() < 0.01 &&
             (_currentMouthForm - _targetMouthForm).abs() < 0.01 &&
             (_currentMouthPucker - _targetMouthPucker).abs() < 0.01 &&
-            (_currentMouthFunnel - _targetMouthFunnel).abs() < 0.01;
+            (_currentMouthFunnel - _targetMouthFunnel).abs() < 0.01 &&
+            (_currentMouthX - _targetMouthX).abs() < 0.01;
 
         if (settled && _targetMouthOpen <= 0.01) {
           _stopMouthBlendLoop();
@@ -1028,7 +1149,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     var phase = 0.0;
     _ensureMouthBlendLoop();
     _fallbackLipSyncTimer =
-        Timer.periodic(const Duration(milliseconds: 90), (_) {
+        Timer.periodic(_fallbackLipSyncInterval, (_) {
       if (!_wasSpeaking) {
         return;
       }
@@ -1048,6 +1169,49 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   void _stopFallbackLipSync() {
     _fallbackLipSyncTimer?.cancel();
     _fallbackLipSyncTimer = null;
+  }
+
+  /// Audio-clock driven blendshape playback (premium FacialExpression mode).
+  /// Polls every 16ms; uses audioPlayer.position as master clock to compute
+  /// the 60fps frame index, then maps the 5-float compact frame to mouth params.
+  void _startBlendPlayback() {
+    _stopBlendPlayback();
+    _lastBlendFrame = -1;
+    _blendPlaybackTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
+      if (!_wasSpeaking) return;
+      final audioMs = widget.audioPlayer?.position.inMilliseconds ?? 0;
+      // 60fps frame index from audio clock (integer division avoids float drift)
+      final frameIdx = (audioMs * 60 ~/ 1000);
+      if (frameIdx == _lastBlendFrame) return; // no new frame yet
+      _lastBlendFrame = frameIdx;
+
+      // Look up the exact frame; walk back up to 4 frames to hold-last on gaps
+      List<double>? frame;
+      for (int i = frameIdx; i >= math.max(0, frameIdx - 4); i--) {
+        frame = widget.blendTimeline[i];
+        if (frame != null) break;
+      }
+      if (frame == null || frame.length < 5) return;
+
+      // frame = [openY, funnel, pucker, mouthX, form]
+      _setMouthTargets(<String, double>{
+        'ParamMouthOpenY': frame[0],
+        'MouthFunnel': frame[1],
+        'MouthPucker': frame[2],
+        'MouthX': frame[3],
+        'ParamMouthForm': frame[4],
+      });
+      // Trigger a subtle gesture burst on strong syllables
+      if (frame[0] >= 0.72) {
+        _triggerSpeakingGestureBurst(baseStrength: 0.50);
+      }
+    });
+  }
+
+  void _stopBlendPlayback() {
+    _blendPlaybackTimer?.cancel();
+    _blendPlaybackTimer = null;
+    _lastBlendFrame = -1;
   }
 
   void _startSpeakingMicroMotion() {
@@ -1082,7 +1246,9 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
 
       final surfaceReady = await _bridge.isSurfaceReady();
       final hasModel = await _bridge.hasNativeModel();
-      if (!surfaceReady || !hasModel) {
+      final frameAgeMs = await _bridge.getRenderFrameAgeMs();
+      final hasRecentFrames = _hasRecentFrames(frameAgeMs, maxAgeMs: 2200);
+      if (!surfaceReady || (!hasModel && !hasRecentFrames)) {
         _healthMissStreak += 1;
         _stalledFrameStreak = 0;
         if (_healthMissStreak < 2) {
@@ -1093,12 +1259,12 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
           setState(() {
             _modelLoaded = false;
           });
+          _startStuckLoadingTimer();
         }
         await _recoverAfterResume();
         return;
       }
 
-      final frameAgeMs = await _bridge.getRenderFrameAgeMs();
       final renderStalled = frameAgeMs >= 0 && frameAgeMs > 3500;
       if (renderStalled) {
         _stalledFrameStreak += 1;
@@ -1109,6 +1275,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
             setState(() {
               _modelLoaded = false;
             });
+            _startStuckLoadingTimer();
           }
           await _recoverAfterResume();
           return;
@@ -1124,6 +1291,64 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     _healthCheckTimer?.cancel();
     _healthCheckTimer = null;
   }
+
+  // ── Stuck-loading watchdog ────────────────────────────────────────────────
+  // If the model stays in a loading state for >5 s despite retry attempts
+  // (e.g. GL surface corrupted after returning from camera), increment
+  // _platformRebuildGeneration so the PlatformViewLink gets a new key, which
+  // forces the Android GL surface to be destroyed and recreated from scratch.
+  void _startStuckLoadingTimer() {
+    _stuckLoadingTimer?.cancel();
+    _stuckLoadingTimer =
+        Timer(const Duration(seconds: 5), _onStuckLoadingTimeout);
+  }
+
+  void _cancelStuckLoadingTimer() {
+    _stuckLoadingTimer?.cancel();
+    _stuckLoadingTimer = null;
+  }
+
+  void _onStuckLoadingTimeout() {
+    _stuckLoadingTimer = null;
+    if (!mounted || _modelLoaded) return;
+    unawaited(_handleStuckLoadingTimeout());
+  }
+
+  Future<void> _handleStuckLoadingTimeout() async {
+    if (!mounted || _modelLoaded || !_platformViewReady) {
+      return;
+    }
+
+    final surfaceReady = await _bridge.isSurfaceReady();
+    final frameAgeMs = await _bridge.getRenderFrameAgeMs();
+    if (!mounted || _modelLoaded) {
+      return;
+    }
+
+    if (surfaceReady && _hasRecentFrames(frameAgeMs, maxAgeMs: 2200)) {
+      setState(() {
+        _modelLoaded = true;
+      });
+      _startHealthChecks();
+      return;
+    }
+
+    // Reset all in-progress flags so the new view can start cleanly.
+    _modelInitInProgress = false;
+    _resumeRecoveryInProgress = false;
+    _needsResumeRecovery = false;
+    _modelRetryTimer?.cancel();
+    _modelRetryTimer = null;
+    _stopHealthChecks();
+    setState(() {
+      // Incrementing this key destroys the current PlatformView and creates a
+      // fresh one; _onPlatformViewCreated() will fire and re-run _initializeModel.
+      _platformRebuildGeneration++;
+      _platformViewReady = false;
+      _modelLoaded = false;
+    });
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   _TalkPreset _resolveTalkPreset() {
     var preset = _activeEmotionIntensity < 0.35
@@ -1220,7 +1445,8 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   }
 
   double _readGestureBurstEnvelope(int nowMs) {
-    if (_gestureBurstEndMs <= _gestureBurstStartMs || nowMs >= _gestureBurstEndMs) {
+    if (_gestureBurstEndMs <= _gestureBurstStartMs ||
+        nowMs >= _gestureBurstEndMs) {
       _gestureBurstPeak = 0.0;
       return 0.0;
     }
@@ -1252,12 +1478,12 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     _retargetIdlePose(force: true);
     _scheduleNextBlink();
 
-    _idleBehaviorTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+    _idleBehaviorTimer = Timer.periodic(_animationFrameInterval, (_) {
       if (!_modelLoaded) {
         return;
       }
 
-      _idleMotionPhase += 0.08;
+      _idleMotionPhase += 0.04;
       _retargetEyes();
       _retargetIdlePose();
       _updateIdlePoseLerp();
@@ -1269,13 +1495,18 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       if (_wasSpeaking) {
         final preset = _resolveTalkPreset();
         final motion = _resolveMotionTuning();
+        final speechEnergy = (_speechEnergyCurrent *
+                (0.84 + (motion.energy * 0.18)))
+            .clamp(0.0, 1.0)
+            .toDouble();
         final styleEnergy = (0.92 + (_activeEmotionIntensity * 0.20))
             .clamp(0.80, 1.18)
             .toDouble();
-        final gestureGain =
-            (preset.gestureBase + (_activeEmotionIntensity * preset.gestureScale)) *
-                motion.energy *
-                styleEnergy;
+        final gestureGain = (preset.gestureBase +
+                (_activeEmotionIntensity * preset.gestureScale)) *
+            motion.energy *
+            styleEnergy *
+            (0.88 + (speechEnergy * 0.34));
         var speakPulse =
             math.sin(_idleMotionPhase * (1.0 + (preset.armScale * 0.30)));
         var talkNod = math.sin(_idleMotionPhase * preset.nodSpeed + 0.2);
@@ -1287,40 +1518,130 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
         if (burst > 0) {
           talkNod += math.sin(_idleMotionPhase * 3.05 + 0.1) * (0.58 * burst);
           talkSway += math.sin(_idleMotionPhase * 3.50 + 0.7) * (0.46 * burst);
-          speakPulse += math.sin(_idleMotionPhase * 4.20 + 0.2) * (0.50 * burst);
+          speakPulse +=
+              math.sin(_idleMotionPhase * 4.20 + 0.2) * (0.50 * burst);
         }
+        final energyAccent = speechEnergy * (0.22 + (0.20 * motion.energy));
+        talkNod += math.sin(_idleMotionPhase * 2.55 + 0.5) * energyAccent;
+        talkSway +=
+            math.sin(_idleMotionPhase * 2.15 + 1.2) * (energyAccent * 0.82);
+        speakPulse +=
+            math.sin(_idleMotionPhase * 3.85 + 1.0) * (energyAccent * 0.72);
         final talkEyeOpen = (preset.eyeBase +
                 (math.sin(
                         _idleMotionPhase * (0.70 + (preset.headScale * 0.18))) *
-                    preset.eyePulse))
+                    preset.eyePulse) +
+                (speechEnergy * 0.06))
             .clamp(math.max(preset.eyeMin, 0.84), 1.0)
             .toDouble();
         final headScale = preset.headScale * motion.head;
-        final bodyScale = preset.headScale * motion.body;
+        final bodyScale = preset.bodyScale * motion.body;
         final armScale = preset.armScale * motion.arms;
         final handScale = preset.handScale * motion.hands;
+        final gestureArc =
+            math.sin(_idleMotionPhase * (1.18 + (armScale * 0.18)) + 1.1);
+        final torsoLead =
+            math.sin(_idleMotionPhase * (0.78 + (bodyScale * 0.10)) + 1.5);
+        final handRoll =
+            math.sin(_idleMotionPhase * (1.62 + (handScale * 0.14)) + 0.9);
+        final handLift =
+            math.sin(_idleMotionPhase * (1.34 + (armScale * 0.12)) + 2.2);
+        final speakingBreath = (0.54 +
+                (math.sin(_idleMotionPhase * (0.96 + (motion.energy * 0.08))) *
+                    0.08) +
+                (burst * 0.03) +
+                (speechEnergy * 0.04))
+            .clamp(0.42, 0.74)
+            .toDouble();
+        final leftHandAngleX =
+            (_idlePoseCurrent['HandLeftAngleX'] ?? 0.0) +
+                (((-gestureArc * 0.26) +
+                            (talkNod * 0.12) +
+                            (burst * 0.14) +
+                            (speechEnergy * 0.12)) *
+                    handScale *
+                    gestureGain);
+        final rightHandAngleX =
+            (_idlePoseCurrent['HandRightAngleX'] ?? 0.0) +
+                (((gestureArc * 0.24) +
+                            (talkNod * 0.10) -
+                            (burst * 0.10) -
+                            (speechEnergy * 0.08)) *
+                    handScale *
+                    gestureGain);
+        final leftHandAngleZ =
+            (_idlePoseCurrent['HandLeftAngleZ'] ?? 0.0) +
+                (((handRoll * 0.28) +
+                            (speakPulse * 0.14) +
+                            (speechEnergy * 0.10)) *
+                    handScale *
+                    gestureGain);
+        final rightHandAngleZ =
+            (_idlePoseCurrent['HandRightAngleZ'] ?? 0.0) +
+                (((-handRoll * 0.30) -
+                            (speakPulse * 0.12) -
+                            (speechEnergy * 0.08)) *
+                    handScale *
+                    gestureGain);
+        final leftHandOpen = (_idlePoseCurrent['HandLeftOpen'] ?? 0.0) +
+            ((speakPulse * (0.20 * handScale)) +
+                (handLift * (0.08 * handScale)) +
+                (burst * 0.04) +
+                (speechEnergy * 0.07));
+        final rightHandOpen = (_idlePoseCurrent['HandRightOpen'] ?? 0.0) -
+            ((speakPulse * (0.20 * handScale)) -
+                (handLift * (0.06 * handScale)) +
+                (burst * 0.03) +
+                (speechEnergy * 0.05));
         _bridge.setParameters(<String, double>{
-          'ParamAngleX': (talkSway * 1.20 * headScale) * gestureGain,
-          'ParamAngleY': (talkNod * 0.95 * headScale) * gestureGain,
+          'ParamAngleX': ((talkSway * 1.20) + (speechEnergy * 0.12)) *
+              headScale *
+              gestureGain,
+          'ParamAngleY': ((talkNod * 0.95) + (speechEnergy * 0.10)) *
+              headScale *
+              gestureGain,
           'ParamAngleZ': (_idlePoseCurrent['ParamAngleZ'] ?? 0.0) +
-              (talkRoll * (0.55 * headScale)),
-          'ParamBodyAngleX': (talkSway * 0.72 * bodyScale) * gestureGain,
+              ((talkRoll * (0.55 * headScale)) + (speechEnergy * 0.16)),
+          'ParamBodyAngleX':
+              ((talkSway * 0.80) + (speechEnergy * 0.10)) * bodyScale * gestureGain,
           'ParamBodyAngleY': (_idlePoseCurrent['ParamBodyAngleY'] ?? 0.0) +
-              (talkNod * (0.24 * bodyScale)),
+              ((talkNod * (0.28 * bodyScale)) +
+                  (torsoLead * (0.12 * bodyScale)) +
+                  (speechEnergy * 0.08)),
           'ParamBodyAngleZ': (_idlePoseCurrent['ParamBodyAngleZ'] ?? 0.0) +
-              (talkRoll * (0.20 * bodyScale)),
-          'ParamEyeBallX': _idleEyeCurrentX + (talkSway * 0.05),
-          'ParamEyeBallY': _idleEyeCurrentY + (talkNod * 0.03),
+              (talkRoll * (0.24 * bodyScale)) +
+              (speechEnergy * 0.05),
+          'ParamEyeBallX':
+              _idleEyeCurrentX + (talkSway * 0.05) + (speechEnergy * 0.03),
+          'ParamEyeBallY':
+              _idleEyeCurrentY + (talkNod * 0.03) + (speechEnergy * 0.015),
           // Keep eyes naturally open during speech to avoid the "talking with
           // closed eyes" look from expression overlays.
-          'ParamEyeLOpen': talkEyeOpen,
-          'ParamEyeROpen': talkEyeOpen,
+          if (!_blinkInProgress) ...<String, double>{
+            'ParamEyeLOpen': talkEyeOpen,
+            'ParamEyeROpen': talkEyeOpen,
+          },
+          'ParamBreath': speakingBreath,
           'Param28': (_idlePoseCurrent['Param28'] ?? 0.0) +
-              ((speakPulse * 0.34 * armScale) * gestureGain),
+              (((speakPulse * 0.34) + (gestureArc * 0.18) + (burst * 0.12)) *
+                  armScale *
+                  gestureGain),
           'Param29': (_idlePoseCurrent['Param29'] ?? 0.0) -
-              ((speakPulse * 0.30 * armScale) * gestureGain),
-          'Param42': _idlePoseCurrent['Param42'] ?? 0.0,
-          'Param43': _idlePoseCurrent['Param43'] ?? 0.0,
+              (((speakPulse * 0.30) - (gestureArc * 0.14) + (burst * 0.10)) *
+                  armScale *
+                  gestureGain),
+          'Param42': (_idlePoseCurrent['Param42'] ?? 0.0) +
+              (((gestureArc * 0.22) +
+                          (torsoLead * 0.11) +
+                          (speechEnergy * 0.09)) *
+                  bodyScale *
+                  gestureGain),
+          'Param43': (_idlePoseCurrent['Param43'] ?? 0.0) +
+              (((-gestureArc * 0.18) +
+                          (talkSway * 0.12) -
+                          (speechEnergy * 0.07)) *
+                  bodyScale *
+                  gestureGain),
           'Param23': _idlePoseCurrent['Param23'] ?? 0.0,
           'Param24': _idlePoseCurrent['Param24'] ?? 0.0,
           'Param25': _idlePoseCurrent['Param25'] ?? 0.0,
@@ -1336,15 +1657,14 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
           'Param18': _idlePoseCurrent['Param18'] ?? 0.0,
           'Param19': _idlePoseCurrent['Param19'] ?? 0.0,
           'Param20': _idlePoseCurrent['Param20'] ?? 0.0,
-          'HandLeftAngleX': _idlePoseCurrent['HandLeftAngleX'] ?? 0.0,
-          'HandRightAngleX': _idlePoseCurrent['HandRightAngleX'] ?? 0.0,
-          'HandLeftAngleZ': _idlePoseCurrent['HandLeftAngleZ'] ?? 0.0,
-          'HandRightAngleZ': _idlePoseCurrent['HandRightAngleZ'] ?? 0.0,
-          'HandLeftOpen': (_idlePoseCurrent['HandLeftOpen'] ?? 0.0) +
-              (speakPulse * (0.20 * handScale)),
-          'HandRightOpen': (_idlePoseCurrent['HandRightOpen'] ?? 0.0) -
-              (speakPulse * (0.20 * handScale)),
-          'Param34': _idlePoseCurrent['Param34'] ?? 0.0,
+          'HandLeftAngleX': leftHandAngleX,
+          'HandRightAngleX': rightHandAngleX,
+          'HandLeftAngleZ': leftHandAngleZ,
+          'HandRightAngleZ': rightHandAngleZ,
+          'HandLeftOpen': leftHandOpen,
+          'HandRightOpen': rightHandOpen,
+          'Param34': (_idlePoseCurrent['Param34'] ?? 0.0) +
+              ((gestureArc * 0.10) + (burst * 0.06) + (speechEnergy * 0.04)),
         });
         return;
       }
@@ -1455,7 +1775,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       offsetY: initialFrame.offsetY,
     );
 
-    _viewWanderTimer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+    _viewWanderTimer = Timer.periodic(_animationFrameInterval, (_) {
       if (!_modelLoaded) {
         return;
       }
@@ -1477,9 +1797,10 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       return baseFrame;
     }
 
-    final nowSec = DateTime.now().microsecondsSinceEpoch /
-        Duration.microsecondsPerSecond;
+    final nowSec =
+        DateTime.now().microsecondsSinceEpoch / Duration.microsecondsPerSecond;
     final intensity = _activeEmotionIntensity.clamp(0.0, 1.0).toDouble();
+    final speechEnergy = _speechEnergyCurrent.clamp(0.0, 1.0).toDouble();
     final styleGain = switch (_activeExpressionStyle) {
       'excited' => 1.22,
       'angry' => 1.12,
@@ -1489,24 +1810,29 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       _ => 1.0,
     };
 
-    final swayX = math.sin(nowSec * 2.35) *
-        (0.0038 + (0.0048 * intensity)) *
-        styleGain;
+    final viewSpeechGain = speechEnergy * 0.42;
+    final swayX =
+        math.sin(nowSec * 2.35) *
+            (0.0034 + (0.0042 * intensity) + (0.0012 * viewSpeechGain)) *
+            styleGain;
     final swayY = math.sin((nowSec * 3.05) + 0.6) *
-            (0.0029 + (0.0038 * intensity)) *
+            (0.0025 + (0.0033 * intensity) + (0.0010 * viewSpeechGain)) *
             styleGain -
-        ((0.0018 + (0.0028 * intensity)) * styleGain);
+        ((0.0016 + (0.0024 * intensity) + (0.0009 * viewSpeechGain)) * styleGain);
     final scalePulse = (math.sin((nowSec * 2.80) + 0.35) *
-            (0.0028 + (0.0044 * intensity)) *
+            (0.0025 + (0.0038 * intensity) + (0.0012 * viewSpeechGain)) *
             styleGain) +
-        ((0.0038 + (0.0052 * intensity)) * styleGain);
+        ((0.0034 + (0.0048 * intensity) + (0.0014 * viewSpeechGain)) * styleGain);
 
-    final composedScale =
-        (baseFrame.scale + scalePulse).clamp(2.06, 2.38).toDouble();
-    final composedOffsetX =
-        (baseFrame.offsetX + swayX).clamp(-0.05, 0.15).toDouble();
-    final composedOffsetY =
-        (baseFrame.offsetY + swayY).clamp(-0.66, -0.46).toDouble();
+    final composedScale = (baseFrame.scale + scalePulse)
+        .clamp(_bustUpScale - 0.16, _bustUpScale + 0.16)
+        .toDouble();
+    final composedOffsetX = (baseFrame.offsetX + swayX)
+        .clamp(_bustUpOffsetX - 0.09, _bustUpOffsetX + 0.11)
+        .toDouble();
+    final composedOffsetY = (baseFrame.offsetY + swayY)
+        .clamp(_bustUpOffsetY - 0.08, _bustUpOffsetY + 0.12)
+        .toDouble();
 
     return AvatarMotionFrame(
       offsetX: composedOffsetX,
@@ -1552,8 +1878,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     }
 
     if (_wasSpeaking) {
-      // Speaking already animates eye openness; avoid hard blink closures that
-      // can look like the eyes are stuck shut while talking.
+      _playSpeechBlink();
       return;
     }
 
@@ -1608,6 +1933,44 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
         _blinkInProgress = false;
       }));
     }
+  }
+
+  void _playSpeechBlink() {
+    _blinkInProgress = true;
+    final style = _activeExpressionStyle;
+    final closeAmount = switch (style) {
+      'excited' => 0.38,
+      'angry' => 0.26,
+      'sad' || 'concerned' => 0.18,
+      'shy' || 'flirty' || 'playful' => 0.24,
+      _ => 0.22,
+    };
+    final reopenAmount = (closeAmount + 0.36).clamp(0.48, 0.72).toDouble();
+
+    _blinkStepTimers.add(Timer(const Duration(milliseconds: 0), () {
+      if (!_modelLoaded) return;
+      _bridge.setParameters(<String, double>{
+        'ParamEyeLOpen': closeAmount,
+        'ParamEyeROpen': closeAmount,
+      });
+    }));
+
+    _blinkStepTimers.add(Timer(const Duration(milliseconds: 58), () {
+      if (!_modelLoaded) return;
+      _bridge.setParameters(<String, double>{
+        'ParamEyeLOpen': reopenAmount,
+        'ParamEyeROpen': reopenAmount,
+      });
+    }));
+
+    _blinkStepTimers.add(Timer(const Duration(milliseconds: 128), () {
+      if (!_modelLoaded) return;
+      _bridge.clearParameters(const <String>[
+        'ParamEyeLOpen',
+        'ParamEyeROpen',
+      ]);
+      _blinkInProgress = false;
+    }));
   }
 
   void _retargetEyes({bool force = false}) {
@@ -1685,6 +2048,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     return Stack(
       children: <Widget>[
         PlatformViewLink(
+          key: ValueKey<int>(_platformRebuildGeneration),
           viewType: 'girlai2/live2d_view',
           surfaceFactory: (context, controller) {
             return AndroidViewSurface(
@@ -1756,6 +2120,7 @@ class _TalkPreset {
   final double gestureBase;
   final double gestureScale;
   final double headScale;
+  final double bodyScale;
   final double armScale;
   final double handScale;
   final double nodSpeed;
@@ -1769,6 +2134,7 @@ class _TalkPreset {
     required this.gestureBase,
     required this.gestureScale,
     required this.headScale,
+    required this.bodyScale,
     required this.armScale,
     required this.handScale,
     required this.nodSpeed,

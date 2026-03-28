@@ -31,6 +31,7 @@ import {
 import type { FeedbackReasonCode } from './services/memoryService';
 import {
   checkAndAwardMilestones,
+  ensureRelationshipDashboardState,
   getPendingMilestones,
   markMilestoneDisplayed,
 } from './services/milestoneService';
@@ -53,11 +54,14 @@ import {
   startVirtualDateSession,
   endVirtualDateSession,
   getVirtualDateOverlayBlock,
+  getCurrentVirtualDateSession,
   VirtualDateActivity,
 } from './services/virtualDateService';
 import { createLiveModeRealtimeSession } from './services/realtimeSessionService';
 
 admin.initializeApp();
+
+const RESPONSE_HISTORY_FETCH_LIMIT = 40;
 
 // Set OpenAI API key from environment
 const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -197,6 +201,11 @@ function normalizeTemporalContext(raw: unknown): UserTemporalContext | undefined
  */
 export const generateResponse = functions
   .region('us-central1')
+  .runWith({
+    minInstances: 1,
+    memory: '1GB',
+    timeoutSeconds: 60,
+  })
   .https.onCall(async (data, context) => {
     // Log auth context for debugging
     functions.logger.info('generateResponse called', {
@@ -253,6 +262,11 @@ export const generateResponse = functions
       const internalTester = isInternalTester(authUid, userId);
       const db = admin.firestore();
       const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      const callableStartedAt = Date.now();
+      let historyFetchMs = 0;
+      let datesContextMs = 0;
+      let aiResponseMs = 0;
+      let postPersistMs = 0;
 
       if (temporalContext) {
         db.collection('users').doc(userId).set(
@@ -271,15 +285,44 @@ export const generateResponse = functions
         });
       }
 
-      // Save user message to Firestore
-      const userMessageRef = await db.collection('conversations').add({
+      const trimmedMessage = userMessage.trim();
+
+      // Start the write and history read together. The current turn is passed
+      // separately into generateAIResponse, so conversation history does not
+      // need to wait for this write to complete first.
+      const userMessageRefPromise = db.collection('conversations').add({
         userId,
-        content: userMessage.trim(),
+        content: trimmedMessage,
         isFromUser: true,
         timestamp,
         createdAt: timestamp,
         ...(chatMode ? { chatMode } : {}),
       });
+
+      const recentMessagesPromise = db
+        .collection('conversations')
+        .where('userId', '==', userId)
+        .orderBy('timestamp', 'desc')
+        .limit(RESPONSE_HISTORY_FETCH_LIMIT)
+        .get();
+      const datesContextPromise = (async (): Promise<string> => {
+        const startedAt = Date.now();
+        const [datesContextBlockRaw, virtualDateBlock] = await Promise.all([
+          buildDatesContextBlock(userId, {
+            now:
+              typeof temporalContext?.clientEpochMs === 'number' &&
+              Number.isFinite(temporalContext.clientEpochMs)
+                ? new Date(temporalContext.clientEpochMs)
+                : new Date(),
+            timeZoneOffsetMinutes: temporalContext?.timeZoneOffsetMinutes ?? 0,
+          }).catch(() => ''),
+          getVirtualDateOverlayBlock(userId).catch(() => ''),
+        ]);
+        datesContextMs = Date.now() - startedAt;
+        return [datesContextBlockRaw, virtualDateBlock]
+          .filter((s) => s.trim().length > 0)
+          .join('\n\n');
+      })();
 
       // Fire-and-forget milestone check (non-blocking — never delays the response)
       checkAndAwardMilestones(userId).catch((err: any) => {
@@ -289,13 +332,9 @@ export const generateResponse = functions
         });
       });
 
-      // Get extended conversation history for context (3000 messages for deep memory)
-      const recentMessages = await db
-        .collection('conversations')
-        .where('userId', '==', userId)
-        .orderBy('timestamp', 'desc')
-        .limit(100)
-        .get();
+      const historyStartedAt = Date.now();
+      const recentMessages = await recentMessagesPromise;
+      historyFetchMs = Date.now() - historyStartedAt;
 
       const conversationHistory: ConversationMessage[] = recentMessages.docs
         .map((doc) => {
@@ -307,19 +346,10 @@ export const generateResponse = functions
         })
         .reverse();
 
-      // Build dates context block + virtual date overlay in parallel
-      const [datesContextBlockRaw, virtualDateBlock] = await Promise.all([
-        buildDatesContextBlock(userId).catch(() => ''),
-        getVirtualDateOverlayBlock(userId).catch(() => ''),
-      ]);
-      const datesContextBlock = [datesContextBlockRaw, virtualDateBlock]
-        .filter((s) => s.trim().length > 0)
-        .join('\n\n');
-
       // Auto-detect and save any dates the user mentioned in this message
       const detectedDates = detectDatesFromMessage(userMessage);
-      if (detectedDates.length > 0) {
-        await Promise.all(
+      const detectedDatesPersistPromise = detectedDates.length > 0
+        ? Promise.all(
           detectedDates
             .filter((d) => d.date !== null)
             .map((d) =>
@@ -330,12 +360,14 @@ export const generateResponse = functions
                 recurs:   d.recurs,
               }).catch(() => {}), // non-fatal
             ),
-        );
-      }
+        )
+        : Promise.resolve([]);
+      const datesContextBlock = await datesContextPromise;
 
       // Generate AI response with userId for memory access
+      const aiResponseStartedAt = Date.now();
       const aiResponse = await generateAIResponse(
-        userMessage.trim(),
+        trimmedMessage,
         conversationHistory,
         userId,
         temporalContext,
@@ -343,18 +375,45 @@ export const generateResponse = functions
         datesContextBlock,
         userEnvCtx,
       );
+      aiResponseMs = Date.now() - aiResponseStartedAt;
 
-      // Save AI response to Firestore with emotion trigger for avatar
-      await db.collection('conversations').add({
+      const persistenceStartedAt = Date.now();
+      const [userMessageRef] = await Promise.all([
+        userMessageRefPromise,
+        db.collection('conversations').add({
+          userId,
+          content: aiResponse.content,
+          isFromUser: false,
+          timestamp,
+          emotion: aiResponse.emotion,
+          emotionTrigger: aiResponse.emotionTrigger,
+          emotionIntensity: aiResponse.emotionIntensity,
+          modelUsed: aiResponse.modelUsed,
+          createdAt: timestamp,
+        }),
+        detectedDatesPersistPromise,
+      ]);
+      postPersistMs = Date.now() - persistenceStartedAt;
+
+      const mergedStageTimingsMs = {
+        ...(aiResponse.qualityMeta?.stageTimingsMs ?? {}),
+        historyFetchMs,
+        datesContextMs,
+        aiResponseMs,
+        postPersistMs,
+        totalCallableMs: Date.now() - callableStartedAt,
+      };
+
+      functions.logger.info('generateResponse timings', {
         userId,
-        content: aiResponse.content,
-        isFromUser: false,
-        timestamp,
-        emotion: aiResponse.emotion,
-        emotionTrigger: aiResponse.emotionTrigger,
-        emotionIntensity: aiResponse.emotionIntensity,
+        route: aiResponse.qualityMeta?.route ?? null,
+        escalated: aiResponse.qualityMeta?.escalated ?? null,
         modelUsed: aiResponse.modelUsed,
-        createdAt: timestamp,
+        historyFetchMs,
+        datesContextMs,
+        aiResponseMs,
+        postPersistMs,
+        totalCallableMs: mergedStageTimingsMs.totalCallableMs,
       });
 
       // Return success response with emotion trigger for avatar animations
@@ -365,7 +424,25 @@ export const generateResponse = functions
         emotion: aiResponse.emotion,
         emotionTrigger: aiResponse.emotionTrigger,
         emotionIntensity: aiResponse.emotionIntensity,
-        qualityMeta: internalTester ? aiResponse.qualityMeta ?? null : null,
+        qualityMeta: internalTester
+          ? {
+              ...(aiResponse.qualityMeta ?? {
+                strategy: 'empathic_reflection',
+                questionBudget: 0,
+                repairMode: false,
+                consentCheckRequired: false,
+                scoreSummary: {
+                  engagement: 0.0,
+                  empathy: 0.0,
+                  safety: 0.0,
+                  novelty: 0.0,
+                  persona: 0.0,
+                },
+                planSource: 'rules' as const,
+              }),
+              stageTimingsMs: mergedStageTimingsMs,
+            }
+          : null,
       };
     } catch (error: any) {
       functions.logger.error('Error in generateResponse', {
@@ -814,6 +891,7 @@ export const generateVoiceMessage = functions
     minInstances: 1,
   })
   .https.onCall(async (data, context) => {
+    const callableStartedAt = Date.now();
     // Verify authentication
     let userId = context.auth?.uid;
     
@@ -865,15 +943,12 @@ export const generateVoiceMessage = functions
       const configStatus = checkVoiceServiceConfig();
 
       if (subscriptionTier === 'regular' && !configStatus.azure) {
-        functions.logger.warn('Azure not configured, trying ElevenLabs');
-        if (!configStatus.elevenlabs) {
-          throw new functions.https.HttpsError(
-            'failed-precondition',
-            'Voice service not configured. Contact support.',
-            { reason: 'voice_not_configured', provider: 'azure' }
-          );
-        }
-        subscriptionTier = 'ultra'; // Fallback to ElevenLabs
+        functions.logger.warn('Azure not configured for regular voice path');
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'Voice service not configured. Contact support.',
+          { reason: 'voice_not_configured', provider: 'azure' }
+        );
       }
 
       // Generate voice with visemes
@@ -887,18 +962,31 @@ export const generateVoiceMessage = functions
       functions.logger.info('Voice generated successfully', {
         userId,
         provider: result.provider,
+        deliveryMode: result.deliveryMode ?? 'storage',
         durationMs: result.durationMs,
         visemeCount: result.visemeTimeline.length,
         blendFrameCount,
+        audioBytesBase64Length: result.audioBase64?.length ?? 0,
+        synthesisMs: result.timingsMs?.synthesisMs ?? null,
+        providerRequestMs: result.timingsMs?.providerRequestMs ?? null,
+        uploadMs: result.timingsMs?.uploadMs ?? null,
+        audioFormat: result.timingsMs?.audioFormat ?? null,
+        deliveryProfile: result.timingsMs?.deliveryProfile ?? null,
+        totalVoicePipelineMs: result.timingsMs?.totalMs ?? null,
+        totalCallableMs: Date.now() - callableStartedAt,
       });
 
       return {
         success: true,
         audioUrl: result.audioUrl,
+        audioBase64: result.audioBase64 ?? null,
+        audioContentType: result.audioContentType ?? null,
+        deliveryMode: result.deliveryMode ?? 'storage',
         visemeTimeline: result.visemeTimeline,
         blendTimeline: result.blendTimeline,
         durationMs: result.durationMs,
         provider: result.provider,
+        timingsMs: result.timingsMs ?? null,
       };
     } catch (error: any) {
       if (error instanceof functions.https.HttpsError) {
@@ -918,8 +1006,8 @@ export const generateVoiceMessage = functions
             'failed-precondition',
             'Voice service not configured. Contact support.',
             {
-              reason: error.reason,
               ...error.details,
+              reason: error.reason,
             }
           );
         }
@@ -929,8 +1017,8 @@ export const generateVoiceMessage = functions
             'internal',
             'Voice audio delivery failed. Please try again.',
             {
-              reason: error.reason,
               ...error.details,
+              reason: error.reason,
             }
           );
         }
@@ -939,8 +1027,8 @@ export const generateVoiceMessage = functions
           'internal',
           'Voice generation failed. Please try again.',
           {
-            reason: error.reason,
             ...error.details,
+            reason: error.reason,
           }
         );
       }
@@ -1510,6 +1598,36 @@ export const acknowledgeMilestone = functions
   });
 
 /**
+ * Ensures the relationship dashboard docs exist for existing users whose
+ * metrics/stats may be missing because of earlier Firestore path bugs.
+ */
+export const ensureRelationshipDashboard = functions
+  .region('us-central1')
+  .https.onCall(async (_data, context) => {
+    const userId = context.auth?.uid;
+    if (!userId) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'User must be authenticated to access relationship insights',
+      );
+    }
+
+    try {
+      const result = await ensureRelationshipDashboardState(userId);
+      return { success: true, ...result };
+    } catch (error: any) {
+      functions.logger.error('Error in ensureRelationshipDashboard', {
+        userId,
+        error: error?.message,
+      });
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to prepare relationship dashboard',
+      );
+    }
+  });
+
+/**
  * Returns Aria's current "inner world" content for the Flutter Inner World chip:
  * a thought snippet generated from Aria's simulated inner life, weekly curiosity
  * topics, and the opinion she holds with lowest certainty (most open to discussion).
@@ -1939,6 +2057,16 @@ export const endVirtualDate = functions
     }
     await endVirtualDateSession(context.auth.uid);
     return { success: true };
+  });
+
+export const getCurrentVirtualDate = functions
+  .region('us-central1')
+  .https.onCall(async (_data, context) => {
+    if (!context.auth?.uid) {
+      throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
+    }
+
+    return getCurrentVirtualDateSession(context.auth.uid);
   });
 
 // ─────────────────────────────────────────────────────────────

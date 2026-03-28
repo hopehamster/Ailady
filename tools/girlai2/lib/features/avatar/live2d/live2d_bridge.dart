@@ -32,6 +32,14 @@ class Live2DBridge {
         'setParameters', <String, dynamic>{'parameters': parameters});
   }
 
+  Future<bool> setBackgroundColor(double r, double g, double b) async {
+    return _invoke('setBackgroundColor', <String, dynamic>{
+      'r': r,
+      'g': g,
+      'b': b,
+    });
+  }
+
   Future<bool> clearParameter(String id) async {
     return _invoke('clearParameter', <String, dynamic>{'id': id});
   }
@@ -75,7 +83,8 @@ class Live2DBridge {
   Future<int> getRenderFrameAgeMs() async {
     if (!isSupported) return -1;
     try {
-      final result = await _channel.invokeMethod<dynamic>('getRenderFrameAgeMs');
+      final result =
+          await _channel.invokeMethod<dynamic>('getRenderFrameAgeMs');
       if (result is int) {
         return result;
       }

@@ -16,10 +16,11 @@ import '../widgets/aria_inner_world_chip.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/chat_error_handler.dart';
 import '../../../core/exceptions/chat_exception.dart';
-import '../../../core/services/user_service.dart';
+import '../../../core/services/context_service.dart';
 import '../../../core/services/firebase_service.dart';
 import '../../../models/message.dart';
-import '../../../models/user_profile.dart';
+import '../../avatar/room/room_background_widget.dart';
+import '../../avatar/widgets/avatar_reaction_overlay.dart';
 import '../../avatar/widgets/avatar_view.dart';
 import '../../camera/screens/camera_vision_screen.dart';
 import '../../settings/screens/settings_screen.dart';
@@ -28,6 +29,26 @@ import '../widgets/upcoming_dates_chip.dart';
 import '../widgets/virtual_date_chip.dart';
 
 enum _MessageFeedbackVote { up, down }
+
+class _MemoryAudioSource extends StreamAudioSource {
+  final List<int> bytes;
+  final String contentType;
+
+  _MemoryAudioSource(this.bytes, {required this.contentType});
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final resolvedStart = start ?? 0;
+    final resolvedEnd = end ?? bytes.length;
+    return StreamAudioResponse(
+      sourceLength: bytes.length,
+      contentLength: resolvedEnd - resolvedStart,
+      offset: resolvedStart,
+      stream: Stream<List<int>>.value(bytes.sublist(resolvedStart, resolvedEnd)),
+      contentType: contentType,
+    );
+  }
+}
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -42,19 +63,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   late final AudioPlayer _audioPlayer;
   final FirebaseService _firebaseService = FirebaseService();
 
-  UserProfile? _userProfile;
   bool _isSpeaking = false;
   bool _isPreparingVoice = false;
   List<VisemeEvent> _currentVisemeTimeline = [];
+  Map<int, List<double>> _currentBlendTimeline = {};
   double _currentDurationMs = 0;
   String? _lastPlayedMessageId;
   String? _lastFailedMessageId;
   DateTime? _lastFailedAt;
+  bool _hasHydratedAutoplayBaseline = false;
   bool _showTranscriptPanel = false;
   bool _voiceOnlyMode = false;
-  bool _freeModeEnabled = false;
   final Map<String, _MessageFeedbackVote> _assistantFeedbackVotes = {};
   final Set<String> _assistantFeedbackPending = <String>{};
+  StreamSubscription<PlayerState>? _playerStateSubscription;
+  StreamSubscription<PlaybackEvent>? _playbackEventSubscription;
 
   // TIER 3: Conversation mode (normal / story / journal)
   ChatMode _chatMode = ChatMode.normal;
@@ -63,15 +86,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // just_audio 0.9.46+: AndroidPlayerOptions was removed; plain constructor is correct
-    _audioPlayer = AudioPlayer();
-    _loadUserProfile();
+    // Prefer native request headers on Android to avoid proxy overhead
+    // for public Cloud Storage voice URLs.
+    _audioPlayer = AudioPlayer(useProxyForRequestHeaders: false);
     _setupAudioListeners();
+    unawaited(ContextService.instance.primeContext());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _playerStateSubscription?.cancel();
+    _playbackEventSubscription?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -91,13 +117,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _setupAudioListeners() {
     // Listen for playback completion
-    _audioPlayer.playerStateStream.listen((state) {
+    _playerStateSubscription = _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed) {
         _onAudioComplete();
       }
     });
 
-    _audioPlayer.playbackEventStream.listen(
+    _playbackEventSubscription = _audioPlayer.playbackEventStream.listen(
       (_) {},
       onError: (Object error, StackTrace stackTrace) {
         if (kDebugMode) {
@@ -113,6 +139,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       setState(() {
         _isSpeaking = false;
         _currentVisemeTimeline = [];
+        _currentBlendTimeline = {};
       });
       // Notify avatar to stop speaking
       if (kDebugMode) {
@@ -126,6 +153,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     setState(() {
       _isSpeaking = false;
       _currentVisemeTimeline = [];
+      _currentBlendTimeline = {};
     });
   }
 
@@ -147,16 +175,20 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
 
     try {
+      final totalStartupStopwatch = Stopwatch()..start();
       if (kDebugMode) {
         debugPrint('🔊 Generating voice for message: $messageId');
       }
 
       // Generate voice with visemes
+      final voiceCallStopwatch = Stopwatch()..start();
       final voiceResult = await _firebaseService.generateVoice(text);
+      voiceCallStopwatch.stop();
 
       if (!mounted) return;
 
-      if (voiceResult.audioUrl.isEmpty) {
+      if (voiceResult.audioUrl.isEmpty &&
+          (voiceResult.audioBase64 == null || voiceResult.audioBase64!.isEmpty)) {
         throw const VoiceGenerationException(
           category: 'audio_delivery',
           message: 'audio delivery',
@@ -168,21 +200,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         debugPrint('🔊 Audio URL: ${voiceResult.audioUrl}');
       }
 
-      // Set up audio source with explicit configuration for network streaming
-      // This helps ExoPlayer handle Firebase Storage URLs better
-      await _audioPlayer.setAudioSource(
-        AudioSource.uri(
-          Uri.parse(voiceResult.audioUrl),
-          // Add headers if needed for Firebase Storage
-          headers: const {
-            'Accept': 'audio/mpeg',
-          },
-        ),
-        preload: true,
-      );
+      final loadStopwatch = Stopwatch()..start();
+      if (voiceResult.audioBase64 != null && voiceResult.audioBase64!.isNotEmpty) {
+        final audioBytes = base64Decode(voiceResult.audioBase64!);
+        await _audioPlayer.setAudioSource(
+          _MemoryAudioSource(
+            audioBytes,
+            contentType: voiceResult.audioContentType ?? 'audio/mpeg',
+          ),
+        );
+      } else {
+        await _audioPlayer.setUrl(voiceResult.audioUrl);
+      }
+      loadStopwatch.stop();
       final playbackFuture = _audioPlayer.play();
 
       // Wait for confirmed playback start before marking avatar as speaking.
+      final playbackStartStopwatch = Stopwatch()..start();
       if (!_audioPlayer.playing) {
         await _audioPlayer.playerStateStream
             .firstWhere((state) =>
@@ -196,9 +230,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               ),
             );
       }
+      playbackStartStopwatch.stop();
+      totalStartupStopwatch.stop();
 
       setState(() {
         _currentVisemeTimeline = voiceResult.visemeTimeline;
+        _currentBlendTimeline = voiceResult.blendTimeline;
         _currentDurationMs = voiceResult.durationMs;
         _isSpeaking = true;
       });
@@ -216,8 +253,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       if (kDebugMode) {
         debugPrint('🔊 Playing audio: ${voiceResult.audioUrl}');
+        debugPrint('🔊 Delivery mode: ${voiceResult.deliveryMode}');
         debugPrint('🔊 Visemes: ${voiceResult.visemeTimeline.length}');
+        debugPrint('🔊 BlendFrames: ${voiceResult.blendTimeline.length}');
         debugPrint('🔊 Duration: ${voiceResult.durationMs}ms');
+        debugPrint(
+            '🔊 Voice startup timings: callable=${voiceCallStopwatch.elapsedMilliseconds}ms load=${loadStopwatch.elapsedMilliseconds}ms playStart=${playbackStartStopwatch.elapsedMilliseconds}ms total=${totalStartupStopwatch.elapsedMilliseconds}ms');
+        if (voiceResult.timingsMs != null) {
+          debugPrint(
+              '🔊 Voice provider timings: ${jsonEncode(voiceResult.timingsMs)}');
+        }
       }
     } catch (e) {
       if (kDebugMode) {
@@ -240,6 +285,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         setState(() {
           _isSpeaking = false;
           _currentVisemeTimeline = [];
+          _currentBlendTimeline = {};
         });
       }
     } finally {
@@ -288,6 +334,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // Get the latest message (index 0 since list is reversed)
     final latestMessage = chatService.messages.first;
 
+    // Seed autoplay state from restored Firestore history once so returning
+    // to chat does not replay the last assistant line again.
+    if (!_hasHydratedAutoplayBaseline) {
+      _hasHydratedAutoplayBaseline = true;
+      if (!latestMessage.isFromUser) {
+        _lastPlayedMessageId = latestMessage.id;
+      }
+      return;
+    }
+
     // Only play voice for assistant messages
     if (latestMessage.isFromUser) return;
 
@@ -308,78 +364,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  Future<void> _loadUserProfile() async {
-    final userId = context.read<ChatService>().userId;
-    if (userId != null) {
-      final userService = UserService(FirebaseService());
-      final profile = await userService.getUserProfile(userId);
-      if (mounted) {
-        setState(() {
-          _userProfile = profile;
-        });
-      }
+  String? _transientStatusText(ChatService chatService) {
+    if (chatService.isTyping) {
+      return 'Aria is thinking...';
     }
+    if (_isPreparingVoice) {
+      return 'Preparing voice...';
+    }
+    if (_isSpeaking) {
+      return 'Aria is speaking...';
+    }
+    return null;
   }
 
   void _openCameraVision() {
-    if (_userProfile?.hasVisionAccess == true) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const CameraVisionScreen(),
-        ),
-      );
-    } else {
-      // Show upgrade dialog for non-Ultra users
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.star, color: Colors.amber),
-              SizedBox(width: 8),
-              Text('Ultra Feature'),
-            ],
-          ),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Camera Vision lets Aria see what you see!',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Share moments in real-time - show her your outfit, your pet, your cooking, or where you are. She\'ll respond naturally to what she sees.',
-              ),
-              SizedBox(height: 16),
-              Text(
-                'This feature is available to Ultra subscribers.',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Maybe Later'),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // TODO: Navigate to subscription screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Subscription management coming soon!'),
-                  ),
-                );
-              },
-              child: const Text('Upgrade to Ultra'),
-            ),
-          ],
-        ),
-      );
-    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const CameraVisionScreen(),
+      ),
+    );
   }
 
   void _sendMessage() async {
@@ -414,9 +417,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     try {
       await context.read<ChatService>().sendMessage(
-        text,
-        chatMode: _chatMode.serverValue,
-      );
+            text,
+            chatMode: _chatMode.serverValue,
+          );
       // Scroll to bottom (optimistic UI already shows message)
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -461,15 +464,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         );
       }
     }
-  }
-
-  Message? _latestAssistantMessage(List<Message> messages) {
-    for (final message in messages) {
-      if (!message.isFromUser) {
-        return message;
-      }
-    }
-    return null;
   }
 
   Future<void> _submitAssistantFeedback(
@@ -534,10 +528,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final mediaQuery = MediaQuery.of(context);
     final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
     final keyboardInset = mediaQuery.viewInsets.bottom;
-    final chatPanelMaxHeight = math.max(
-        148.0, mediaQuery.size.height * (keyboardVisible ? 0.18 : 0.23));
     final transcriptMaxHeight = math.max(
         240.0, mediaQuery.size.height * (keyboardVisible ? 0.32 : 0.44));
+    const compactToolbarHeight = 46.0;
+    const chipClusterLift = -16.0;
+    const compactActionConstraints = BoxConstraints.tightFor(
+      width: 36,
+      height: 36,
+    );
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -545,11 +543,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        toolbarHeight: compactToolbarHeight,
+        titleSpacing: 8,
+        actionsPadding: const EdgeInsets.only(right: 4),
+        titleTextStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: Colors.white.withValues(alpha: 0.94),
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+              letterSpacing: -0.1,
+            ),
+        iconTheme: IconThemeData(
+          color: Colors.white.withValues(alpha: 0.92),
+          size: 20,
+        ),
         title: const Text('AI Girlfriend'),
         actions: [
           // Relationship Dashboard button
           IconButton(
+            iconSize: 22,
+            visualDensity: VisualDensity.compact,
+            constraints: compactActionConstraints,
             icon: const Icon(Icons.favorite_outline, color: Colors.pink),
             tooltip: 'My Bond with Aria',
             onPressed: () {
@@ -577,17 +593,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
           // TIER 3: Conversation mode selector
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: ChatModeSelectorButton(
-              currentMode: _chatMode,
-              onModeChanged: (mode) {
-                HapticFeedback.selectionClick();
-                setState(() => _chatMode = mode);
-              },
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            child: Transform.scale(
+              scale: 0.84,
+              child: ChatModeSelectorButton(
+                currentMode: _chatMode,
+                onModeChanged: (mode) {
+                  HapticFeedback.selectionClick();
+                  setState(() => _chatMode = mode);
+                },
+              ),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 2),
           IconButton(
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+            constraints: compactActionConstraints,
             icon: Icon(
               _voiceOnlyMode ? Icons.closed_caption_off : Icons.closed_caption,
             ),
@@ -603,6 +625,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             },
           ),
           IconButton(
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+            constraints: compactActionConstraints,
             icon: Icon(
               _showTranscriptPanel ? Icons.chat : Icons.chat_bubble_outline,
             ),
@@ -619,43 +644,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   },
           ),
           IconButton(
-            icon: Icon(
-              _freeModeEnabled
-                  ? Icons.face_retouching_natural
-                  : Icons.face_retouching_off,
-            ),
-            tooltip: _freeModeEnabled ? 'Free mode on' : 'Free mode off',
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+            constraints: compactActionConstraints,
+            icon: const Icon(Icons.visibility, color: Colors.pink),
+            tooltip: 'Live Mode',
             onPressed: () {
-              final isUltra =
-                  _userProfile?.subscriptionTier == SubscriptionTier.ultra;
-              if (!isUltra) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content:
-                        Text('Free mode requires Ultra tier (highest model).'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-                return;
-              }
               HapticFeedback.selectionClick();
-              setState(() {
-                _freeModeEnabled = !_freeModeEnabled;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    _freeModeEnabled
-                        ? 'Free mode enabled (preview). Aria autonomy tuning is in progress.'
-                        : 'Free mode disabled.',
-                  ),
-                  duration: const Duration(seconds: 2),
-                ),
-              );
+              _openCameraVision();
             },
           ),
           IconButton(
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+            constraints: compactActionConstraints,
             icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
             onPressed: () {
               HapticFeedback.selectionClick();
               Navigator.of(context).push(
@@ -683,12 +687,192 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       ),
       body: Stack(
         children: [
-          // 1. Background / Avatar Layer
+          // 0. Room atmosphere (gradient + particles) — restored from the
+          // previous Live2D presentation layer.
+          const Positioned.fill(child: RoomBackgroundWidget()),
+
+          // 1. Avatar Layer (Live2D native — GL clear color = room base)
           Positioned.fill(
             child: AvatarView(
               isSpeaking: _isSpeaking,
               visemeTimelineJson: visemeTimelineJson,
+              blendTimeline: _currentBlendTimeline,
+              audioPlayer: _audioPlayer,
               onStopSpeaking: _onAudioComplete,
+            ),
+          ),
+
+          const Positioned.fill(
+            child: AvatarReactionOverlay(),
+          ),
+
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  10,
+                  compactToolbarHeight + 2,
+                  10,
+                  0,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Consumer<ChatService>(
+                      builder: (context, chatService, _) {
+                        final statusText = _transientStatusText(chatService);
+
+                        if (_voiceOnlyMode ||
+                            _showTranscriptPanel ||
+                            statusText == null ||
+                            statusText.trim().isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+
+                        return Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 300),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 9,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF2A1A3E),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: const Color(0xFFB048D4)
+                                      .withValues(alpha: 0.42),
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFB048D4)
+                                        .withValues(alpha: 0.14),
+                                    blurRadius: 12,
+                                    spreadRadius: 1,
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (chatService.isTyping || _isPreparingVoice)
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.6,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.72),
+                                      ),
+                                    )
+                                  else
+                                    Icon(
+                                      Icons.graphic_eq,
+                                      size: 15,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.72),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      statusText,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.80),
+                                        fontSize: 13,
+                                        height: 1.2,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    size: 10,
+                                    color: Colors.white.withValues(alpha: 0.38),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    if (!keyboardVisible &&
+                        !_showTranscriptPanel &&
+                        !_voiceOnlyMode) ...<Widget>[
+                      const SizedBox(height: 2),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: ChatModeBanner(
+                          mode: _chatMode,
+                          onDismiss: () =>
+                              setState(() => _chatMode = ChatMode.normal),
+                        ),
+                      ),
+                      Transform.translate(
+                        offset: const Offset(0, chipClusterLift),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Consumer<ChatService>(
+                              builder: (context, chatService, _) {
+                                if (_transientStatusText(chatService) != null) {
+                                  return const SizedBox.shrink();
+                                }
+                                return ConstrainedBox(
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 300),
+                                  child: Transform.scale(
+                                    scale: 0.88,
+                                    alignment: Alignment.topCenter,
+                                    child: AriaInnerWorldChip(
+                                      onStartConversation: (prompt) {
+                                        _messageController.text = prompt;
+                                        _sendMessage();
+                                      },
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 200),
+                              child: Transform.translate(
+                                offset: const Offset(0, -6),
+                                child: Transform.scale(
+                                  scale: 0.84,
+                                  alignment: Alignment.topCenter,
+                                  child: const VirtualDateChip(),
+                                ),
+                              ),
+                            ),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 380),
+                              child: Transform.scale(
+                                scale: 0.9,
+                                alignment: Alignment.topCenter,
+                                child: const UpcomingDatesChip(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ),
           ),
 
@@ -705,137 +889,79 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // TIER 3: Mode banner (shown when story / journal mode active)
-                    ChatModeBanner(
-                      mode: _chatMode,
-                      onDismiss: () => setState(() => _chatMode = ChatMode.normal),
-                    ),
-
-                    // TIER 3: Aria inner world chip (shown once per session)
-                    AriaInnerWorldChip(
-                      onStartConversation: (prompt) {
-                        _messageController.text = prompt;
-                        _sendMessage();
-                      },
-                    ),
-
-                    // Virtual date banner / picker
-                    const VirtualDateChip(),
-
-                    // Upcoming important dates chip row
-                    const UpcomingDatesChip(),
-
                     Consumer<ChatService>(
                       builder: (context, chatService, _) {
                         _checkAndPlayLatestMessage(chatService);
-                        final latestAssistant =
-                            _latestAssistantMessage(chatService.messages);
-
-                        if (_voiceOnlyMode) {
+                        if (_voiceOnlyMode || !_showTranscriptPanel) {
                           return const SizedBox.shrink();
                         }
 
-                        if (_showTranscriptPanel) {
-                          return ConstrainedBox(
-                            constraints:
-                                BoxConstraints(maxHeight: transcriptMaxHeight),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(16),
-                                ),
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withValues(alpha: 0.76),
-                                    Colors.black.withValues(alpha: 0.90),
-                                  ],
-                                ),
-                              ),
-                              child: ListView.builder(
-                                controller: _scrollController,
-                                reverse: true,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 12),
-                                itemCount: chatService.messages.length +
-                                    (chatService.isTyping ? 1 : 0),
-                                itemBuilder: (context, index) {
-                                  if (chatService.isTyping && index == 0) {
-                                    return const Padding(
-                                      padding: EdgeInsets.all(16.0),
-                                      child: Row(
-                                        children: [
-                                          SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                                strokeWidth: 2),
-                                          ),
-                                          SizedBox(width: 8),
-                                          Text('Aria is speaking...',
-                                              style: TextStyle(
-                                                  color: Colors.grey)),
-                                        ],
-                                      ),
-                                    );
-                                  }
-                                  final messageIndex =
-                                      chatService.isTyping ? index - 1 : index;
-                                  final message =
-                                      chatService.messages[messageIndex];
-                                  final feedbackVote =
-                                      _assistantFeedbackVotes[message.id];
-                                  return MessageBubble(
-                                    message: message,
-                                    onFeedback: message.isFromUser ||
-                                            message.id.startsWith('temp_')
-                                        ? null
-                                        : (isPositive) =>
-                                            _submitAssistantFeedback(
-                                                message, isPositive),
-                                    feedbackIsPositive: feedbackVote == null
-                                        ? null
-                                        : feedbackVote ==
-                                            _MessageFeedbackVote.up,
-                                    feedbackPending: _assistantFeedbackPending
-                                        .contains(message.id),
-                                  );
-                                },
-                              ),
-                            ),
-                          );
-                        }
-
-                        final subtitleText = chatService.isTyping
-                            ? 'Aria is thinking...'
-                            : latestAssistant?.content ?? 'Voice-first mode on';
-
                         return ConstrainedBox(
                           constraints:
-                              BoxConstraints(maxHeight: chatPanelMaxHeight),
+                              BoxConstraints(maxHeight: transcriptMaxHeight),
                           child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 12),
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(14),
-                              color: Colors.black.withValues(alpha: 0.44),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.14),
-                                width: 1,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(16),
+                              ),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.76),
+                                  Colors.black.withValues(alpha: 0.90),
+                                ],
                               ),
                             ),
-                            child: Text(
-                              subtitleText,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 15,
-                                height: 1.25,
-                              ),
+                            child: ListView.builder(
+                              controller: _scrollController,
+                              reverse: true,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 12),
+                              itemCount: chatService.messages.length +
+                                  (chatService.isTyping ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                if (chatService.isTyping && index == 0) {
+                                  return const Padding(
+                                    padding: EdgeInsets.all(16.0),
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                              strokeWidth: 2),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text('Aria is speaking...',
+                                            style:
+                                                TextStyle(color: Colors.grey)),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                final messageIndex =
+                                    chatService.isTyping ? index - 1 : index;
+                                final message =
+                                    chatService.messages[messageIndex];
+                                final feedbackVote =
+                                    _assistantFeedbackVotes[message.id];
+                                return MessageBubble(
+                                  message: message,
+                                  onFeedback: message.isFromUser ||
+                                          message.id.startsWith('temp_')
+                                      ? null
+                                      : (isPositive) =>
+                                          _submitAssistantFeedback(
+                                              message, isPositive),
+                                  feedbackIsPositive: feedbackVote == null
+                                      ? null
+                                      : feedbackVote == _MessageFeedbackVote.up,
+                                  feedbackPending: _assistantFeedbackPending
+                                      .contains(message.id),
+                                );
+                              },
                             ),
                           ),
                         );
@@ -846,24 +972,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
                       child: Row(
                         children: [
-                          // Camera button (Ultra feature)
-                          IconButton(
-                            icon: Icon(
-                              Icons.camera_alt,
-                              color: _userProfile?.hasVisionAccess == true
-                                  ? Colors.pink
-                                  : Colors.grey,
-                            ),
-                            tooltip: _userProfile?.hasVisionAccess == true
-                                ? 'Show Aria (Ultra)'
-                                : 'Ultra feature',
-                            onPressed: _openCameraVision,
-                          ),
-                          const SizedBox(width: 4),
                           // Gallery photo sharing button
                           GalleryPhotoButton(
-                            hasAccess: _userProfile?.subscriptionTier !=
-                                SubscriptionTier.free,
                             onSending: () {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -907,52 +1017,64 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: TextField(
-                              controller: _messageController,
-                              textCapitalization: TextCapitalization.sentences,
-                              maxLength: AppConstants.maxMessageLength,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 17,
-                                fontWeight: FontWeight.w500,
-                                shadows: const <Shadow>[
-                                  Shadow(
-                                    color: Colors.black54,
-                                    blurRadius: 2,
-                                    offset: Offset(0, 1),
+                            child: Semantics(
+                              label: 'Message input',
+                              textField: true,
+                              child: TextField(
+                                controller: _messageController,
+                                textCapitalization:
+                                    TextCapitalization.sentences,
+                                maxLength: AppConstants.maxMessageLength,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w500,
+                                  shadows: const <Shadow>[
+                                    Shadow(
+                                      color: Colors.black54,
+                                      blurRadius: 2,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                cursorColor: Colors.pinkAccent,
+                                decoration: InputDecoration(
+                                  hintText: 'Say something...',
+                                  hintStyle: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.74),
                                   ),
-                                ],
+                                  counterText: '', // Hide character counter
+                                  filled: true,
+                                  fillColor:
+                                      Colors.black.withValues(alpha: 0.78),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.30),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                    borderSide: BorderSide(
+                                      color:
+                                          Colors.pink.withValues(alpha: 0.78),
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  suffixIcon: Semantics(
+                                    label: 'Send message',
+                                    button: true,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.send,
+                                          color: Colors.white),
+                                      onPressed: _sendMessage,
+                                    ),
+                                  ),
+                                ),
+                                onSubmitted: (_) => _sendMessage(),
                               ),
-                              cursorColor: Colors.pinkAccent,
-                              decoration: InputDecoration(
-                                hintText: 'Say something...',
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.74),
-                                ),
-                                counterText: '', // Hide character counter
-                                filled: true,
-                                fillColor: Colors.black.withValues(alpha: 0.78),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.30),
-                                    width: 1,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                  borderSide: BorderSide(
-                                    color: Colors.pink.withValues(alpha: 0.78),
-                                    width: 1.5,
-                                  ),
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: const Icon(Icons.send,
-                                      color: Colors.white),
-                                  onPressed: _sendMessage,
-                                ),
-                              ),
-                              onSubmitted: (_) => _sendMessage(),
                             ),
                           ),
                         ],

@@ -139,14 +139,14 @@ class DebugLogger {
       );
 
       // Also print to console immediately
-      print('🔴 CRITICAL_ERROR: $message');
+      debugPrint('🔴 CRITICAL_ERROR: $message');
 
       return true;
     } catch (e) {
       // Fallback to console only
-      print('🔴 CRITICAL_ERROR (file write failed): $location - $error');
+      debugPrint('🔴 CRITICAL_ERROR (file write failed): $location - $error');
       if (stackTrace != null) {
-        print('Stack: $stackTrace');
+        debugPrint('Stack: $stackTrace');
       }
       return false;
     }

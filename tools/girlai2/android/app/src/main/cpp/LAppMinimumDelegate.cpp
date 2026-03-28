@@ -104,8 +104,8 @@ void LAppMinimumDelegate::Run()
     // 時間更新
     LAppPal::UpdateTime();
 
-    // 画面の初期化
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    // 画面の初期化 (mood-responsive room base color)
+    glClearColor(_bgR, _bgG, _bgB, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glClearDepthf(1.0f);
 
@@ -167,6 +167,9 @@ LAppMinimumDelegate::LAppMinimumDelegate():
     _isActive(true),
     _started(false),
     _frameworkInitialized(false),
+    _bgR(0.0f),
+    _bgG(0.0f),
+    _bgB(0.0f),
     _textureManager(nullptr),
     _view(nullptr)
 {
@@ -187,6 +190,13 @@ LAppMinimumDelegate::LAppMinimumDelegate():
 
 LAppMinimumDelegate::~LAppMinimumDelegate()
 {
+}
+
+void LAppMinimumDelegate::SetBackgroundColor(float r, float g, float b)
+{
+    _bgR = r;
+    _bgG = g;
+    _bgB = b;
 }
 
 void LAppMinimumDelegate::OnTouchBegan(double x, double y)

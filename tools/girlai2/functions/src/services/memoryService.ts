@@ -274,6 +274,105 @@ export interface IntelligentMemory {
   lastUpdated: FirebaseFirestore.Timestamp;
 }
 
+function normalizeDisplayName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9' -]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractNameFactCandidate(fact: string): string | null {
+  const patterns = [
+    /\b(?:my|their|the user's|user's)\s+name\s+is\s+([a-z][a-z' -]{0,48})/i,
+    /\bcall\s+(?:me|them)\s+([a-z][a-z' -]{0,48})/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = fact.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
+}
+
+function extractNameReferenceCandidate(text: string): string | null {
+  const explicit = extractNameFactCandidate(text);
+  if (explicit) {
+    return explicit;
+  }
+
+  const patterns = [
+    /\b(?:hey|hi|hello|good morning|good afternoon|good evening|good night)\s+([a-z][a-z' -]{0,48})\b/i,
+    /\b(?:prefer|call you|known as|go by)\s+([a-z][a-z' -]{0,48})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  return null;
+}
+
+export function hasConflictingProfileNameReference(
+  text: string,
+  profileDisplayName?: string,
+): boolean {
+  const canonicalName = profileDisplayName?.trim();
+  if (!canonicalName) {
+    return false;
+  }
+
+  const candidateName = extractNameReferenceCandidate(text);
+  if (!candidateName) {
+    return false;
+  }
+
+  return normalizeDisplayName(candidateName) !== normalizeDisplayName(canonicalName);
+}
+
+export function normalizeMemoryForProfileDisplayName(
+  memory: IntelligentMemory | null,
+  profileDisplayName?: string,
+): IntelligentMemory | null {
+  const canonicalName = profileDisplayName?.trim();
+  if (!memory || !canonicalName) {
+    return memory;
+  }
+
+  const normalizedCanonicalName = normalizeDisplayName(canonicalName);
+  if (!normalizedCanonicalName) {
+    return memory;
+  }
+
+  const filteredCoreFacts = memory.coreFacts.filter((fact) => {
+    if (fact.category !== 'personal') {
+      return true;
+    }
+
+    const candidateName = extractNameFactCandidate(fact.fact);
+    if (!candidateName) {
+      return true;
+    }
+
+    return normalizeDisplayName(candidateName) === normalizedCanonicalName;
+  });
+
+  if (filteredCoreFacts.length === memory.coreFacts.length) {
+    return memory;
+  }
+
+  return {
+    ...memory,
+    coreFacts: filteredCoreFacts,
+  };
+}
+
 // Importance decay configuration
 const IMPORTANCE_DECAY_RATE = 0.02; // 2% decay per day
 const MIN_IMPORTANCE_THRESHOLD = 0.1; // Messages below this are candidates for pruning
@@ -1032,7 +1131,7 @@ function startOfDayWithOffset(date: Date, offsetMinutes: number): Date {
   return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
 }
 
-function toIsoDateWithOffset(date: Date, offsetMinutes: number): string {
+export function toIsoDateWithOffset(date: Date, offsetMinutes: number): string {
   return toIsoDateUtc(startOfDayWithOffset(date, offsetMinutes));
 }
 
@@ -1046,7 +1145,7 @@ const WEEKDAY_NAMES = [
   'Saturday',
 ];
 
-function weekdayNameFromIsoDate(anchorDateIso: string): string {
+export function weekdayNameFromIsoDate(anchorDateIso: string): string {
   const date = new Date(`${anchorDateIso}T00:00:00Z`);
   if (Number.isNaN(date.getTime())) {
     return 'Unknown';
@@ -1255,7 +1354,7 @@ function parseRelativeDateCue(
   return null;
 }
 
-function parseTemporalCue(
+export function parseTemporalCue(
   text: string,
   now: Date,
   timeZoneOffsetMinutes: number,
@@ -1267,7 +1366,7 @@ function parseTemporalCue(
   return parseRelativeDateCue(text, now, timeZoneOffsetMinutes);
 }
 
-function buildChronologySummary(text: string): string {
+export function buildChronologySummary(text: string): string {
   const compact = text.replace(/\s+/g, ' ').trim();
   if (!compact) {
     return '';
@@ -1683,7 +1782,7 @@ export async function generateWeeklySummary(
       model: 'gpt-4o',
       messages: [{
         role: 'user',
-        content: `Summarize this week's conversations between a user and their AI companion.
+        content: `Summarize this week's conversations between a user and their companion Aria.
 
 ${conversationText}
 

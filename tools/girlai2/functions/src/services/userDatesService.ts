@@ -90,11 +90,28 @@ export async function getAllImportantDates(userId: string): Promise<ImportantDat
 export async function getUpcomingDates(
   userId: string,
   daysAhead: number = 7,
+  options: {
+    now?: Date;
+    timeZoneOffsetMinutes?: number;
+  } = {},
 ): Promise<UpcomingDate[]> {
   const dates = await getAllImportantDates(userId);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const offsetMinutes =
+    typeof options.timeZoneOffsetMinutes === 'number' &&
+    Number.isFinite(options.timeZoneOffsetMinutes)
+      ? Math.max(-840, Math.min(840, Math.round(options.timeZoneOffsetMinutes)))
+      : 0;
+  const now = options.now instanceof Date ? options.now : new Date();
+  const shiftedNow = new Date(now.getTime() + offsetMinutes * 60 * 1000);
+  const today = new Date(
+    Date.UTC(
+      shiftedNow.getUTCFullYear(),
+      shiftedNow.getUTCMonth(),
+      shiftedNow.getUTCDate(),
+    ),
+  );
+  const currentYear = shiftedNow.getUTCFullYear();
 
   const upcoming: UpcomingDate[] = [];
 
@@ -106,13 +123,13 @@ export async function getUpcomingDates(
     let eventDate: Date;
 
     if (d.recurs) {
-      eventDate = new Date(today.getFullYear(), month - 1, day);
+      eventDate = new Date(Date.UTC(currentYear, month - 1, day));
       if (eventDate < today) {
-        eventDate = new Date(today.getFullYear() + 1, month - 1, day);
+        eventDate = new Date(Date.UTC(currentYear + 1, month - 1, day));
       }
     } else {
-      const year = parts[0] === 2000 ? today.getFullYear() : parts[0];
-      eventDate = new Date(year, month - 1, day);
+      const year = parts[0] === 2000 ? currentYear : parts[0];
+      eventDate = new Date(Date.UTC(year, month - 1, day));
     }
 
     const diffMs    = eventDate.getTime() - today.getTime();
@@ -136,10 +153,16 @@ export async function getUpcomingDates(
  * Builds a system-prompt block listing upcoming dates for Aria.
  * Returns '' when there are no upcoming dates (zero overhead).
  */
-export async function buildDatesContextBlock(userId: string): Promise<string> {
+export async function buildDatesContextBlock(
+  userId: string,
+  options: {
+    now?: Date;
+    timeZoneOffsetMinutes?: number;
+  } = {},
+): Promise<string> {
   let upcoming: UpcomingDate[];
   try {
-    upcoming = await getUpcomingDates(userId, 7);
+    upcoming = await getUpcomingDates(userId, 7, options);
   } catch (err: any) {
     functions.logger.warn('buildDatesContextBlock: failed to load dates', { userId, error: err?.message });
     return '';

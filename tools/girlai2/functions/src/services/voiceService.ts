@@ -18,9 +18,22 @@ export interface VisemeEvent {
 
 export interface VoiceResult {
   audioUrl: string;
+  audioBase64?: string;
+  audioContentType?: string;
+  deliveryMode?: 'inline' | 'storage';
   visemeTimeline: VisemeEvent[];
+  /** FacialExpression blendshape timeline: frameIndex (60fps) → [openY, funnel, pucker, mouthX, form] */
+  blendTimeline: Record<number, number[]>;
   durationMs: number;
   provider: 'azure' | 'elevenlabs';
+  timingsMs?: {
+    synthesisMs?: number;
+    providerRequestMs?: number;
+    uploadMs?: number;
+    totalMs?: number;
+    audioFormat?: string;
+    deliveryProfile?: string;
+  };
 }
 
 export type VoiceErrorReason =
@@ -60,6 +73,10 @@ const voiceAudioBucketParam = defineString('VOICE_AUDIO_BUCKET', { default: '' }
 
 const fallbackVoiceBucket = 'girlai2-voice-audio';
 let cachedVoiceBucketName: string | null = null;
+const inlineAudioMaxBytes = 1024 * 1024;
+let azureThrottleCooldownUntilMs = 0;
+let azureProviderFallbackUntilMs = 0;
+const azureProviderFallbackCooldownMs = 180_000;
 const azureVoicePolish = {
   // Warmer and more conversational without sounding synthetic.
   volume: '+7.0%',
@@ -77,6 +94,7 @@ const elevenLabsVoicePolish = {
 } as const;
 
 interface VoiceDeliveryProfile {
+  id: 'default' | 'excited' | 'reflective' | 'long_form';
   volume: string;
   pitch: string;
   rate: string;
@@ -91,6 +109,17 @@ interface VoiceDeliveryProfile {
     use_speaker_boost: boolean;
   };
 }
+
+interface AzureOutputProfile {
+  sdkFormat: sdk.SpeechSynthesisOutputFormat;
+  restFormat: string;
+  label: '24khz_48k_mp3' | '16khz_32k_mp3';
+}
+
+type ElevenLabsOutputFormat =
+  | 'mp3_44100_64'
+  | 'mp3_44100_96'
+  | 'mp3_44100_128';
 
 function readParamValue(param: ReturnType<typeof defineString>): string {
   try {
@@ -152,6 +181,318 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function delay(ms: number): Promise<void> {
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function estimateSpeechDurationMs(text: string): number {
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0).length;
+  const sentencePauses = (text.match(/[.!?]/g) ?? []).length * 220;
+  const clausePauses = (text.match(/[,;:]/g) ?? []).length * 120;
+  return Math.max(900, Math.round(words * 340 + sentencePauses + clausePauses));
+}
+
+const MONTH_NAME_TO_NUMBER: Record<string, number> = {
+  january: 1,
+  jan: 1,
+  february: 2,
+  feb: 2,
+  march: 3,
+  mar: 3,
+  april: 4,
+  apr: 4,
+  may: 5,
+  june: 6,
+  jun: 6,
+  july: 7,
+  jul: 7,
+  august: 8,
+  aug: 8,
+  september: 9,
+  sept: 9,
+  sep: 9,
+  october: 10,
+  oct: 10,
+  november: 11,
+  nov: 11,
+  december: 12,
+  dec: 12,
+};
+
+const MONTH_NUMBER_TO_NAME = [
+  '',
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
+
+const MONTH_NAME_PATTERN =
+  '\\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sept|sep|october|oct|november|nov|december|dec)';
+const NAMED_DATE_REGEX = new RegExp(
+  `${MONTH_NAME_PATTERN}\\s+(\\d{1,2})(st|nd|rd|th)?(?:,?\\s+(\\d{4}))?\\b`,
+  'gi',
+);
+const SLASH_DATE_REGEX = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))\b/g;
+const ISO_DATE_REGEX = /\b(\d{4})-(\d{2})-(\d{2})\b/g;
+
+function pad2(value: number): string {
+  return value.toString().padStart(2, '0');
+}
+
+function numberUnder100ToWords(value: number): string {
+  const ones = [
+    'zero',
+    'one',
+    'two',
+    'three',
+    'four',
+    'five',
+    'six',
+    'seven',
+    'eight',
+    'nine',
+    'ten',
+    'eleven',
+    'twelve',
+    'thirteen',
+    'fourteen',
+    'fifteen',
+    'sixteen',
+    'seventeen',
+    'eighteen',
+    'nineteen',
+  ];
+  const tens = [
+    '',
+    '',
+    'twenty',
+    'thirty',
+    'forty',
+    'fifty',
+    'sixty',
+    'seventy',
+    'eighty',
+    'ninety',
+  ];
+
+  if (value < 20) {
+    return ones[value];
+  }
+
+  const ten = Math.floor(value / 10);
+  const one = value % 10;
+  return one === 0 ? tens[ten] : `${tens[ten]}-${ones[one]}`;
+}
+
+function dayToOrdinalWord(day: number): string | null {
+  const ordinalWords = [
+    '',
+    'first',
+    'second',
+    'third',
+    'fourth',
+    'fifth',
+    'sixth',
+    'seventh',
+    'eighth',
+    'ninth',
+    'tenth',
+    'eleventh',
+    'twelfth',
+    'thirteenth',
+    'fourteenth',
+    'fifteenth',
+    'sixteenth',
+    'seventeenth',
+    'eighteenth',
+    'nineteenth',
+    'twentieth',
+    'twenty-first',
+    'twenty-second',
+    'twenty-third',
+    'twenty-fourth',
+    'twenty-fifth',
+    'twenty-sixth',
+    'twenty-seventh',
+    'twenty-eighth',
+    'twenty-ninth',
+    'thirtieth',
+    'thirty-first',
+  ];
+
+  if (day < 1 || day > 31) {
+    return null;
+  }
+
+  return ordinalWords[day];
+}
+
+function yearToSpeechText(year: number): string {
+  if (year >= 2000 && year <= 2009) {
+    return year === 2000 ? 'two thousand' : `two thousand ${numberUnder100ToWords(year - 2000)}`;
+  }
+
+  if (year >= 2010 && year <= 2099) {
+    return `twenty ${numberUnder100ToWords(year - 2000)}`;
+  }
+
+  if (year >= 1900 && year <= 1999) {
+    return `nineteen ${numberUnder100ToWords(year - 1900)}`;
+  }
+
+  const firstHalf = Math.floor(year / 100);
+  const secondHalf = year % 100;
+  if (secondHalf === 0) {
+    return `${numberUnder100ToWords(firstHalf)} hundred`;
+  }
+
+  return `${numberUnder100ToWords(firstHalf)} ${numberUnder100ToWords(secondHalf)}`;
+}
+
+function toFourDigitYear(rawYear: string): number {
+  const numericYear = Number(rawYear);
+  if (rawYear.length === 2) {
+    return numericYear >= 70 ? 1900 + numericYear : 2000 + numericYear;
+  }
+  return numericYear;
+}
+
+function buildSpokenDate(month: number, day: number, year?: number): string | null {
+  const monthName = MONTH_NUMBER_TO_NAME[month];
+  const ordinalDay = dayToOrdinalWord(day);
+  if (!monthName || !ordinalDay) {
+    return null;
+  }
+
+  if (year && Number.isFinite(year)) {
+    return `${monthName} ${ordinalDay}, ${yearToSpeechText(year)}`;
+  }
+
+  return `${monthName} ${ordinalDay}`;
+}
+
+function normalizeDatesForPlainSpeech(text: string): string {
+  let normalized = text;
+
+  normalized = normalized.replace(
+    ISO_DATE_REGEX,
+    (match, yearText: string, monthText: string, dayText: string) => {
+      const year = Number(yearText);
+      const month = Number(monthText);
+      const day = Number(dayText);
+      return buildSpokenDate(month, day, year) ?? match;
+    },
+  );
+
+  normalized = normalized.replace(
+    SLASH_DATE_REGEX,
+    (match, monthText: string, dayText: string, yearText?: string) => {
+      const month = Number(monthText);
+      const day = Number(dayText);
+      const year = yearText ? toFourDigitYear(yearText) : undefined;
+      return buildSpokenDate(month, day, year) ?? match;
+    },
+  );
+
+  normalized = normalized.replace(
+    NAMED_DATE_REGEX,
+    (match, monthToken: string, dayText: string, _ordinal: string, yearText?: string) => {
+      const month = MONTH_NAME_TO_NUMBER[monthToken.toLowerCase()];
+      const day = Number(dayText);
+      const year = yearText ? Number(yearText) : undefined;
+      return buildSpokenDate(month, day, year) ?? match;
+    },
+  );
+
+  return normalized;
+}
+
+function decorateDatesForAzureSsml(text: string): string {
+  let tokenized = text;
+  const replacements = new Map<string, string>();
+  let tokenIndex = 0;
+
+  const createToken = (ssml: string) => {
+    const token = `ARIA_DATE_TOKEN_${tokenIndex++}`;
+    replacements.set(token, ssml);
+    return token;
+  };
+
+  tokenized = tokenized.replace(
+    ISO_DATE_REGEX,
+    (match, yearText: string, monthText: string, dayText: string) => {
+      const month = Number(monthText);
+      const day = Number(dayText);
+      if (!MONTH_NUMBER_TO_NAME[month] || !dayToOrdinalWord(day)) {
+        return match;
+      }
+      return createToken(
+        `<say-as interpret-as="date" format="ymd">${yearText}-${pad2(month)}-${pad2(day)}</say-as>`,
+      );
+    },
+  );
+
+  tokenized = tokenized.replace(
+    SLASH_DATE_REGEX,
+    (match, monthText: string, dayText: string, yearText?: string) => {
+      const month = Number(monthText);
+      const day = Number(dayText);
+      if (!MONTH_NUMBER_TO_NAME[month] || !dayToOrdinalWord(day)) {
+        return match;
+      }
+      if (yearText) {
+        const year = toFourDigitYear(yearText);
+        return createToken(
+          `<say-as interpret-as="date" format="mdy">${pad2(month)}/${pad2(day)}/${year}</say-as>`,
+        );
+      }
+      return createToken(
+        `<say-as interpret-as="date" format="md">${pad2(month)}/${pad2(day)}</say-as>`,
+      );
+    },
+  );
+
+  tokenized = tokenized.replace(
+    NAMED_DATE_REGEX,
+    (match, monthToken: string, dayText: string, _ordinal: string, yearText?: string) => {
+      const month = MONTH_NAME_TO_NUMBER[monthToken.toLowerCase()];
+      const day = Number(dayText);
+      if (!MONTH_NUMBER_TO_NAME[month] || !dayToOrdinalWord(day)) {
+        return match;
+      }
+      if (yearText) {
+        return createToken(
+          `<say-as interpret-as="date" format="mdy">${pad2(month)}/${pad2(day)}/${yearText}</say-as>`,
+        );
+      }
+      return createToken(
+        `<say-as interpret-as="date" format="md">${pad2(month)}/${pad2(day)}</say-as>`,
+      );
+    },
+  );
+
+  let escaped = escapeXml(tokenized);
+  for (const [token, ssml] of replacements.entries()) {
+    escaped = escaped.replace(token, ssml);
+  }
+  return escaped;
+}
+
 function sanitizeSpeechTextForTts(value: string): string {
   let cleaned = value;
 
@@ -161,7 +502,8 @@ function sanitizeSpeechTextForTts(value: string): string {
   cleaned = cleaned.replace(/[\u200B-\u200D\uFE0E\uFE0F]/g, '');
 
   // Remove emoji/pictographic symbols that sound unnatural when spoken.
-  cleaned = cleaned.replace(/[\p{Extended_Pictographic}\p{Emoji_Component}]/gu, '');
+  // Do not strip Emoji_Component here because it includes digits used in dates/keycaps.
+  cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '');
 
   // Normalize whitespace and punctuation spacing.
   cleaned = cleaned.replace(/\s+([,.!?;:])/g, '$1');
@@ -181,16 +523,23 @@ function deriveVoiceDeliveryProfile(text: string): VoiceDeliveryProfile {
     /\b(excited|amazing|awesome|yay|celebrate|thrilled|love this|great news)\b/i.test(lower);
   const reflective =
     /\b(sad|hurt|overwhelmed|anxious|lonely|hard day|i'm sorry|that sounds tough)\b/i.test(lower);
+  const sentenceCount = (text.match(/[.!?]/g) ?? []).length;
+  const wordCount = text
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0).length;
+  const longForm = text.length >= 240 || wordCount >= 48 || sentenceCount >= 4;
 
   if (excited) {
     return {
+      id: longForm ? 'long_form' : 'excited',
       volume: '+8.0%',
       pitch: '-1.0%',
-      rate: '+3.0%',
+      rate: longForm ? '+5.0%' : '+3.0%',
       style: 'cheerful',
       styleDegree: '1.1',
-      sentencePauseMs: 130,
-      clausePauseMs: 80,
+      sentencePauseMs: longForm ? 100 : 112,
+      clausePauseMs: longForm ? 56 : 64,
       elevenLabs: {
         stability: 0.34,
         similarity_boost: 0.84,
@@ -202,13 +551,14 @@ function deriveVoiceDeliveryProfile(text: string): VoiceDeliveryProfile {
 
   if (reflective) {
     return {
+      id: longForm ? 'long_form' : 'reflective',
       volume: '+6.0%',
       pitch: '-3.0%',
-      rate: '-3.0%',
+      rate: longForm ? '-1.0%' : '-3.0%',
       style: 'empathetic',
       styleDegree: '1.08',
-      sentencePauseMs: 190,
-      clausePauseMs: 110,
+      sentencePauseMs: longForm ? 128 : 150,
+      clausePauseMs: longForm ? 76 : 88,
       elevenLabs: {
         stability: 0.52,
         similarity_boost: 0.86,
@@ -218,14 +568,34 @@ function deriveVoiceDeliveryProfile(text: string): VoiceDeliveryProfile {
     };
   }
 
+  if (longForm) {
+    return {
+      id: 'long_form',
+      volume: '+6.5%',
+      pitch: '-2.0%',
+      rate: '+4.0%',
+      style: azureVoicePolish.style,
+      styleDegree: '1.02',
+      sentencePauseMs: 104,
+      clausePauseMs: 60,
+      elevenLabs: {
+        stability: 0.4,
+        similarity_boost: 0.82,
+        style: 0.24,
+        use_speaker_boost: true,
+      },
+    };
+  }
+
   return {
+    id: 'default',
     volume: azureVoicePolish.volume,
     pitch: azureVoicePolish.pitch,
     rate: azureVoicePolish.rate,
     style: azureVoicePolish.style,
     styleDegree: azureVoicePolish.styleDegree,
-    sentencePauseMs: 170,
-    clausePauseMs: 100,
+    sentencePauseMs: 138,
+    clausePauseMs: 80,
     elevenLabs: {
       stability: elevenLabsVoicePolish.stability,
       similarity_boost: elevenLabsVoicePolish.similarity_boost,
@@ -235,13 +605,52 @@ function deriveVoiceDeliveryProfile(text: string): VoiceDeliveryProfile {
   };
 }
 
+function selectElevenLabsOutputFormat(
+  text: string,
+  profile: VoiceDeliveryProfile,
+): ElevenLabsOutputFormat {
+  const estimatedDurationMs = estimateSpeechDurationMs(text);
+  if (estimatedDurationMs >= 9000 || (profile.id === 'long_form' && text.length >= 520)) {
+    return 'mp3_44100_128';
+  }
+
+  if (estimatedDurationMs >= 4200 || text.length >= 180 || profile.id !== 'default') {
+    return 'mp3_44100_96';
+  }
+
+  return 'mp3_44100_64';
+}
+
+function selectAzureOutputProfile(text: string, deliveryProfile: VoiceDeliveryProfile): AzureOutputProfile {
+  const estimatedDurationMs = estimateSpeechDurationMs(text);
+  const preferFastLongForm =
+    deliveryProfile.id === 'long_form' ||
+    text.length >= 260 ||
+    estimatedDurationMs >= 6500;
+
+  if (preferFastLongForm) {
+    return {
+      sdkFormat: sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3,
+      restFormat: 'audio-16khz-32kbitrate-mono-mp3',
+      label: '16khz_32k_mp3',
+    };
+  }
+
+  return {
+    sdkFormat: sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3,
+    restFormat: 'audio-24khz-48kbitrate-mono-mp3',
+    label: '24khz_48k_mp3',
+  };
+}
+
 function buildAzureVoiceSsml(
   text: string,
   voiceName: string,
   includeStyle: boolean,
   profile: VoiceDeliveryProfile,
+  includeViseme = true,
 ): string {
-  const escapedText = escapeXml(text);
+  const escapedText = decorateDatesForAzureSsml(text);
   // Inject subtle SSML pauses for better cadence and less robotic delivery.
   const pausedText = escapedText
     .replace(
@@ -258,8 +667,9 @@ function buildAzureVoiceSsml(
     ? `<mstts:express-as style="${profile.style}" styledegree="${profile.styleDegree}">${prosodyBlock}</mstts:express-as>`
     : prosodyBlock;
 
-  return `<speak version="1.0" xml:lang="en-US" xmlns:mstts="https://www.w3.org/2001/mstts">
+  return `<speak version="1.0" xml:lang="en-US" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts">
   <voice name="${escapeXml(voiceName)}">
+    ${includeViseme ? '<mstts:viseme type="FacialExpression"/>' : ''}
     ${voiceInner}
   </voice>
 </speak>`;
@@ -337,7 +747,7 @@ export async function generateVoiceWithVisemes(
   subscriptionTier: 'regular' | 'ultra',
   voiceId?: string
 ): Promise<VoiceResult> {
-  const speechText = sanitizeSpeechTextForTts(text);
+  const speechText = normalizeDatesForPlainSpeech(sanitizeSpeechTextForTts(text));
   const deliveryProfile = deriveVoiceDeliveryProfile(speechText);
 
   functions.logger.info('[VoiceService] Generating voice', {
@@ -365,12 +775,11 @@ export async function generateVoiceWithVisemes(
       return await generateWithElevenLabs(truncatedText, deliveryProfile, voiceId);
     }
     return await generateWithAzure(truncatedText, deliveryProfile, voiceId);
-  } catch (error: unknown) {
-    if (error instanceof VoiceServiceError) {
-      throw error;
+  } catch (providerError: unknown) {
+    if (providerError instanceof VoiceServiceError) {
+      throw providerError;
     }
-
-    const err = error as Error;
+    const err = providerError as Error;
     throw new VoiceServiceError('voice_provider_error', 'Voice generation failed', {
       subscriptionTier,
       error: err?.message ?? 'unknown',
@@ -386,6 +795,15 @@ async function generateWithAzure(
   profile: VoiceDeliveryProfile,
   voiceNameOverride?: string,
 ): Promise<VoiceResult> {
+  const providerFallbackDelayMs = Math.max(0, azureProviderFallbackUntilMs - Date.now());
+  if (providerFallbackDelayMs > 0) {
+    functions.logger.warn('[VoiceService] Azure provider cooldown active, using ElevenLabs fallback', {
+      provider: 'azure',
+      providerFallbackDelayMs,
+    });
+    return generateWithElevenLabs(text, profile);
+  }
+
   const config = getAzureConfig();
 
   if (!config.speechKey) {
@@ -398,40 +816,70 @@ async function generateWithAzure(
   const voiceName = voiceNameOverride || config.voiceName;
   const styledSsml = buildAzureVoiceSsml(text, voiceName, true, profile);
   const fallbackSsml = buildAzureVoiceSsml(text, voiceName, false, profile);
+  const restFallbackSsml = buildAzureVoiceSsml(text, voiceName, false, profile, false);
+  const preferredOutput = selectAzureOutputProfile(text, profile);
 
   type AzureAttempt = {
     label: string;
     ssml: string | null;
     outputFormat: sdk.SpeechSynthesisOutputFormat;
+    outputFormatLabel: AzureOutputProfile['label'];
+    deliveryProfileId: VoiceDeliveryProfile['id'];
+    throttleBackoffMs: number;
   };
 
   const attempts: AzureAttempt[] = [
     {
-      label: 'ssml_chat_style_24khz_96k',
+      label: `ssml_chat_style_${preferredOutput.label}`,
       ssml: styledSsml,
-      outputFormat: sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3,
+      outputFormat: preferredOutput.sdkFormat,
+      outputFormatLabel: preferredOutput.label,
+      deliveryProfileId: profile.id,
+      throttleBackoffMs: 0,
     },
     {
-      label: 'ssml_prosody_only_24khz_96k',
+      label: `ssml_prosody_only_${preferredOutput.label}`,
       ssml: fallbackSsml,
-      outputFormat: sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3,
-    },
-    {
-      label: 'plain_text_24khz_96k_fallback',
-      ssml: null,
-      outputFormat: sdk.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3,
+      outputFormat: preferredOutput.sdkFormat,
+      outputFormatLabel: preferredOutput.label,
+      deliveryProfileId: profile.id,
+      throttleBackoffMs: 375,
     },
     {
       label: 'plain_text_16khz_32k_last_resort',
       ssml: null,
       outputFormat: sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3,
+      outputFormatLabel: '16khz_32k_mp3',
+      deliveryProfileId: profile.id,
+      throttleBackoffMs: 950,
     },
   ];
 
+  const cooldownDelayMs = Math.max(0, azureThrottleCooldownUntilMs - Date.now());
+  if (cooldownDelayMs > 0) {
+    const elevenLabsConfig = getElevenLabsConfig();
+    if (elevenLabsConfig.apiKey && (voiceNameOverride || elevenLabsConfig.voiceId)) {
+      functions.logger.warn('[VoiceService] Azure throttle cooldown active, skipping wait and using ElevenLabs fallback', {
+        provider: 'azure',
+        cooldownDelayMs,
+      });
+      return generateWithElevenLabs(text, profile, voiceNameOverride);
+    }
+
+    functions.logger.info('[VoiceService] Waiting for Azure throttle cooldown without configured fallback', {
+      provider: 'azure',
+      cooldownDelayMs,
+    });
+    await delay(cooldownDelayMs);
+  }
+
   let lastError: VoiceServiceError | null = null;
-  for (const attempt of attempts) {
+  for (let index = 0; index < attempts.length; index++) {
+    const attempt = attempts[index];
     try {
-      return await runAzureSynthesisAttempt(text, voiceName, config, attempt);
+      const azureResult = await runAzureSynthesisAttempt(text, voiceName, config, attempt);
+      azureProviderFallbackUntilMs = 0;
+      return azureResult;
     } catch (error) {
       lastError =
         error instanceof VoiceServiceError
@@ -445,8 +893,97 @@ async function generateWithAzure(
         provider: 'azure',
         attempt: attempt.label,
         reason: lastError.reason,
-        details: lastError.details,
+        cancellationReason: (lastError.details as any)?.cancellationReason ?? '',
+        cancellationErrorCode: (lastError.details as any)?.cancellationErrorCode ?? '',
+        cancellationErrorDetails: (lastError.details as any)?.cancellationErrorDetails ?? '',
+        error: (lastError.details as any)?.error ?? '',
       });
+
+      const isThrottled =
+        String((lastError.details as any)?.cancellationErrorDetails ?? '')
+          .toLowerCase()
+          .includes('429') ||
+        String((lastError.details as any)?.error ?? '')
+          .toLowerCase()
+          .includes('429');
+
+      if (isThrottled) {
+        const elevenLabsConfig = getElevenLabsConfig();
+        if (elevenLabsConfig.apiKey && (voiceNameOverride || elevenLabsConfig.voiceId)) {
+          azureProviderFallbackUntilMs = Date.now() + azureProviderFallbackCooldownMs;
+          functions.logger.warn('[VoiceService] Azure quota throttle detected, switching immediately to ElevenLabs fallback', {
+            provider: 'azure',
+            attempt: attempt.label,
+            cooldownMs: azureProviderFallbackCooldownMs,
+          });
+          return generateWithElevenLabs(text, profile);
+        }
+
+        const backoffMs = attempt.throttleBackoffMs;
+        azureThrottleCooldownUntilMs = Date.now() + Math.max(backoffMs, 750);
+        if (index < attempts.length - 1 && backoffMs > 0) {
+          functions.logger.info('[VoiceService] Backing off after Azure throttle', {
+            provider: 'azure',
+            attempt: attempt.label,
+            backoffMs,
+            nextAttempt: attempts[index + 1]?.label ?? 'none',
+          });
+          await delay(backoffMs);
+        }
+      }
+    }
+  }
+
+  const throttled = lastError
+    ? String((lastError.details as any)?.cancellationErrorDetails ?? '')
+        .toLowerCase()
+        .includes('429') ||
+      String((lastError.details as any)?.error ?? '')
+        .toLowerCase()
+        .includes('429')
+    : false;
+
+  if (throttled) {
+    functions.logger.warn('[VoiceService] Falling back to Azure REST synthesis after websocket throttling', {
+      provider: 'azure',
+      voiceName,
+      lastAttempt: (lastError?.details as any)?.attempt ?? 'unknown',
+    });
+    try {
+      const restResult = await generateWithAzureRestFallback(
+        text,
+        voiceName,
+        config,
+        restFallbackSsml,
+        preferredOutput,
+        profile.id,
+      );
+      azureProviderFallbackUntilMs = 0;
+      return restResult;
+    } catch (restError) {
+      const restVoiceError =
+        restError instanceof VoiceServiceError
+          ? restError
+          : new VoiceServiceError('voice_provider_error', 'Azure REST synthesis failed', {
+              provider: 'azure',
+              stage: 'rest_fallback_unknown',
+              error: String(restError),
+            });
+      functions.logger.warn('[VoiceService] Azure REST fallback failed', {
+        provider: 'azure',
+        error: restVoiceError.message,
+        details: restVoiceError.details,
+      });
+
+      const restStatus = Number((restVoiceError.details as any)?.status ?? 0);
+      if (restStatus === 429) {
+        azureProviderFallbackUntilMs = Date.now() + azureProviderFallbackCooldownMs;
+        functions.logger.warn('[VoiceService] Switching regular-tier voice to ElevenLabs during Azure quota cooldown', {
+          provider: 'azure',
+          cooldownMs: azureProviderFallbackCooldownMs,
+        });
+        return generateWithElevenLabs(text, profile);
+      }
     }
   }
 
@@ -459,6 +996,68 @@ async function generateWithAzure(
   );
 }
 
+async function generateWithAzureRestFallback(
+  text: string,
+  voiceName: string,
+  config: { speechKey: string; speechRegion: string; voiceName: string },
+  ssml: string,
+  outputProfile: AzureOutputProfile,
+  deliveryProfileId: VoiceDeliveryProfile['id'],
+): Promise<VoiceResult> {
+  const startedAt = Date.now();
+  const response = await fetch(
+    `https://${config.speechRegion}.tts.speech.microsoft.com/cognitiveservices/v1`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/ssml+xml',
+        'Ocp-Apim-Subscription-Key': config.speechKey,
+        'X-Microsoft-OutputFormat': outputProfile.restFormat,
+        'User-Agent': 'girlai2-functions',
+      },
+      body: ssml,
+    },
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new VoiceServiceError('voice_provider_error', 'Azure REST synthesis failed', {
+      provider: 'azure',
+      stage: 'rest_fallback',
+      status: response.status,
+      error: errorText.slice(0, 500),
+      voiceName,
+    });
+  }
+
+  const audioArrayBuffer = await response.arrayBuffer();
+  const audioBuffer = Buffer.from(audioArrayBuffer);
+  const durationMs = estimateSpeechDurationMs(text);
+  const visemeTimeline = buildHeuristicVisemeTimelineFromText(text, durationMs);
+  const delivery = await prepareAudioDelivery(audioBuffer, 'audio/mpeg', 'azure', {
+    deliveryProfileId,
+    durationMs,
+  });
+
+  return {
+    audioUrl: delivery.audioUrl,
+    audioBase64: delivery.audioBase64,
+    audioContentType: delivery.audioContentType,
+    deliveryMode: delivery.deliveryMode,
+    visemeTimeline,
+    blendTimeline: {},
+    durationMs,
+    provider: 'azure',
+    timingsMs: {
+      providerRequestMs: Date.now() - startedAt,
+      uploadMs: delivery.uploadMs,
+      totalMs: Date.now() - startedAt,
+      audioFormat: outputProfile.label,
+      deliveryProfile: deliveryProfileId,
+    },
+  };
+}
+
 async function runAzureSynthesisAttempt(
   text: string,
   voiceName: string,
@@ -467,9 +1066,12 @@ async function runAzureSynthesisAttempt(
     label: string;
     ssml: string | null;
     outputFormat: sdk.SpeechSynthesisOutputFormat;
+    outputFormatLabel: AzureOutputProfile['label'];
+    deliveryProfileId: VoiceDeliveryProfile['id'];
   }
 ): Promise<VoiceResult> {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
     const speechConfig = sdk.SpeechConfig.fromSubscription(
       config.speechKey,
       config.speechRegion
@@ -478,6 +1080,7 @@ async function runAzureSynthesisAttempt(
     speechConfig.speechSynthesisOutputFormat = attempt.outputFormat;
 
     const visemes: VisemeEvent[] = [];
+    const blendTimeline: Record<number, number[]> = {};
     const synthesizer = new sdk.SpeechSynthesizer(speechConfig);
 
     synthesizer.visemeReceived = (_s, e) => {
@@ -485,6 +1088,37 @@ async function runAzureSynthesisAttempt(
         visemeId: e.visemeId,
         audioOffsetMs: e.audioOffset / 10000,
       });
+
+      // FacialExpression mode: Azure delivers e.animation JSON with 55-float blendshapes per frame
+      if (e.animation) {
+        try {
+          const animData = JSON.parse(e.animation) as {
+            FrameIndex: number;
+            BlendShapes: number[][];
+          };
+          const startFrame = animData.FrameIndex;
+          for (let i = 0; i < animData.BlendShapes.length; i++) {
+            const bs = animData.BlendShapes[i];
+            const frameIdx = startFrame + i;
+            // Map 55-float Azure blendshapes → 5 Live2D mouth params (60fps frames)
+            // [18] jawOpen       → ParamMouthOpenY (×1.85: boosts without hard-clipping)
+            // [20] mouthFunnel   → MouthFunnel
+            // [21] mouthPucker   → MouthPucker
+            // [22/23] left/right → MouthX (×0.42: slight asymmetry)
+            // [24–27] smiles/frowns → ParamMouthForm (×0.90)
+            const openY  = Math.min(1.0, (bs[18] ?? 0) * 1.85);
+            const funnel = Math.min(1.0, bs[20] ?? 0);
+            const pucker = Math.min(1.0, bs[21] ?? 0);
+            const mouthX = Math.max(-1.0, Math.min(1.0,
+              ((bs[23] ?? 0) - (bs[22] ?? 0)) * 0.42));
+            const form   = Math.max(-1.0, Math.min(1.0,
+              ((bs[24] ?? 0) + (bs[25] ?? 0) - (bs[26] ?? 0) - (bs[27] ?? 0)) * 0.90));
+            blendTimeline[frameIdx] = [openY, funnel, pucker, mouthX, form];
+          }
+        } catch {
+          // Silently ignore malformed animation data; fall back to viseme IDs
+        }
+      }
     };
 
     const onSuccess = async (result: sdk.SpeechSynthesisResult) => {
@@ -496,7 +1130,7 @@ async function runAzureSynthesisAttempt(
             provider: 'azure',
             stage: 'result_not_completed',
             attempt: attempt.label,
-            reason: String(result.reason),
+            sdkResultReason: String(result.reason),
             cancellationReason: String(cancel.reason),
             cancellationErrorCode: String(cancel.ErrorCode),
             cancellationErrorDetails: cancel.errorDetails || '',
@@ -507,17 +1141,34 @@ async function runAzureSynthesisAttempt(
 
       try {
         const durationMs = result.audioDuration / 10000;
-        const audioUrl = await uploadAudioToStorage(
+        const synthesisMs = Date.now() - startedAt;
+        const delivery = await prepareAudioDelivery(
           Buffer.from(result.audioData),
           'audio/mpeg',
-          'azure'
+          'azure',
+          {
+            deliveryProfileId: attempt.deliveryProfileId,
+            durationMs,
+          }
         );
 
         resolve({
-          audioUrl,
+          audioUrl: delivery.audioUrl,
+          audioBase64: delivery.audioBase64,
+          audioContentType: delivery.audioContentType,
+          deliveryMode: delivery.deliveryMode,
           visemeTimeline: visemes,
+          blendTimeline,
           durationMs,
           provider: 'azure',
+          timingsMs: {
+            synthesisMs,
+            providerRequestMs: synthesisMs,
+            uploadMs: delivery.uploadMs,
+            totalMs: Date.now() - startedAt,
+            audioFormat: attempt.outputFormatLabel,
+            deliveryProfile: attempt.deliveryProfileId,
+          },
         });
       } catch (uploadError) {
         reject(uploadError);
@@ -555,6 +1206,7 @@ async function generateWithElevenLabs(
   profile: VoiceDeliveryProfile,
   voiceIdOverride?: string,
 ): Promise<VoiceResult> {
+  const startedAt = Date.now();
   const config = getElevenLabsConfig();
 
   if (!config.apiKey) {
@@ -572,6 +1224,8 @@ async function generateWithElevenLabs(
     });
   }
 
+  const requestStartedAt = Date.now();
+  const outputFormat = selectElevenLabsOutputFormat(text, profile);
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
     {
@@ -583,7 +1237,7 @@ async function generateWithElevenLabs(
       body: JSON.stringify({
         text,
         model_id: config.modelId,
-        output_format: 'mp3_44100_128',
+        output_format: outputFormat,
         voice_settings: {
           stability: clamp(profile.elevenLabs.stability, 0, 1),
           similarity_boost: clamp(profile.elevenLabs.similarity_boost, 0, 1),
@@ -620,13 +1274,28 @@ async function generateWithElevenLabs(
     durationMs = endTimes[endTimes.length - 1] * 1000;
   }
 
-  const audioUrl = await uploadAudioToStorage(audioBuffer, 'audio/mpeg', 'elevenlabs');
+  const providerRequestMs = Date.now() - requestStartedAt;
+  const delivery = await prepareAudioDelivery(audioBuffer, 'audio/mpeg', 'elevenlabs', {
+    deliveryProfileId: profile.id,
+    durationMs,
+  });
 
   return {
-    audioUrl,
+    audioUrl: delivery.audioUrl,
+    audioBase64: delivery.audioBase64,
+    audioContentType: delivery.audioContentType,
+    deliveryMode: delivery.deliveryMode,
     visemeTimeline: visemes,
+    blendTimeline: {},
     durationMs,
     provider: 'elevenlabs',
+    timingsMs: {
+      providerRequestMs,
+      uploadMs: delivery.uploadMs,
+      totalMs: Date.now() - startedAt,
+      audioFormat: outputFormat,
+      deliveryProfile: profile.id,
+    },
   };
 }
 
@@ -672,6 +1341,42 @@ function convertCharacterAlignmentToVisemes(alignment: {
       audioOffsetMs: endTime,
     });
   }
+
+  return visemes;
+}
+
+function buildHeuristicVisemeTimelineFromText(
+  text: string,
+  durationMs: number,
+): VisemeEvent[] {
+  const characters = [...text];
+  if (characters.length === 0) {
+    return [];
+  }
+
+  const visemes: VisemeEvent[] = [];
+  const effectiveDurationMs = Math.max(450, durationMs);
+  let lastVisemeId = -1;
+
+  for (let index = 0; index < characters.length; index++) {
+    const char = characters[index];
+    const visemeId = /\s/.test(char) ? 0 : (CHAR_TO_VISEME[char] ?? 1);
+    if (visemeId === lastVisemeId) {
+      continue;
+    }
+
+    const progress = index / Math.max(1, characters.length - 1);
+    visemes.push({
+      visemeId,
+      audioOffsetMs: Math.round(progress * Math.max(0, effectiveDurationMs - 140)),
+    });
+    lastVisemeId = visemeId;
+  }
+
+  visemes.push({
+    visemeId: 0,
+    audioOffsetMs: effectiveDurationMs,
+  });
 
   return visemes;
 }
@@ -795,6 +1500,47 @@ async function uploadAudioToStorage(
   // girlai2-voice-audio has allUsers:objectViewer — return plain public URL.
   // Avoids iam.serviceAccounts.signBlob requirement on the Cloud Functions SA.
   return `https://storage.googleapis.com/${bucket.name}/${filename}`;
+}
+
+async function prepareAudioDelivery(
+  audioBuffer: Buffer,
+  contentType: string,
+  provider: string,
+  options?: {
+    deliveryProfileId?: VoiceDeliveryProfile['id'];
+    durationMs?: number;
+  }
+): Promise<{
+  audioUrl: string;
+  audioBase64?: string;
+  audioContentType?: string;
+  deliveryMode: 'inline' | 'storage';
+  uploadMs: number;
+}> {
+  const preferStreaming =
+    options?.deliveryProfileId === 'long_form' &&
+    (options?.durationMs ?? 0) >= 9000;
+  const inlineThresholdBytes = preferStreaming
+      ? Math.min(inlineAudioMaxBytes, 128 * 1024)
+      : inlineAudioMaxBytes;
+
+  if (audioBuffer.byteLength <= inlineThresholdBytes) {
+    return {
+      audioUrl: '',
+      audioBase64: audioBuffer.toString('base64'),
+      audioContentType: contentType,
+      deliveryMode: 'inline',
+      uploadMs: 0,
+    };
+  }
+
+  const uploadStartedAt = Date.now();
+  const audioUrl = await uploadAudioToStorage(audioBuffer, contentType, provider);
+  return {
+    audioUrl,
+    deliveryMode: 'storage',
+    uploadMs: Date.now() - uploadStartedAt,
+  };
 }
 
 /**

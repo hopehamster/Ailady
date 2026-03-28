@@ -53,7 +53,7 @@ class UserService {
         'displayName': null,
         'createdAt': now,
         'lastLoginAt': now,
-        'isPremium': false,
+        'isSubscribed': false,
         'onboardingCompleted': false,
       });
 

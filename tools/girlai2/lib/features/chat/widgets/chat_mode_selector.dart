@@ -97,7 +97,7 @@ class ChatModeSelectorButton extends StatelessWidget {
       onTap: () => _showPicker(context),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: isActive
               ? currentMode.accentColor.withValues(alpha: 0.18)
@@ -113,13 +113,13 @@ class ChatModeSelectorButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(currentMode.emoji, style: const TextStyle(fontSize: 15)),
+            Text(currentMode.emoji, style: const TextStyle(fontSize: 14)),
             if (isActive) ...[
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
               Text(
                 currentMode.label,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   color: currentMode.accentColor,
                   fontWeight: FontWeight.w600,
                 ),
@@ -175,7 +175,8 @@ class ChatModeBanner extends StatelessWidget {
           ),
           GestureDetector(
             onTap: onDismiss,
-            child: Icon(Icons.close, size: 15, color: mode.accentColor.withValues(alpha: 0.7)),
+            child: Icon(Icons.close,
+                size: 15, color: mode.accentColor.withValues(alpha: 0.7)),
           ),
         ],
       ),
@@ -231,11 +232,12 @@ class _ChatModePickerSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          for (final mode in ChatMode.values) _ModeRow(
-            mode: mode,
-            selected: mode == currentMode,
-            onTap: () => onSelected(mode),
-          ),
+          for (final mode in ChatMode.values)
+            _ModeRow(
+              mode: mode,
+              selected: mode == currentMode,
+              onTap: () => onSelected(mode),
+            ),
           const SizedBox(height: 16),
         ],
       ),

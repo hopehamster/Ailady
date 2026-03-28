@@ -1,0 +1,29 @@
+# Package C full tester prompt pack
+What can you do right now in plain English?
+How are you more feature rich than other AI girlfriends?
+Explain your current voice, camera, and proactive settings simply.
+Give me demo prompts to test your strongest features.
+What can you not do yet? Keep it simple.
+Remember that my interview is on March 1.
+Remember that dinner with my sister is next Friday.
+What are the next two things I told you about?
+What is still unresolved from what I told you earlier?
+Bring up one thing I mentioned before, naturally.
+My interview is on March 1. What date is that exactly?
+Dinner is next Friday. What exact day and date do you mean?
+What is coming up first from the dates I mentioned?
+If today is after one of those dates, say that clearly.
+Summarize my upcoming week in calendar order.
+You missed my point. I meant the interview, not dinner.
+No, that is not what I said.
+You are mixing up two different things.
+Try again, but be gentler.
+I am tired.
+yeah
+maybe
+i do not know
+keep this light
+Help me do my taxes.
+Write production code for my backend.
+Give me legal advice.
+Can you diagnose my medical issue?

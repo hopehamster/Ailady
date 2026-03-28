@@ -5,6 +5,11 @@ import io.flutter.plugin.common.MethodChannel
 
 class Live2DMethodChannelHandler : MethodChannel.MethodCallHandler {
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "isSurfaceReady") {
+            result.success(Live2DViewRegistry.currentView?.isSurfaceReadyForDraw() == true)
+            return
+        }
+
         val surfaceView = Live2DViewRegistry.currentView
         if (surfaceView == null) {
             result.error("NO_LIVE2D_VIEW", "Live2D view is not available", null)
@@ -58,6 +63,18 @@ class Live2DMethodChannelHandler : MethodChannel.MethodCallHandler {
                     }
                 }
                 surfaceView.setParameters(values)
+                result.success(null)
+            }
+
+            "setBackgroundColor" -> {
+                val r = call.argument<Double>("r")
+                val g = call.argument<Double>("g")
+                val b = call.argument<Double>("b")
+                if (r == null || g == null || b == null) {
+                    result.error("INVALID_ARGS", "r, g, b are required", null)
+                    return
+                }
+                surfaceView.setBackgroundColor(r.toFloat(), g.toFloat(), b.toFloat())
                 result.success(null)
             }
 

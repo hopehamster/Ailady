@@ -143,15 +143,17 @@ class FirebaseService {
       debugPrint(
           '✅ FirebaseService.generateResponse: User authenticated as ${user.uid}');
 
-      // Force refresh the ID token to ensure it's attached to the Cloud Function call
-      debugPrint('🔄 FirebaseService.generateResponse: Refreshing ID token...');
-      final idToken = await user.getIdToken(true); // Force refresh
+      // Warm the cached token if needed, but do not force a network refresh on
+      // every turn. The Functions SDK attaches auth automatically, and forcing
+      // refresh here adds avoidable latency to normal chat turns.
+      debugPrint('🔄 FirebaseService.generateResponse: Ensuring auth token is available...');
+      final idToken = await user.getIdToken();
       if (idToken != null && idToken.length > 20) {
         debugPrint(
-            '✅ FirebaseService.generateResponse: ID token refreshed (${idToken.substring(0, 20)}...)');
+            '✅ FirebaseService.generateResponse: Auth token ready (${idToken.substring(0, 20)}...)');
       } else {
         debugPrint(
-            '⚠️ FirebaseService.generateResponse: ID token refresh returned unexpected result');
+            '⚠️ FirebaseService.generateResponse: Auth token was unavailable from cache');
       }
 
       if (kDebugMode) {
@@ -185,19 +187,35 @@ class FirebaseService {
       );
 
       final duration = DateTime.now().difference(startTime);
+      final responseData = Map<String, dynamic>.from(result.data);
+      final qualityMeta = responseData['qualityMeta'] is Map
+          ? Map<String, dynamic>.from(responseData['qualityMeta'] as Map)
+          : null;
+      final stageTimings = qualityMeta?['stageTimingsMs'] is Map
+          ? Map<String, dynamic>.from(qualityMeta!['stageTimingsMs'] as Map)
+          : const <String, dynamic>{};
       if (kDebugMode) {
         debugPrint('✅ Cloud Function response received');
         debugPrint('✅ Duration: ${duration.inMilliseconds}ms');
         debugPrint('✅ Message ID: $messageId');
+        if (qualityMeta != null) {
+          debugPrint(
+              '✅ Route: ${qualityMeta['route'] ?? 'unknown'} | escalated: ${qualityMeta['escalated'] ?? 'unknown'}');
+          debugPrint(
+              '✅ Stage timings: memory=${stageTimings['memoryStageMs'] ?? 'n/a'} social=${stageTimings['socialPlanStageMs'] ?? 'n/a'} response=${stageTimings['responseStageMs'] ?? 'n/a'}');
+        }
       }
 
       DebugLogger.log('FirebaseService.generateResponse', 'Success', data: {
         'messageId': messageId,
         'durationMs': duration.inMilliseconds,
         'userId': user.uid,
+        if (qualityMeta != null) 'route': qualityMeta['route'],
+        if (qualityMeta != null) 'escalated': qualityMeta['escalated'],
+        if (stageTimings.isNotEmpty) 'stageTimingsMs': stageTimings,
       });
 
-      return Map<String, dynamic>.from(result.data);
+      return responseData;
     } on FirebaseFunctionsException catch (e) {
       final duration = DateTime.now().difference(startTime);
       final errorDetails = ChatErrorHandler.getErrorDetails(e);
@@ -656,9 +674,21 @@ class FirebaseService {
     await callable.call();
   }
 
+  Future<Map<String, dynamic>> getCurrentVirtualDate() async {
+    final callable = _functions.httpsCallable('getCurrentVirtualDate');
+    final result = await callable.call();
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
   // ── TIER B: Mood Summary ─────────────────────────────────────
   Future<Map<String, dynamic>> getMoodSummary() async {
     final callable = _functions.httpsCallable('getMoodSummary');
+    final result = await callable.call();
+    return Map<String, dynamic>.from(result.data as Map);
+  }
+
+  Future<Map<String, dynamic>> ensureRelationshipDashboard() async {
+    final callable = _functions.httpsCallable('ensureRelationshipDashboard');
     final result = await callable.call();
     return Map<String, dynamic>.from(result.data as Map);
   }
@@ -773,19 +803,27 @@ class LiveModeVisionResult {
 /// Result from voice generation including audio URL, viseme timeline, and blendshape data
 class VoiceResult {
   final String audioUrl;
+  final String? audioBase64;
+  final String? audioContentType;
+  final String deliveryMode;
   final List<VisemeEvent> visemeTimeline;
   /// FacialExpression blendshape timeline: frame index (60fps) →
   /// [openY, funnel, pucker, mouthX, form]
   final Map<int, List<double>> blendTimeline;
   final double durationMs;
   final String provider;
+  final Map<String, dynamic>? timingsMs;
 
   VoiceResult({
     required this.audioUrl,
+    this.audioBase64,
+    this.audioContentType,
+    required this.deliveryMode,
     required this.visemeTimeline,
     required this.blendTimeline,
     required this.durationMs,
     required this.provider,
+    this.timingsMs,
   });
 
   factory VoiceResult.fromMap(Map<String, dynamic> map) {
@@ -809,20 +847,30 @@ class VoiceResult {
 
     return VoiceResult(
       audioUrl: map['audioUrl'] as String? ?? '',
+      audioBase64: map['audioBase64'] as String?,
+      audioContentType: map['audioContentType'] as String?,
+      deliveryMode: map['deliveryMode'] as String? ?? 'storage',
       visemeTimeline: visemes,
       blendTimeline: blendTimeline,
       durationMs: (map['durationMs'] as num?)?.toDouble() ?? 0,
       provider: map['provider'] as String? ?? 'unknown',
+      timingsMs: map['timingsMs'] is Map
+          ? Map<String, dynamic>.from(map['timingsMs'] as Map)
+          : null,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'audioUrl': audioUrl,
+        'audioBase64': audioBase64,
+        'audioContentType': audioContentType,
+        'deliveryMode': deliveryMode,
         'visemeTimeline': visemeTimeline.map((e) => e.toJson()).toList(),
         'blendTimeline':
             blendTimeline.map((k, v) => MapEntry(k.toString(), v)),
         'durationMs': durationMs,
         'provider': provider,
+        'timingsMs': timingsMs,
       };
 }
 

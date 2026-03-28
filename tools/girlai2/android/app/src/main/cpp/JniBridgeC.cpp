@@ -123,18 +123,21 @@ extern "C"
     Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeOnPause(JNIEnv *env, jclass type)
     {
         LAppMinimumDelegate::GetInstance()->OnPause();
+        g_lastFrameMonotonicMs.store(0, std::memory_order_relaxed);
     }
 
     JNIEXPORT void JNICALL
     Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeOnStop(JNIEnv *env, jclass type)
     {
         LAppMinimumDelegate::GetInstance()->OnStop();
+        g_lastFrameMonotonicMs.store(0, std::memory_order_relaxed);
     }
 
     JNIEXPORT void JNICALL
     Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeOnDestroy(JNIEnv *env, jclass type)
     {
         LAppMinimumDelegate::GetInstance()->OnDestroy();
+        g_lastFrameMonotonicMs.store(0, std::memory_order_relaxed);
     }
 
     JNIEXPORT void JNICALL
@@ -242,6 +245,17 @@ extern "C"
             return;
         }
         LAppMinimumLive2DManager::GetInstance()->ClearParameter(parameter);
+    }
+
+    JNIEXPORT void JNICALL
+    Java_com_sifstudio_girlai2_live2d_JniBridgeJava_nativeSetBackgroundColor(
+        JNIEnv* env,
+        jclass type,
+        jfloat r,
+        jfloat g,
+        jfloat b)
+    {
+        LAppMinimumDelegate::GetInstance()->SetBackgroundColor(r, g, b);
     }
 
     JNIEXPORT void JNICALL

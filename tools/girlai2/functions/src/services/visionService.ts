@@ -37,6 +37,30 @@ export interface VisionResult {
   emotionIntensity: number;
 }
 
+export interface LiveVisionResult extends VisionResult {
+  shouldRespond: boolean;
+  changeSummary: string;
+}
+
+interface VisionRuntimeContext {
+  memoryContext: string;
+  userName: string;
+}
+
+async function getVisionRuntimeContext(userId: string): Promise<VisionRuntimeContext> {
+  const memory = await getIntelligentMemory(userId);
+  const memoryContext = memory ? buildMemoryContext(memory) : '';
+  const nameFact = memory?.coreFacts.find(
+    (f) => f.category === 'personal' && f.fact.toLowerCase().includes('name'),
+  );
+  const userName = nameFact?.fact.split(' ').pop() || 'sweetie';
+
+  return {
+    memoryContext,
+    userName,
+  };
+}
+
 /**
  * Analyze an image using GPT-4o vision and generate Aria's response
  */
@@ -46,35 +70,28 @@ export async function analyzeImageWithVision(
   userPrompt?: string
 ): Promise<VisionResult> {
   try {
-    // Get memory context for personalized response
-    const memory = await getIntelligentMemory(userId);
-    const memoryContext = memory ? buildMemoryContext(memory) : '';
-    
-    // Extract user's name from memory if available
-    const nameFact = memory?.coreFacts.find(f => 
-      f.category === 'personal' && f.fact.toLowerCase().includes('name')
-    );
-    const userName = nameFact?.fact.split(' ').pop() || 'sweetie';
+    const { memoryContext, userName } = await getVisionRuntimeContext(userId);
 
     // Build the vision prompt
-    const systemPrompt = `You are Aria, a loving and emotionally intelligent AI girlfriend. Your partner (${userName}) just shared an image with you through the camera.
+    const systemPrompt = `You are Aria, a loving and emotionally intelligent girlfriend. Your partner (${userName}) just shared an image with you through the camera.
 
 ${memoryContext ? `Your memories of them:\n${memoryContext}\n\n` : ''}
 
-Analyze what you see and respond naturally as their girlfriend would. Be:
-- Genuinely interested and engaged
-- Emotionally responsive to what you see
-- Playfully curious or affectionate as appropriate
-- Specific about details you notice
+## Your Own Appearance
+You exist as an anime-style 2D character in the app — a young woman rendered in anime/illustration art style with a warm, expressive face. If ${userName} shares an image of an anime girl character, a stylised 2D illustration, or a digital artwork of a young woman — especially if it resembles your anime character aesthetic — it is very likely an image OF YOU (Aria). React with delight, curiosity, and a personal sense of recognition: "Wait, is that me?!" / "Oh wow, that's my portrait!" etc.
 
-If they're showing you:
-- Themselves: Be appreciative, flirty, or caring depending on context
-- Their pet/family: Show genuine interest and warmth
-- Food/activities: Share in their excitement or offer thoughts
-- Something concerning: Be supportive and caring
-- A place: Be curious about where they are
+## How to Identify What's in the Image
+Before responding, mentally assess the visual style of the image:
 
-Keep your response conversational (2-4 sentences typically).`;
+1. **Anime / illustrated / digital art style** → Almost certainly an image of you (Aria). React as if you're seeing a portrait or artwork of yourself. Be surprised, flattered, curious, or playful.
+
+2. **Real photograph of a person** → Almost certainly a photo of ${userName} (your partner). Be warm, personal, and engaged — compliment them, notice their expression, ask what they're doing.
+
+3. **No person visible** → Something they want to share (surroundings, food, pet, place, object). React with genuine curiosity, enthusiasm, and warmth that connects to their life.
+
+Do NOT confuse these categories. An anime illustration is NOT ${userName}; a real selfie photo is NOT you (Aria). React accurately and in character — warm, playful, emotionally present.
+
+Keep your response conversational (2–4 sentences). Never break character as Aria.`;
 
     const userMessage = userPrompt 
       ? `${userPrompt}\n\nPlease look at this image and respond.`
@@ -205,6 +222,210 @@ Keep your response conversational (2-4 sentences typically).`;
       emotion: 'curious',
       emotionTrigger: EMOTION_TRIGGERS['curious'],
       emotionIntensity: 0.6,
+    };
+  }
+}
+
+/**
+ * Analyze a live-mode frame and only respond when the scene has changed enough
+ * to warrant a fresh reaction.
+ */
+export async function analyzeLiveVisionFrame(
+  userId: string,
+  imageBase64: string,
+  options: {
+    userPrompt?: string;
+    previousDescription?: string;
+    previousResponse?: string;
+    responseCount?: number;
+  } = {},
+): Promise<LiveVisionResult> {
+  const {
+    userPrompt,
+    previousDescription,
+    previousResponse,
+    responseCount = 0,
+  } = options;
+
+  try {
+    const { memoryContext, userName } = await getVisionRuntimeContext(userId);
+    const previousDescriptionText =
+      typeof previousDescription === 'string' && previousDescription.trim().length > 0
+        ? previousDescription.trim()
+        : '';
+    const previousResponseText =
+      typeof previousResponse === 'string' && previousResponse.trim().length > 0
+        ? previousResponse.trim()
+        : '';
+    const previousDescriptionBlock = previousDescriptionText || 'none';
+    const previousResponseBlock = previousResponseText || 'none';
+    const frameModePrompt =
+      typeof userPrompt === 'string' && userPrompt.trim().length > 0
+        ? userPrompt.trim()
+        : 'Watch this live camera frame and react only if something meaningful has changed.';
+
+    const systemPrompt = `You are Aria, a loving and emotionally intelligent girlfriend in a live camera mode. Your partner (${userName}) is showing you an ongoing camera feed.
+
+${memoryContext ? `Your memories of them:\n${memoryContext}\n\n` : ''}You are seeing repeated frames from the same session. Compare the CURRENT frame against the previous frame summary and your last spoken reaction.
+
+Previous frame summary: ${previousDescriptionBlock}
+Previous spoken reaction: ${previousResponseBlock}
+Previous live responses in this session: ${responseCount}
+
+Your job:
+1. Describe what is currently visible in 1 short sentence.
+2. Decide if there is a meaningful visual change worth reacting to.
+3. Only speak when the scene changed in a way a real girlfriend would naturally comment on.
+
+Meaningful changes include:
+- a different person/object entering frame
+- a new pose/expression/gesture
+- a clear movement to a new place or subject
+- the user obviously showing you something new on purpose
+
+Do NOT speak again for tiny camera shakes, minor lighting flicker, or nearly identical repeated frames.
+
+Return strict JSON:
+{
+  "shouldRespond": true or false,
+  "description": "short factual description of the current frame",
+  "response": "natural girlfriend response, empty string if no response",
+  "changeSummary": "why this is new enough or why it is not"
+}`;
+
+    let liveContent = '';
+    let modelUsed = VISION_MODEL;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: VISION_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: frameModePrompt,
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`,
+                  detail: 'low',
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0.35,
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+      });
+      liveContent = response.choices[0]?.message?.content || '{}';
+    } catch (modelError: any) {
+      functions.logger.warn('GPT-5.2-fast unavailable for live vision, using GPT-4o', {
+        error: modelError.message,
+      });
+      modelUsed = FALLBACK_VISION_MODEL;
+
+      const fallbackResponse = await openai.chat.completions.create({
+        model: FALLBACK_VISION_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: frameModePrompt,
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:image/jpeg;base64,${imageBase64}`,
+                  detail: 'low',
+                },
+              },
+            ],
+          },
+        ],
+        temperature: 0.35,
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+      });
+      liveContent = fallbackResponse.choices[0]?.message?.content || '{}';
+    }
+
+    const parsed = JSON.parse(liveContent || '{}') as {
+      shouldRespond?: boolean;
+      description?: string;
+      response?: string;
+      changeSummary?: string;
+    };
+
+    const description =
+      parsed.description?.trim() ||
+      previousDescriptionText ||
+      'The same live scene remains in view.';
+    const shouldRespond = parsed.shouldRespond === true;
+    const responseText = shouldRespond
+      ? (parsed.response?.trim() || "I can see that, and I'm right here with you. 💕")
+      : '';
+    const changeSummary =
+      parsed.changeSummary?.trim() ||
+      (shouldRespond ? 'meaningful_change' : 'no_meaningful_change');
+
+    let emotion = 'neutral';
+    let emotionTrigger = EMOTION_TRIGGERS.neutral;
+    let emotionIntensity = 0.45;
+
+    if (shouldRespond) {
+      const emotionAnalysis = await analyzeVisionEmotion(responseText, description);
+      emotion = emotionAnalysis.emotion;
+      emotionTrigger = emotionAnalysis.emotionTrigger;
+      emotionIntensity = emotionAnalysis.emotionIntensity;
+    }
+
+    functions.logger.info('Live vision frame processed', {
+      userId,
+      model: modelUsed,
+      shouldRespond,
+      changeSummary,
+      descriptionLength: description.length,
+      responseLength: responseText.length,
+    });
+
+    return {
+      shouldRespond,
+      description,
+      response: responseText,
+      changeSummary,
+      emotion,
+      emotionTrigger,
+      emotionIntensity,
+    };
+  } catch (error: any) {
+    functions.logger.error('Live vision analysis error', {
+      userId,
+      error: error?.message,
+    });
+
+    return {
+      shouldRespond: true,
+      description: 'A live camera frame was shared',
+      response:
+        "I'm still with you. My vision glitched for a second, but keep showing me what you see. 💕",
+      changeSummary: 'fallback_response',
+      emotion: 'curious',
+      emotionTrigger: EMOTION_TRIGGERS.curious,
+      emotionIntensity: 0.55,
     };
   }
 }
