@@ -10,15 +10,18 @@ Use this when:
 
 ## Read Order
 
-1. `PROJECT_MEMORY_LEDGER.md`
-2. `ops/aria/current/mission.md`
-3. `ops/aria/current/priorities.md`
-4. `ops/aria/current/active-work.md`
-5. `ops/aria/current/known-regressions.md`
-6. `ops/aria/current/architecture-state.md`
-7. `ops/aria/current/pre-heygen-migration-gate.md`
-8. `ops/aria/current/tooling-state.md`
-9. newest files in `ops/aria/log/`
+1. `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
+2. `ops/aria/current/NEXT_EXECUTION_SLICE.md`
+3. `ops/aria/current/EXECUTION_CHECKLIST.md`
+4. `PROJECT_MEMORY_LEDGER.md`
+5. `ops/aria/current/mission.md`
+6. `ops/aria/current/priorities.md`
+7. `ops/aria/current/active-work.md`
+8. `ops/aria/current/known-regressions.md`
+9. `ops/aria/current/architecture-state.md`
+10. `ops/aria/current/pre-heygen-migration-gate.md`
+11. `ops/aria/current/tooling-state.md`
+12. newest files in `ops/aria/log/`
 
 If another model lands in `.codex/` or `.claude/`, those folders should point here instead of maintaining parallel memory.
 
@@ -30,8 +33,7 @@ If another model lands in `.codex/` or `.claude/`, those folders should point he
 
 ## Current Immediate Next Step
 
-- deploy the clean-branch prompt-cost pass
-- run the dedicated latency pass on `IN2017`
+- follow `ops/aria/current/NEXT_EXECUTION_SLICE.md`
 - continue shrinking `tools/girlai2/functions/src/services/llmService.ts`
 - use `ops/aria/current/pre-heygen-migration-gate.md` as the canonical gate before serious `HeyGen WebView` implementation
 

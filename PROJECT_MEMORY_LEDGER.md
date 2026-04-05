@@ -188,6 +188,15 @@
   - Package C personality test-readiness third
 - The task board is now the current source of truth for this pre-animation phase.
 
+## Latest Low-Token Execution Packet Work
+
+- Added a compact low-token execution bundle in the clean repo:
+  - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
+  - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
+  - `ops/aria/current/EXECUTION_CHECKLIST.md`
+- Updated `.codex/CATCHUP.md`, `.claude/CATCHUP.md`, `ops/aria/README.md`, and `scripts/resume.ps1` to point smaller models at the short execution path first.
+- The low-token packet now makes the clean repo the default execution base and narrows the active next slice to system-prompt shell extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.

@@ -4,6 +4,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
 $readOrder = @(
+  'ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md',
+  'ops/aria/current/NEXT_EXECUTION_SLICE.md',
+  'ops/aria/current/EXECUTION_CHECKLIST.md',
   'PROJECT_MEMORY_LEDGER.md',
   'ops/aria/README.md',
   'ops/aria/current/mission.md',
@@ -41,8 +44,8 @@ if ($latestLogs.Count -gt 0) {
 
 Write-Host ''
 Write-Host 'Expected outcome before product work:' -ForegroundColor Green
-Write-Host '- know current mission'
-Write-Host '- know latest completed work'
-Write-Host '- know immediate next step'
-Write-Host '- know active regressions and constraints'
+Write-Host '- know the active repo and branch'
+Write-Host '- know exactly one execution slice'
+Write-Host '- know what not to touch'
+Write-Host '- know verification and checkpoint rules'
 Write-Host ''

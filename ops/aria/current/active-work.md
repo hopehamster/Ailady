@@ -13,11 +13,11 @@ The clean repo now has its own local operating system and the first selective pr
 
 ## Immediate Next Actions
 
-1. Continue the next `llmService.ts` shrink slice from the now-extracted `promptAugmentService.ts` boundary.
-2. Isolate or reconcile the remaining older clean-branch `llmService.ts` drift before the next checkpoint commit that touches that file.
-3. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
-4. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
-5. Keep the old repo reference-only and do not let product work drift back there.
+1. Use the new low-token execution packet as the default handoff surface.
+2. Continue the next `llmService.ts` shrink slice from the now-extracted `promptAugmentService.ts` boundary.
+3. Extract system-prompt shell ownership next.
+4. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
+5. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
 
 ## Do Not Lose These Facts
 
