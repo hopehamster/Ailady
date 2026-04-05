@@ -58,10 +58,9 @@ import {
   VirtualDateActivity,
 } from './services/virtualDateService';
 import { createLiveModeRealtimeSession } from './services/realtimeSessionService';
+import { estimateInitialHistoryFetchLimit } from './services/promptCostService';
 
 admin.initializeApp();
-
-const RESPONSE_HISTORY_FETCH_LIMIT = 40;
 
 // Set OpenAI API key from environment
 const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -299,11 +298,13 @@ export const generateResponse = functions
         ...(chatMode ? { chatMode } : {}),
       });
 
+      const recentHistoryFetchLimit = estimateInitialHistoryFetchLimit(trimmedMessage);
+
       const recentMessagesPromise = db
         .collection('conversations')
         .where('userId', '==', userId)
         .orderBy('timestamp', 'desc')
-        .limit(RESPONSE_HISTORY_FETCH_LIMIT)
+        .limit(recentHistoryFetchLimit)
         .get();
       const datesContextPromise = (async (): Promise<string> => {
         const startedAt = Date.now();
@@ -2305,3 +2306,6 @@ export const handleRevenueCatWebhook = functions
       res.status(500).send('Internal Server Error');
     }
   });
+
+
+

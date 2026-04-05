@@ -259,6 +259,81 @@
 - Current conclusion:
   - the previous replay-on-return regression is not reproducing in the current binary check on `70578ba3`
 
+## 2026-04-05 Clean Repo Prompt-Cost Deploy + IN2017 Validation
+
+- Active implementation repo remains:
+  - `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`
+  - branch `aria-clean-recovery-20260327`
+- Verified locally in `tools/girlai2/functions` before deploy:
+  - `npm run build` passed
+  - `npm test` passed
+- Deployed clean-branch `functions:generateResponse` successfully from the clean repo after the prompt-cost pass.
+- Prompt-cost artifacts now live in the clean repo:
+  - `tools/girlai2/functions/src/services/promptCostService.ts`
+  - dynamic initial history fetch in `tools/girlai2/functions/src/index.ts`
+  - fast-turn prompt compaction in `tools/girlai2/functions/src/services/llmService.ts`
+  - prompt-cost tests in `tools/girlai2/functions/test/prompt-cost.test.js`
+
+### Dedicated latency pass on `70578ba3`
+
+- Artifact directory:
+  - `tools/girlai2/docs/_tmp_aria_device_test/70578ba3/20260405_045306`
+- Harness result:
+  - `promptsSent=6/6`
+  - `fatalCount=0`
+  - `appAlive=True`
+  - `pass=True`
+- Captured text-duration samples from app logs:
+  - `[1921, 2177, 4120, 1751, 4848]`
+- Derived stats:
+  - avg: `2963.4ms`
+  - p50: `2177ms`
+  - p90: `4556.8ms`
+- Captured route mix:
+  - `fast=2`
+  - `quality=3`
+  - `escalated quality=1`
+- Captured voice-startup samples:
+  - `[2782, 1472]`
+- Derived voice-startup stats:
+  - avg: `2127ms`
+  - p50: `2127ms`
+  - p90: `2651ms`
+- Representative stage-timing evidence from the pass:
+  - fast sample: `memory=179 social=0 response=728`
+  - fast sample: `memory=40 social=1 response=649`
+  - escalated quality sample: `memory=102 social=1 response=1245`
+
+### Replay-on-return check on deployed backend
+
+- Background-cycle smoke artifact:
+  - `tools/girlai2/docs/_tmp_aria_device_test/70578ba3/20260405_045625`
+- Smoke result:
+  - `promptsSent=6/6`
+  - `backgroundCycles=2`
+  - `fatalCount=0`
+  - `appAlive=True`
+  - `pass=True`
+- That stress run was clean at the app level, but not clean enough to use as replay proof because only 3 backend call sequences were visible in logcat.
+- A separate binary replay check was run for proof:
+  - artifact: `tools/girlai2/docs/_tmp_replay_binary_check_20260405.txt`
+  - after seeding one voiced response, clearing logcat, and relaunching 3 times without new input:
+    - `generateResponseCalls=0`
+    - `generateVoiceCalls=0`
+    - `voicePlayback=0`
+- Current conclusion:
+  - replay-on-return is still not reproducing on the deployed clean-branch backend
+
+### Immediate implication
+
+- Prompt-cost deployment is validated as:
+  - build-safe
+  - deploy-safe
+  - latency-improving on the primary device
+  - not introducing a replay-on-return regression in the deployed path
+- Next code step remains:
+  - continue shrinking `tools/girlai2/functions/src/services/llmService.ts` in the clean repo
+
 ## Latest Voice Latency Status
 
 - Voice latency note created:
@@ -1074,3 +1149,80 @@ pm run build passed in 	ools/girlai2/functions; lutter pub get passed in 	ools/
   2. remove duplicated recent-message normalization and wrapper seams
   3. split policy from realization so callback/repair language becomes less managed
 
+## 2026-03-27 Clean Branch Ownership Shrink Pass
+
+- Truth Kernel v2 is now complete in the clean branch:
+  - `CompanionRuntimeSelfModel` construction moved into `tools/girlai2/functions/src/services/truthKernelService.ts`
+  - `llmService.ts` no longer owns truth-state construction helpers or thin truth prompt wrappers
+- Memory Controller ownership pass is complete:
+  - the chronology wrapper seam was removed from `llmService.ts`
+  - recent-exchange and chronology routing remain controller-owned in `tools/girlai2/functions/src/services/memoryControllerService.ts`
+- Conversation Policy ownership pass is complete:
+  - `llmService.ts` now calls direct policy APIs from `tools/girlai2/functions/src/services/conversationPolicyService.ts`
+  - compatibility wrappers were removed from that service
+- Validation:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `firebase deploy --only functions:generateResponse --project girlai2` succeeded from the clean branch
+  - semantic sweep rerun on device `70578ba3`:
+    - `tools/girlai2/docs/_tmp_semantic_sweep_20260327_233721`
+- Semantic truth after rerun:
+  - capability overview: pass
+  - capability limits: pass
+  - chronology capture: pass
+  - recent-exchange callback: functional pass
+  - repair reset: pass
+- Remaining A+ gap:
+  - the next problem is not routing correctness; it is realization quality
+  - callback and repair wording are still too literal / managed
+- Locked next architecture targets:
+  1. controlled realization library for callback / repair / low-pressure endings
+  2. memory lifecycle ownership in the Memory Controller action model
+  3. prompt-shell cleanup so service-owned truth / memory / policy blocks feed the orchestrator cleanly
+
+
+## 2026-04-05 Repo Divergence Recovery
+
+- We confirmed work context drifted between:
+  - active clean recovery repo `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`
+  - older repo `C:\Users\Owner\Documents\GitHub\Ailady`
+- Active repo is now explicitly locked to the clean recovery repo.
+- Old repo is reference-only and must not receive new product work.
+- Divergence audit was written to:
+  - `tools/girlai2/docs/REPO_DIVERGENCE_AUDIT_2026-04-05.md`
+- Main audit conclusion:
+  - keep clean repo as implementation base
+  - selectively port old-repo operating docs and prompt-cost ideas
+  - do not blindly copy old `llmService.ts`, `memoryService.ts`, or `PROJECT_MEMORY_LEDGER.md`
+- Safe old-repo items to recreate in the clean repo:
+  - `ops/aria/` operating system
+  - `.codex/` and `.claude/` catch-up shims
+  - `scripts/resume.ps1`
+  - pre-HeyGen migration gate
+  - selective prompt-cost improvements (`promptCostService.ts`, dynamic history fetch limit, fast-turn prompt compaction)
+
+## 2026-04-05 Clean Repo Ops + Prompt Cost Pass
+
+- Recreated the local Aria operating system directly in the clean recovery repo:
+  - `ops/aria/`
+  - `.codex/`
+  - `.claude/`
+  - `scripts/resume.ps1`
+  - `scripts/checkpoint-work.ps1`
+- Updated `AGENTS.md` so future work in this repo starts from the local ops hub instead of drifting back to old-repo-only memory.
+- Added scoped checkpoint commit discipline:
+  - `ops/aria/protocols/git-checkpoint-protocol.md`
+  - `scripts/checkpoint-work.ps1 -OnlyPaths ...` for dirty-tree safety
+- Reimplemented the first selective prompt-cost pass in the clean repo:
+  - `tools/girlai2/functions/src/services/promptCostService.ts`
+  - dynamic initial history fetch limit in `tools/girlai2/functions/src/index.ts`
+  - fast-turn prompt compaction and prompt-section composition in `tools/girlai2/functions/src/services/llmService.ts`
+  - tests in `tools/girlai2/functions/test/prompt-cost.test.js`
+- Validation passed locally:
+  - `npm run build` in `tools/girlai2/functions`
+  - `npm test` in `tools/girlai2/functions`
+- Context7 guidance used for this pass:
+  - exact-prefix prompt caching benefits require static/repeated content early and dynamic context later
+  - this justified reintroducing prompt-section composition and fast-turn compaction discipline in the clean branch
+- Next required step:
+  - deploy the clean-branch prompt-cost pass
+  - run the dedicated latency pass on `IN2017`

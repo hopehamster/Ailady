@@ -86,6 +86,10 @@ import {
   buildChronologyState,
   buildChronologyRouterResponse,
 } from './memoryControllerService';
+import {
+  compactPromptAugmentsForRoute,
+  composeSystemPromptSections,
+} from './promptCostService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -4011,16 +4015,21 @@ export async function generateAIResponse(
 
     const chatModeBlock = buildChatModeOverlayBlock(chatMode);
 
-    const effectiveSystemPrompt = [
+    const compactedPromptAugments = compactPromptAugmentsForRoute(promptAugments, {
+      route: routeDecision.route,
+      preferRecentExchange,
+    });
+
+    const effectiveSystemPrompt = composeSystemPromptSections([
       systemPrompt,
-      promptAugments.personalityBlock,
-      promptAugments.personaVoiceBlock,
-      promptAugments.innerLifeBlock,
-      promptAugments.relationshipBlock,
-      promptAugments.emotionalMemoryBlock,
-      promptAugments.moodBlock,
-      promptAugments.loreBlock,
-      promptAugments.semanticRecallBlock,
+      compactedPromptAugments.personalityBlock,
+      compactedPromptAugments.personaVoiceBlock,
+      compactedPromptAugments.innerLifeBlock,
+      compactedPromptAugments.relationshipBlock,
+      compactedPromptAugments.emotionalMemoryBlock,
+      compactedPromptAugments.moodBlock,
+      compactedPromptAugments.loreBlock,
+      compactedPromptAugments.semanticRecallBlock,
       recentExchangePriorityBlock,
       // Inject upcoming important dates so Aria can acknowledge them proactively
       datesContextBlock ?? '',
@@ -4044,9 +4053,7 @@ export async function generateAIResponse(
         sessionTurnCount,
         turnStage,
       ),
-    ]
-      .filter((block) => block.trim().length > 0)
-      .join('\n\n');
+    ]);
 
     // Build messages array
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -4644,3 +4651,4 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
     };
   }
 }
+

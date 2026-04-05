@@ -1,0 +1,25 @@
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+personality = "pragmatic"
+
+[mcp_servers.stackflow]
+command = "npx"
+args = ["-y", "mcp-remote", "https://mcp.stackoverflow.com"]
+
+[mcp_servers.supermemory]
+url = "https://mcp.supermemory.ai/mcp"
+bearer_token_env_var = "SUPERMEMORY_API_KEY"
+
+[mcp_servers.context7]
+command = "context7-mcp"
+args = ["--api-key", "ctx7sk-956457ed-128b-4d40-b9af-3626b6cbbd06"]
+
+[mcp_servers.playwright]
+command = "npx"
+args = ["@playwright/mcp@latest"]
+
+[windows]
+sandbox = "elevated"
+
+[features]
+multi_agent = true
