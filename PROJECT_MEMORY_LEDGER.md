@@ -334,6 +334,28 @@
 - Next code step remains:
   - continue shrinking `tools/girlai2/functions/src/services/llmService.ts` in the clean repo
 
+## 2026-04-05 Clean Repo Prompt Shell Shrink Pass
+
+- Continued the next `llmService.ts` ownership shrink in the clean repo after the validated prompt-cost deploy.
+- Added new service:
+  - `tools/girlai2/functions/src/services/promptAugmentService.ts`
+- Ownership moved out of `llmService.ts` into the new prompt-augment service:
+  - `PromptAugments`
+  - `PromptAugmentOptions`
+  - `detectUserMoodSignal(...)`
+  - `buildPromptAugments(...)`
+- `promptAugmentService.ts` now owns the personality/lore/semantic-recall/inner-life/relationship/mood prompt augmentation assembly.
+- `llmService.ts` now treats prompt augments as a consumed service boundary and passes in:
+  - runtime self-model
+  - preferred user name
+  - temporal context
+  - recent messages
+- Verification:
+  - `npm run build` in `tools/girlai2/functions`: passed
+  - `npm test` in `tools/girlai2/functions`: passed
+- Current caveat:
+  - this slice is locally validated but not checkpoint-committed yet because `tools/girlai2/functions/src/services/llmService.ts` still carries older clean-branch in-flight refactor edits in the same file, so file-level staging would currently mix validated new work with older unverified drift unless we isolate it more carefully.
+
 ## Latest Voice Latency Status
 
 - Voice latency note created:

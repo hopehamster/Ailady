@@ -195,3 +195,78 @@ Locked next architecture moves:
   - replace deterministic callback/repair phrasing with a controlled realization library
 4. Prompt shell cleanup:
   - move prompt augment ownership behind the three new services and keep `llmService.ts` as coordinator only
+
+## 2026-03-27 Ownership Shrink Pass Complete
+
+Completed now in the clean branch:
+- Truth Kernel v2:
+  - runtime truth-state construction moved out of `llmService.ts`
+  - runtime self-model construction now lives in `truthKernelService.ts`
+  - thin truth prompt wrappers were removed from `llmService.ts`
+- Memory Controller ownership pass:
+  - the thin chronology wrapper was removed from `llmService.ts`
+  - `llmService.ts` now calls `buildChronologyState(...)` and `buildChronologyRouterResponse(...)` directly
+  - recent-exchange and chronology behavior remain controller-owned in `memoryControllerService.ts`
+- Conversation Policy ownership pass:
+  - `llmService.ts` now calls the direct policy APIs:
+    - `buildConversationPolicyDirectives(...)`
+    - `buildConversationPolicyEnhancers(...)`
+    - `applyConversationPolicyResponseGuards(...)`
+  - compatibility wrappers were removed from `conversationPolicyService.ts`
+
+Semantic verification after the ownership passes:
+- fresh sweep run on `70578ba3`:
+  - `tools/girlai2/docs/_tmp_semantic_sweep_20260327_233721`
+- outcome:
+  - capability overview: pass
+  - capability limits: pass
+  - chronology capture: pass
+  - recent-exchange callback: functional pass
+  - repair reset: pass
+
+Current remaining weakness after the shrink passes:
+- callback and repair responses are structurally correct, but still too literal / managed in wording
+- this is now a realization problem, not a routing problem
+
+Current status:
+- `llmService.ts` is materially smaller in responsibility
+- truth, memory routing, and policy ownership are now real service boundaries
+- the next A+ work should focus on:
+  1. realization quality
+  2. memory lifecycle ownership
+  3. prompt-shell cleanup
+
+## 2026-04-05 Prompt Shell Cleanup Progress
+
+Completed in the clean repo:
+- added `tools/girlai2/functions/src/services/promptAugmentService.ts`
+- moved prompt augmentation ownership out of `llmService.ts`:
+  - `PromptAugments`
+  - `PromptAugmentOptions`
+  - `detectUserMoodSignal(...)`
+  - `buildPromptAugments(...)`
+
+What `promptAugmentService.ts` now owns:
+- personality block assembly
+- lore activation + lore block assembly
+- semantic recall block assembly
+- inner-life block assembly
+- relationship block assembly
+- emotional-memory threading block
+- mood-signal inference for prompt tinting
+- persona voice block assembly
+
+What `llmService.ts` still owns after this pass:
+- route decisions
+- runtime bootstrap
+- system prompt shell
+- provider/model orchestration
+- social planning
+- quality/critic orchestration
+
+Validation for this pass:
+- `npm run build` in `tools/girlai2/functions`: passed
+- `npm test` in `tools/girlai2/functions`: passed
+
+Current limitation:
+- this shrink slice is locally validated but not checkpoint-committed yet because the working copy of `llmService.ts` still contains older clean-branch in-flight refactor edits in the same file. The next checkpoint touching `llmService.ts` should happen only after we isolate or reconcile that remaining drift cleanly.

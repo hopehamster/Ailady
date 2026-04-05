@@ -8,9 +8,7 @@ import {
   updateIntelligentMemory,
   buildMemoryContext,
   buildLayeredMemoryContext,
-  buildSemanticRecallContext,
   getOpenLoopsForPrompt,
-  recallSemanticMemories,
   getStyleProfile,
   getPersonaConsistencyState,
   getLatestWeeklyTuningReport,
@@ -24,10 +22,7 @@ import {
   recordShadowEvaluation,
   getRecentContextMessages,
   getHoursSinceLastChat,
-  buildEmotionalMemoryThreadingBlock,
-  getLastConversationTopic,
   getInteractionCount,
-  getLastSessionEmotionalTone,
   IntelligentMemory,
   hasConflictingProfileNameReference,
   normalizeMemoryForProfileDisplayName,
@@ -38,41 +33,19 @@ import {
   ShadowBenchmarkStats,
 } from './memoryService';
 import {
-  getPersonalityProfile,
-  buildPersonalityPromptBlock,
-} from './personalityService';
-import { getActivatedLoreSnippets, buildLorePromptBlock } from './lorebookService';
-import {
-  buildAriaIsmsBlock,
-  buildNonVerbalSubtextBlock,
-  buildNameUseDirective,
-  buildSentenceVarietyBlock,
-} from './ariaPersonaService';
-import {
-  buildInnerLifePromptBlock,
-  getAriaOpinions,
-  InnerLifeContext,
-} from './ariaInnerLifeService';
-import {
-  getRelationshipStage,
-  buildRelationshipContextBlocks,
-  assembleRelationshipPrompt,
-  SessionMoodArcParams,
-} from './ariaRelationshipService';
-import {
-  buildTruthKernelFromRuntimeContext,
-  TruthKernel,
-  TruthAvailability,
-  TruthAccessTier,
+  buildCompanionRuntimeSelfModelFromUserData,
+  buildDefaultRuntimeSelfModel,
+  CompanionRuntimeSelfModel,
   buildCapabilityOverviewResponseFromKernel,
   buildTruthKernelPromptSection,
   buildRuntimeTruthPromptSection,
 } from './truthKernelService';
+import { getRelationshipStage } from './ariaRelationshipService';
 import {
   buildConversationPolicy,
-  buildSocialDirectives,
-  buildDynamicTurnEnhancers,
-  enforceResponseGuards,
+  buildConversationPolicyDirectives,
+  buildConversationPolicyEnhancers,
+  applyConversationPolicyResponseGuards,
   mapSocialSignalsToConversationPolicySignals,
   mapSessionStageToConversationPolicyContext,
   mapConversationPolicyPlanToSocialPlan,
@@ -90,6 +63,10 @@ import {
   compactPromptAugmentsForRoute,
   composeSystemPromptSections,
 } from './promptCostService';
+import {
+  buildPromptAugments,
+  type PromptAugments,
+} from './promptAugmentService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -174,22 +151,6 @@ export interface CompanionQualityInsights {
     styleDriftRate: number;
     staleLoopRate: number;
   };
-}
-
-type CompanionSubscriptionTier = 'free' | 'regular' | 'ultra';
-
-interface CompanionRuntimeSelfModel {
-  relationshipDays: number;
-  subscriptionTier: CompanionSubscriptionTier;
-  hasVoiceAccess: boolean | null;
-  hasVisionAccess: boolean | null;
-  proactiveEnabled: boolean | null;
-  freeModeEnabled: boolean | null;
-  runtimeSource: 'resolved' | 'fallback';
-  profileDisplayName?: string;
-  userTimeZoneOffsetMinutes: number;
-  userTimeZoneName?: string;
-  truthKernel: TruthKernel;
 }
 
 type VirtualAgentName =
@@ -337,6 +298,17 @@ const INTERNAL_TESTER_MODE =
   (process.env.INTERNAL_TESTER_MODE ?? 'true').toLowerCase() !== 'false';
 const PERSONALITY_UPGRADE_ENABLED =
   (process.env.PERSONALITY_UPGRADE_ENABLED ?? 'true').toLowerCase() !== 'false';
+
+const EMPTY_PROMPT_AUGMENTS: PromptAugments = {
+  personalityBlock: '',
+  loreBlock: '',
+  semanticRecallBlock: '',
+  personaVoiceBlock: '',
+  innerLifeBlock: '',
+  relationshipBlock: '',
+  emotionalMemoryBlock: '',
+  moodBlock: '',
+};
 const PERSONALITY_DEMO_MODE =
   (process.env.PERSONALITY_DEMO_MODE ?? 'false').toLowerCase() === 'true';
 const SHADOW_BENCHMARK_ENABLED =
@@ -423,102 +395,6 @@ interface SocialPlan {
   avoidInterrogation: boolean;
   repetitionGuardStrength: 'normal' | 'high';
   closureStyle: 'none' | 'soft' | 'warm';
-}
-
-function mapTruthAvailabilityToBoolean(
-  availability: TruthAvailability,
-): boolean | null {
-  if (availability === 'available') {
-    return true;
-  }
-  if (availability === 'unavailable') {
-    return false;
-  }
-  return null;
-}
-
-function mapTruthTierToRuntimeTier(
-  tier: TruthAccessTier | null,
-): CompanionSubscriptionTier {
-  if (tier === 'free' || tier === 'regular' || tier === 'ultra') {
-    return tier;
-  }
-  return 'regular';
-}
-
-function buildTruthKernelForRuntimeContext(
-  userData: Record<string, unknown> | null | undefined,
-  memory: IntelligentMemory | null,
-  userEnvCtx?: UserEnvironmentContext,
-): TruthKernel {
-  const hasLiveWorldSnapshot = !!(
-    userEnvCtx &&
-    (userEnvCtx.city ||
-      userEnvCtx.region ||
-      userEnvCtx.weatherDesc ||
-      userEnvCtx.localHour !== undefined ||
-      userEnvCtx.localDayOfWeek)
-  );
-
-  return buildTruthKernelFromRuntimeContext({
-    runtimeSource: userData ? 'resolved' : 'fallback',
-    userRecord: userData ?? null,
-    memoryProactiveEnabled: memory?.proactiveConfig?.enabled ?? null,
-    location: {
-      enabled: hasLiveWorldSnapshot ? true : null,
-      freshSnapshotAvailable: hasLiveWorldSnapshot ? true : null,
-      precision: hasLiveWorldSnapshot ? 'city_level' : null,
-      storesLocationHistory: false,
-      usesApproximateContext: hasLiveWorldSnapshot ? true : null,
-      source: {
-        kind: hasLiveWorldSnapshot ? 'location_context' : 'unknown',
-        field: 'environmentContext',
-        note: hasLiveWorldSnapshot
-          ? 'fresh client environment snapshot supplied for this turn'
-          : 'no fresh environment snapshot supplied for this turn',
-      },
-    },
-    voice: {
-      availability: 'available',
-      enabled: true,
-      activeNow: null,
-      source: {
-        kind: 'explicit',
-        field: 'voice',
-        note: 'voice feature implemented in app; current provider/runtime state may vary',
-      },
-    },
-    camera: {
-      availability: 'available',
-      enabled: true,
-      activeNow: null,
-      source: {
-        kind: 'explicit',
-        field: 'camera',
-        note: 'camera feature implemented in app; permission/runtime state may vary',
-      },
-    },
-  });
-}
-
-function buildRuntimeSelfModelFromTruthKernel(
-  kernel: TruthKernel,
-): CompanionRuntimeSelfModel {
-  return {
-    relationshipDays: kernel.relationshipDays.value ?? 0,
-    subscriptionTier: mapTruthTierToRuntimeTier(kernel.subscription.tier.value),
-    hasVoiceAccess:
-      kernel.voice.enabled.value ?? mapTruthAvailabilityToBoolean(kernel.voice.availability),
-    hasVisionAccess:
-      kernel.camera.enabled.value ?? mapTruthAvailabilityToBoolean(kernel.camera.availability),
-    proactiveEnabled: kernel.proactiveEnabled.value,
-    freeModeEnabled: kernel.freeModeEnabled.value,
-    runtimeSource: kernel.runtimeSource,
-    profileDisplayName: kernel.profileDisplayName.value ?? undefined,
-    userTimeZoneOffsetMinutes: kernel.timezone.offsetMinutes.value ?? 0,
-    userTimeZoneName: kernel.timezone.name.value ?? undefined,
-    truthKernel: kernel,
-  };
 }
 
 interface CandidateObjectiveScores {
@@ -878,20 +754,6 @@ function detectChronologyIntent(userMessage: string): ChronologyIntent {
   return { isChronologyQuery: false, focus: 'unknown' };
 }
 
-function buildChronologyTruthResponse(
-  userMessage: string,
-  conversationHistory: ConversationMessage[],
-  memory: IntelligentMemory | null,
-  temporal: EffectiveTemporalContext,
-  intent: ChronologyIntent,
-): string | null {
-  return buildChronologyRouterResponse(
-    intent,
-    buildChronologyState(userMessage, conversationHistory, memory, temporal),
-    temporal,
-  );
-}
-
 function extractNameFactFromMemory(memory: IntelligentMemory | null): string | null {
   if (!memory) {
     return null;
@@ -989,22 +851,6 @@ function buildNameIntentResponse(
   }
 
   return null;
-}
-
-function buildCapabilityOverviewResponse(
-  userMessage: string,
-  runtime: CompanionRuntimeSelfModel,
-  memory: IntelligentMemory | null,
-  intent: CapabilityIntent,
-  userEnvCtx?: UserEnvironmentContext,
-): string {
-  return buildCapabilityOverviewResponseFromKernel(
-    userMessage,
-    runtime.truthKernel,
-    memory,
-    intent,
-    userEnvCtx,
-  );
 }
 
 const EMOTION_KEYS = [
@@ -2027,26 +1873,20 @@ Rewrite rules:
       max_tokens: 260,
     });
     const rewritten = completion.choices[0]?.message?.content?.trim() || draft;
-    return enforceResponseGuards(
-      rewritten,
-      plan,
-      signals,
+    return applyConversationPolicyResponseGuards(rewritten, plan, signals, {
       recentMessages,
       userMessage,
       memory,
-    );
+    });
   } catch (error: any) {
     functions.logger.warn('Persona rewrite fallback to draft', {
       error: error?.message,
     });
-    return enforceResponseGuards(
-      draft,
-      plan,
-      signals,
+    return applyConversationPolicyResponseGuards(draft, plan, signals, {
       recentMessages,
       userMessage,
       memory,
-    );
+    });
   }
 }
 
@@ -2500,10 +2340,6 @@ function enforceChronologyConsistency(
   return next;
 }
 
-function buildTruthKernelPromptBlock(runtime: CompanionRuntimeSelfModel): string {
-  return buildTruthKernelPromptSection(runtime.truthKernel);
-}
-
 /**
  * Build the rich system prompt for the Aria girlfriend persona.
  * Includes runtime capability state so Aria can describe her actual features truthfully.
@@ -2569,7 +2405,7 @@ function buildSystemPrompt(
         timeZoneName: temporal.timeZoneName,
       })
     : '';
-  const truthKernelBlock = buildTruthKernelPromptBlock(runtime);
+  const truthKernelBlock = buildTruthKernelPromptSection(runtime.truthKernel);
   const runtimeTruthBlock = buildRuntimeTruthPromptSection(runtime.truthKernel, {
     currentServerUtcIso: nowIso,
     localTimelineLabel: localNowLabel,
@@ -2726,18 +2562,6 @@ Rules:
 // Memory functions moved to memoryService.ts
 
 /**
- * Build fallback runtime capability state when user profile is unavailable.
- */
-function defaultRuntimeSelfModel(
-  memory: IntelligentMemory | null,
-  userEnvCtx?: UserEnvironmentContext,
-): CompanionRuntimeSelfModel {
-  return buildRuntimeSelfModelFromTruthKernel(
-    buildTruthKernelForRuntimeContext(null, memory, userEnvCtx),
-  );
-}
-
-/**
  * Runtime capability lookup for truthful self-awareness in prompts.
  */
 async function getCompanionRuntimeSelfModel(
@@ -2745,7 +2569,7 @@ async function getCompanionRuntimeSelfModel(
   memory: IntelligentMemory | null,
   userEnvCtx?: UserEnvironmentContext,
 ): Promise<CompanionRuntimeSelfModel> {
-  const fallback = defaultRuntimeSelfModel(memory, userEnvCtx);
+  const fallback = buildDefaultRuntimeSelfModel(memory, userEnvCtx);
   try {
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(userId).get();
@@ -2766,15 +2590,6 @@ async function getCompanionRuntimeSelfModel(
     });
     return fallback;
   }
-}
-
-function buildCompanionRuntimeSelfModelFromUserData(
-  userData: Record<string, unknown> | null | undefined,
-  memory: IntelligentMemory | null,
-  userEnvCtx?: UserEnvironmentContext,
-): CompanionRuntimeSelfModel {
-  const kernel = buildTruthKernelForRuntimeContext(userData, memory, userEnvCtx);
-  return buildRuntimeSelfModelFromTruthKernel(kernel);
 }
 
 async function bootstrapConversationRuntime(
@@ -2823,24 +2638,6 @@ async function bootstrapConversationRuntime(
       userEnvCtx,
     ),
   };
-}
-
-interface PromptAugments {
-  personalityBlock: string;
-  loreBlock: string;
-  semanticRecallBlock: string;
-  // Enhancement blocks (new)
-  personaVoiceBlock: string;
-  innerLifeBlock: string;
-  relationshipBlock: string;
-  emotionalMemoryBlock: string;
-  /** Real-time mood signal inferred from message patterns — no API call. */
-  moodBlock: string;
-}
-
-interface PromptAugmentOptions {
-  includeLore?: boolean;
-  includeSemanticRecall?: boolean;
 }
 
 function buildRulesOnlyPlan(
@@ -2966,267 +2763,6 @@ function createTimedStage<T>(
   };
 }
 
-// ─── User Mood Signal Detection ──────────────────────────────────────────────
-// Lightweight, zero-latency text analysis — no API call.
-// Returns an energy level that drives Aria's session mood arc + teasing
-// and repair directives in ariaRelationshipService.
-
-interface UserMoodSignal {
-  energy: 'low' | 'medium' | 'high';
-  /** One-line descriptor for the system prompt (e.g. "anxious", "playful"). */
-  tint: string;
-}
-
-function detectUserMoodSignal(
-  userMessage: string,
-  recentMessages: ConversationMessage[] = [],
-): UserMoodSignal {
-  const msg = userMessage.trim();
-  const words = msg.split(/\s+/).filter(Boolean);
-  const wordCount = words.length;
-
-  // ── High-energy signals ─────────────────────────────────────────────────
-  const highExclamations = (msg.match(/!/g) ?? []).length >= 2;
-  const allCaps = wordCount >= 2 && msg === msg.toUpperCase() && /[A-Z]/.test(msg);
-  const happyWords = /\b(amazing|omg|omfg|lol|lmao|haha|hehe|excited|can'?t wait|love it|awesome|wow|yay|woohoo|ecstatic|thrilled|great|fantastic|omg|finally|!!)\b/i.test(msg);
-  const energeticOpener = /^(hey!|hi!|omg|lol|haha|wow|yay|finally)/i.test(msg);
-
-  // ── Low-energy signals ──────────────────────────────────────────────────
-  const sadWords = /\b(sad|depressed|tired|exhausted|drained|lonely|alone|empty|hopeless|hate myself|worthless|numb|crying|cry|hurt|hurts|anxious|anxiet|miss you|missed you|bad day|rough day|hard day|struggling|idk|whatever|nevermind)\b/i.test(msg);
-  const veryShortFlat = wordCount <= 3 && !highExclamations && !happyWords;
-  const singleDotOrEllipsis = /^\.*$/.test(msg) || msg === '...' || msg === '.';
-  const questionFatigue = wordCount <= 5 && /^(why|what|how|when|idk|i don'?t know)/i.test(msg);
-
-  // ── Recent message context ──────────────────────────────────────────────
-  const recentUserMessages = recentMessages
-    .filter((m) => m.role === 'user')
-    .slice(-4)
-    .map((m) => m.content.trim());
-  const avgRecentLength = recentUserMessages.length
-    ? recentUserMessages.reduce((sum, m) => sum + m.split(/\s+/).length, 0) / recentUserMessages.length
-    : wordCount;
-
-  // ── Scoring ─────────────────────────────────────────────────────────────
-  let score = 0;
-  if (highExclamations) score += 2;
-  if (allCaps) score += 2;
-  if (happyWords) score += 2;
-  if (energeticOpener) score += 1;
-  if (wordCount >= 30) score += 1;         // Long engaged message
-  if (avgRecentLength >= 25) score += 1;   // User has been chatty recently
-
-  if (sadWords) score -= 3;
-  if (veryShortFlat) score -= 2;
-  if (singleDotOrEllipsis) score -= 4;
-  if (questionFatigue) score -= 1;
-
-  // ── Classify ────────────────────────────────────────────────────────────
-  let energy: 'low' | 'medium' | 'high';
-  let tint: string;
-
-  if (score >= 3) {
-    energy = 'high';
-    tint = happyWords ? 'playful and excited' : 'energetic';
-  } else if (score <= -2) {
-    energy = 'low';
-    tint = sadWords ? 'emotionally heavy — user may need support' : 'low energy or terse';
-  } else {
-    energy = 'medium';
-    tint = 'conversational';
-  }
-
-  return { energy, tint };
-}
-
-async function buildPromptAugments(
-  userMessage: string,
-  userId: string | undefined,
-  memory: IntelligentMemory | null,
-  runtimeSelfModel: CompanionRuntimeSelfModel,
-  options: PromptAugmentOptions = {},
-  temporalContext?: EffectiveTemporalContext,
-  recentMessages?: ConversationMessage[],
-): Promise<PromptAugments> {
-  const empty: PromptAugments = {
-    personalityBlock: '',
-    loreBlock: '',
-    semanticRecallBlock: '',
-    personaVoiceBlock: '',
-    innerLifeBlock: '',
-    relationshipBlock: '',
-    emotionalMemoryBlock: '',
-    moodBlock: '',
-  };
-
-  if (!PERSONALITY_UPGRADE_ENABLED) {
-    return empty;
-  }
-
-  try {
-    const effectiveMemory = normalizeMemoryForProfileDisplayName(
-      memory,
-      runtimeSelfModel.profileDisplayName,
-    );
-    const includeLore = options.includeLore !== false;
-    const includeSemanticRecall = options.includeSemanticRecall !== false;
-    const openLoopHints = effectiveMemory
-      ? getOpenLoopsForPrompt(effectiveMemory, 3)
-          .filter(
-            (loop) =>
-              !hasConflictingProfileNameReference(
-                loop.summary,
-                runtimeSelfModel.profileDisplayName,
-              ),
-          )
-          .map((loop) => loop.summary)
-      : [];
-
-    // ── Parallel fetches ────────────────────────────────────────────────────
-    const [profile, loreSnippets, semanticRecalls, ariaOpinions] = await Promise.all([
-      getPersonalityProfile('aria_default'),
-      includeLore
-        ? getActivatedLoreSnippets({
-            userMessage,
-            openLoopHints,
-            maxChars: 600,
-            maxEntries: 3,
-          })
-        : Promise.resolve([]),
-      includeSemanticRecall && userId
-        ? recallSemanticMemories(userId, userMessage, {
-            topK: 8,
-            keep: 4,
-            candidates: 200,
-          })
-        : Promise.resolve([]),
-      userId ? getAriaOpinions(userId) : Promise.resolve([]),
-    ]);
-
-    // ── Session-level context ────────────────────────────────────────────────
-    const now = temporalContext?.now ?? new Date();
-    const tzOffset = temporalContext?.timeZoneOffsetMinutes ?? 0;
-    const shiftedMs = now.getTime() + tzOffset * 60 * 1000;
-    const shiftedDate = new Date(shiftedMs);
-    const hourOfDay = shiftedDate.getUTCHours();
-    const dayOfWeek = shiftedDate.getUTCDay();
-
-    const sessionTurnCount = Math.floor((recentMessages?.length ?? 0) / 2);
-    const lastEmotionalTone = getLastSessionEmotionalTone(effectiveMemory);
-    const lastConversationTopic = getLastConversationTopic(effectiveMemory);
-    const hoursSinceLastChat = getHoursSinceLastChat(effectiveMemory);
-    const interactionCount = getInteractionCount(effectiveMemory);
-
-    // ── Relationship stage ──────────────────────────────────────────────────
-    const pacingProfile = effectiveMemory?.pacingProfile;
-    const avgSentimentScore = pacingProfile
-      ? (pacingProfile.intimacy + pacingProfile.depth) / 2
-      : 0.5;
-    const stage = getRelationshipStage(
-      runtimeSelfModel.relationshipDays,
-      interactionCount,
-      avgSentimentScore,
-    );
-
-    // ── Relationship & session context blocks ───────────────────────────────
-    const recentEmotions: string[] = (effectiveMemory?.emotionalMoments ?? [])
-      .slice(-5)
-      .map((m) => m.emotion)
-      .filter(Boolean);
-
-    // Infer current emotion proxy from pacing profile for mood arc
-    const currentEmotionProxy = recentEmotions[recentEmotions.length - 1] || 'neutral';
-
-    // ── Mood detection (zero-latency, text-pattern based) ──────────────────
-    const moodSignal = detectUserMoodSignal(userMessage, recentMessages ?? []);
-
-    // Session mood arc params
-    const moodArcParams: SessionMoodArcParams = {
-      turnCount: sessionTurnCount,
-      recentEmotions,
-      currentEmotion: currentEmotionProxy,
-      repairSignal: false, // Will be updated per-turn in social directives
-      userEnergy: moodSignal.energy,
-    };
-
-    const relationshipBlocks = buildRelationshipContextBlocks({
-      stage,
-      moodArcParams,
-      userMessage,
-      repairSignal: false,
-      userId: userId || '',
-      sessionTurnCount,
-      currentEmotion: currentEmotionProxy,
-      nowDate: now,
-      userTimeZoneOffsetMinutes: tzOffset,
-      hoursSinceLastChat,
-      patternDetected: false,
-      userEnergy: moodSignal.energy,
-    });
-
-    // ── Inner life block ────────────────────────────────────────────────────
-    const innerLifeCtx: InnerLifeContext = {
-      hourOfDay,
-      dayOfWeek,
-      relationshipDays: runtimeSelfModel.relationshipDays,
-      lastEmotionalTone: lastEmotionalTone || undefined,
-      lastConversationTopic: lastConversationTopic || undefined,
-    };
-
-    const innerLifeBlock = userId
-      ? buildInnerLifePromptBlock({ userId, ctx: innerLifeCtx, opinions: ariaOpinions })
-      : '';
-
-    // ── Persona voice block (session-level static parts) ───────────────────
-    const userName = resolvePreferredUserName(runtimeSelfModel, effectiveMemory);
-
-    // Static persona voice blocks only — dynamic blocks (active listening, humor, tempo, exit)
-    // are injected per-turn by buildDynamicTurnEnhancers with real SocialSignals.
-    const personaVoiceBlock = [
-      buildAriaIsmsBlock(),
-      buildNonVerbalSubtextBlock(),
-      buildNameUseDirective(userName),
-      buildSentenceVarietyBlock(),
-    ].filter(Boolean).join('\n\n');
-
-    // ── Emotional memory threading ──────────────────────────────────────────
-    const emotionalMemoryBlock = buildEmotionalMemoryThreadingBlock(effectiveMemory);
-
-    // ── Mood tint block (informs Aria's pacing/tone for this turn) ──────────
-    const moodBlock = moodSignal.energy !== 'medium'
-      ? `## User Energy Signal (this turn)\nDetected user energy: ${moodSignal.energy}. Mood tint: ${moodSignal.tint}.\n` +
-        (moodSignal.energy === 'high'
-          ? 'Aria should match their energy — be warm, playful, and responsive. This is a high-engagement moment.'
-          : 'Aria should be gentle, softer in tone, less performative. The user may need warmth or space — read carefully before adding humor.')
-      : '';
-
-    return {
-      personalityBlock: buildPersonalityPromptBlock(profile, runtimeSelfModel),
-      loreBlock: buildLorePromptBlock(loreSnippets),
-      semanticRecallBlock: buildSemanticRecallContext(
-        semanticRecalls.filter(
-          (recall) =>
-            !hasConflictingProfileNameReference(
-              recall.text,
-              runtimeSelfModel.profileDisplayName,
-            ),
-        ),
-        600,
-      ),
-      personaVoiceBlock,
-      innerLifeBlock,
-      relationshipBlock: assembleRelationshipPrompt(relationshipBlocks),
-      emotionalMemoryBlock,
-      moodBlock,
-    };
-  } catch (error: any) {
-    functions.logger.warn('Prompt augments fallback to base prompt only', {
-      userId,
-      error: error?.message,
-    });
-    return empty;
-  }
-}
-
 /**
  * Use GPT to analyze emotions for avatar triggers
  */
@@ -3340,26 +2876,20 @@ Output only the rewritten reply text.`;
     if (!rewritten) {
       return draft;
     }
-    return enforceResponseGuards(
-      rewritten,
-      plan,
-      signals,
+    return applyConversationPolicyResponseGuards(rewritten, plan, signals, {
       recentMessages,
       userMessage,
       memory,
-    );
+    });
   } catch (error: any) {
     functions.logger.warn('Critic pass fallback to draft', {
       error: error?.message,
     });
-    return enforceResponseGuards(
-      draft,
-      plan,
-      signals,
+    return applyConversationPolicyResponseGuards(draft, plan, signals, {
       recentMessages,
       userMessage,
       memory,
-    );
+    });
   }
 }
 
@@ -3466,15 +2996,22 @@ export async function generateProactiveCompanionMessage(
           runtimeSelfModel.profileDisplayName,
         ),
     );
-    const promptAugments = await buildPromptAugments(
-      'Proactive check-in opportunity',
-      userId,
-      memory,
+    const proactivePreferredName = resolvePreferredUserName(
       runtimeSelfModel,
-      {},
-      temporalContext,
-      recentMessages,
+      memory,
     );
+    const promptAugments = PERSONALITY_UPGRADE_ENABLED
+      ? await buildPromptAugments(
+          'Proactive check-in opportunity',
+          userId,
+          memory,
+          runtimeSelfModel,
+          proactivePreferredName,
+          {},
+          temporalContext,
+          recentMessages,
+        )
+      : EMPTY_PROMPT_AUGMENTS;
     const social = await createSocialPlan(
       'Proactive check-in opportunity',
       recentMessages,
@@ -3540,12 +3077,12 @@ ${openLoops.map((loop) => `- ${loop.summary}`).join('\n') || '(none)'}
       messages: [
         {
           role: 'system',
-          content: [
+          content: composeSystemPromptSections([
             systemPrompt,
             promptAugments.personalityBlock,
             promptAugments.loreBlock,
             promptAugments.semanticRecallBlock,
-            buildSocialDirectives(
+            buildConversationPolicyDirectives(
               {
                 ...social.plan,
                 askQuestion: false,
@@ -3568,9 +3105,7 @@ ${openLoops.map((loop) => `- ${loop.summary}`).join('\n') || '(none)'}
                 ),
               },
             ),
-          ]
-            .filter((block) => block.trim().length > 0)
-            .join('\n\n'),
+          ]),
         },
         {
           role: 'user',
@@ -3586,13 +3121,15 @@ ${openLoops.map((loop) => `- ${loop.summary}`).join('\n') || '(none)'}
       return { shouldSend: false, reason: 'empty_generation' };
     }
 
-    const cleaned = enforceResponseGuards(
+    const cleaned = applyConversationPolicyResponseGuards(
       draft,
       { ...social.plan, askQuestion: false, questionBudget: 0, questionStyle: 'none' },
       social.signals,
-      recentMessages,
-      proactivePrompt,
-      memory,
+      {
+        recentMessages,
+        userMessage: proactivePrompt,
+        memory,
+      },
     );
     const analysis = inferEmotionFallback('proactive check-in', cleaned);
     await markProactiveSent(userId);
@@ -3686,7 +3223,7 @@ export async function generateAIResponse(
       ? await bootstrapConversationRuntime(userId, userEnvCtx)
       : {
           memory: null,
-          runtimeSelfModel: defaultRuntimeSelfModel(null, userEnvCtx),
+          runtimeSelfModel: buildDefaultRuntimeSelfModel(null, userEnvCtx),
         };
     const runtimeSelfModel = runtimeBootstrap.runtimeSelfModel;
     const memory = normalizeMemoryForProfileDisplayName(
@@ -3742,9 +3279,9 @@ export async function generateAIResponse(
 
     const capabilityIntent = detectCapabilityIntent(userMessage);
     if (capabilityIntent.isCapabilityQuery) {
-      const capabilityContent = buildCapabilityOverviewResponse(
+      const capabilityContent = buildCapabilityOverviewResponseFromKernel(
         userMessage,
-        runtimeSelfModel,
+        runtimeSelfModel.truthKernel,
         memory,
         capabilityIntent,
         userEnvCtx,
@@ -3782,12 +3319,15 @@ export async function generateAIResponse(
 
     const chronologyIntent = detectChronologyIntent(userMessage);
     if (chronologyIntent.isChronologyQuery) {
-      const chronologyContent = buildChronologyTruthResponse(
-        userMessage,
-        conversationHistory,
-        memory,
-        temporalContext,
+      const chronologyContent = buildChronologyRouterResponse(
         chronologyIntent,
+        buildChronologyState(
+          userMessage,
+          conversationHistory,
+          memory,
+          temporalContext,
+        ),
+        temporalContext,
       );
       if (chronologyContent) {
         return {
@@ -3919,19 +3459,27 @@ export async function generateAIResponse(
     );
     let promptAugments: PromptAugments;
     try {
+      const preferredUserName = resolvePreferredUserName(
+        runtimeSelfModel,
+        memory,
+      );
       promptAugments = await runMemoryStage(() =>
-        buildPromptAugments(
-          userMessage,
-          userId,
-          memory,
-          runtimeSelfModel,
-          {
-            includeLore: !routeDecision.skipLore && !preferRecentExchange,
-            includeSemanticRecall: !routeDecision.skipSemanticRecall && !preferRecentExchange,
-          },
-          temporalContext,
-          recentMessages,
-        ),
+        PERSONALITY_UPGRADE_ENABLED
+          ? buildPromptAugments(
+              userMessage,
+              userId,
+              memory,
+              runtimeSelfModel,
+              preferredUserName,
+              {
+                includeLore: !routeDecision.skipLore && !preferRecentExchange,
+                includeSemanticRecall:
+                  !routeDecision.skipSemanticRecall && !preferRecentExchange,
+              },
+              temporalContext,
+              recentMessages,
+            )
+          : Promise.resolve(EMPTY_PROMPT_AUGMENTS),
       );
     } catch (error: any) {
       skippedAgents.push('memory-agent-fallback');
@@ -3940,16 +3488,7 @@ export async function generateAIResponse(
         route: routeDecision.route,
         error: error?.message,
       });
-      promptAugments = {
-        personalityBlock: '',
-        loreBlock: '',
-        semanticRecallBlock: '',
-        personaVoiceBlock: '',
-        innerLifeBlock: '',
-        relationshipBlock: '',
-        emotionalMemoryBlock: '',
-        moodBlock: '',
-      };
+      promptAugments = EMPTY_PROMPT_AUGMENTS;
     }
 
     // Build a per-turn social plan so responses stay engaging without being forceful.
@@ -4034,7 +3573,7 @@ export async function generateAIResponse(
       // Inject upcoming important dates so Aria can acknowledge them proactively
       datesContextBlock ?? '',
       chatModeBlock,
-      buildSocialDirectives(
+      buildConversationPolicyDirectives(
         socialPlanning.plan,
         socialPlanning.signals,
         {
@@ -4044,14 +3583,16 @@ export async function generateAIResponse(
           stage: turnStage,
         },
       ),
-      buildDynamicTurnEnhancers(
+      buildConversationPolicyEnhancers(
         userMessage,
-        socialPlanning.signals,
         socialPlanning.plan,
-        memory,
-        hourOfDay,
-        sessionTurnCount,
-        turnStage,
+        socialPlanning.signals,
+        {
+          memory,
+          hourOfDay,
+          sessionTurnCount,
+          stage: turnStage,
+        },
       ),
     ]);
 
@@ -4397,24 +3938,28 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
             userId,
             error: error?.message,
           });
-          return enforceResponseGuards(
+          return applyConversationPolicyResponseGuards(
             aiContent,
             socialPlanning.plan,
             socialPlanning.signals,
-            recentMessages,
-            userMessage,
-            memory,
+            {
+              recentMessages,
+              userMessage,
+              memory,
+            },
           );
         });
       } else {
         skippedAgents.push('quality-agent-critic');
-        aiContent = enforceResponseGuards(
+        aiContent = applyConversationPolicyResponseGuards(
           aiContent,
           socialPlanning.plan,
           socialPlanning.signals,
-          recentMessages,
-          userMessage,
-          memory,
+          {
+            recentMessages,
+            userMessage,
+            memory,
+          },
         );
       }
       aiContent = enforceChronologyConsistency(userMessage, aiContent, temporalContext);
@@ -4465,13 +4010,15 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
       skippedAgents.push('quality-agent-gemini-fallback');
       skippedAgents.push('quality-agent-critic');
       skippedAgents.push('quality-agent-persona');
-      aiContent = enforceResponseGuards(
+      aiContent = applyConversationPolicyResponseGuards(
         aiContent,
         socialPlanning.plan,
         socialPlanning.signals,
-        recentMessages,
-        userMessage,
-        memory,
+        {
+          recentMessages,
+          userMessage,
+          memory,
+        },
       );
       aiContent = enforceChronologyConsistency(userMessage, aiContent, temporalContext);
       functions.logger.info('Applied guard-only post-processing (Gemini fallback path)');
@@ -4651,4 +4198,7 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
     };
   }
 }
+
+
+
 

@@ -13,8 +13,8 @@ The clean repo now has its own local operating system and the first selective pr
 
 ## Immediate Next Actions
 
-1. Create the scoped checkpoint commit for the verified prompt-cost + ops work from this pass.
-2. Continue the next `llmService.ts` shrink pass now that the deployed prompt-cost behavior is validated on `70578ba3`.
+1. Continue the next `llmService.ts` shrink slice from the now-extracted `promptAugmentService.ts` boundary.
+2. Isolate or reconcile the remaining older clean-branch `llmService.ts` drift before the next checkpoint commit that touches that file.
 3. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
 4. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
 5. Keep the old repo reference-only and do not let product work drift back there.
@@ -34,3 +34,7 @@ The clean repo now has its own local operating system and the first selective pr
   - deploy succeeded from clean repo
   - dedicated latency pass artifact: `tools/girlai2/docs/_tmp_aria_device_test/70578ba3/20260405_045306`
   - replay binary check artifact: `tools/girlai2/docs/_tmp_replay_binary_check_20260405.txt`
+- Prompt-shell shrink progress after the deployed validation:
+  - new service: `tools/girlai2/functions/src/services/promptAugmentService.ts`
+  - prompt augmentation ownership is now moved out of `llmService.ts`
+  - local build/test validation is complete
