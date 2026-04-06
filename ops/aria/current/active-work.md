@@ -14,8 +14,8 @@ The clean repo now has its own local operating system and the first selective pr
 ## Immediate Next Actions
 
 1. Use the new low-token execution packet as the default handoff surface.
-2. Continue the next `llmService.ts` shrink slice from the now-extracted `promptShellService.ts` boundary.
-3. Extract proactive companion message composition next.
+2. Continue the next `llmService.ts` shrink slice from the now-extracted `proactiveMessageService.ts` boundary.
+3. Extract chat-mode overlay ownership next.
 4. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
 5. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
 
@@ -41,4 +41,8 @@ The clean repo now has its own local operating system and the first selective pr
 - Prompt-shell shrink progress after the current slice:
   - new service: `tools/girlai2/functions/src/services/promptShellService.ts`
   - system-prompt shell ownership is now moved out of `llmService.ts`
+  - local build/test validation is complete
+- Proactive shrink progress after the current slice:
+  - new service: `tools/girlai2/functions/src/services/proactiveMessageService.ts`
+  - proactive companion message composition is now moved out of `llmService.ts`
   - local build/test validation is complete

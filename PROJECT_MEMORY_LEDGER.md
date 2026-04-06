@@ -207,6 +207,16 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now proactive companion message composition extraction from `llmService.ts`.
 
+## Latest Proactive Message Extraction
+
+- Added `tools/girlai2/functions/src/services/proactiveMessageService.ts`.
+- Moved proactive companion message prompt assembly and system-prompt composition out of `tools/girlai2/functions/src/services/llmService.ts`.
+- Preserved provider routing, send bookkeeping, prompt-cost behavior, and low-pressure proactive behavior.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now chat-mode overlay extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.

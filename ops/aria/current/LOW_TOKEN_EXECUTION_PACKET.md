@@ -22,11 +22,12 @@
 - Replay-on-return binary check is clean on the deployed backend.
 - Prompt augmentation ownership is extracted into `tools/girlai2/functions/src/services/promptAugmentService.ts`.
 - System-prompt shell ownership is extracted into `tools/girlai2/functions/src/services/promptShellService.ts`.
+- Proactive companion message composition is extracted into `tools/girlai2/functions/src/services/proactiveMessageService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` still owns too much orchestration and proactive-message assembly logic.
+- `tools/girlai2/functions/src/services/llmService.ts` still owns too much orchestration and special-mode prompt handling.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
@@ -37,7 +38,7 @@
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by extracting proactive companion message composition into a dedicated service while preserving current behavior.
+- Continue the next `llmService.ts` shrink slice by extracting chat-mode overlay and related special-mode prompt handling into a dedicated service while preserving current behavior.
 
 ## Do Not Touch
 
