@@ -197,6 +197,16 @@
 - Updated `.codex/CATCHUP.md`, `.claude/CATCHUP.md`, `ops/aria/README.md`, and `scripts/resume.ps1` to point smaller models at the short execution path first.
 - The low-token packet now makes the clean repo the default execution base and narrows the active next slice to system-prompt shell extraction from `llmService.ts`.
 
+## Latest Prompt Shell Extraction
+
+- Added `tools/girlai2/functions/src/services/promptShellService.ts`.
+- Moved the main system-prompt shell and prompt-shell helper blocks out of `tools/girlai2/functions/src/services/llmService.ts`.
+- Preserved provider routing, chronology logic, truth-kernel behavior, and prompt-cost behavior.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now proactive companion message composition extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.
