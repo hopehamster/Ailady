@@ -69,6 +69,7 @@ import {
   executeOpenAICompletion,
 } from './providerExecutionService';
 import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService';
+import { runPostResponseOrchestration } from './postResponseOrchestrationService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3593,115 +3594,63 @@ export async function generateAIResponse(
     aiContent = qualityResult.aiContent;
     const finalPersonaAudit: PersonaAuditResult = qualityResult.finalPersonaAudit;
 
-    // ── Emotion analysis — run in parallel with shadow benchmark ────────
-    // Emotion analysis only needs userMessage + aiContent; it does NOT depend
-    // on critic/persona rewrites, so we can kick it off early and await later.
-    const emotionPromise: Promise<{
-      emotion: string;
-      emotionTrigger: string;
-      emotionIntensity: number;
-    }> = (
-      !MODEL_EMOTION_ANALYSIS_ENABLED ||
-      socialPlanning.signals.lowEffort ||
-      socialPlanning.plan.responseLength !== 'deep'
-    )
-      ? Promise.resolve((() => {
-          skippedAgents.push('avatar-voice-agent-emotion-model');
-          const fallback = inferEmotionFallback(userMessage, aiContent);
-          return {
-            emotion: fallback.emotion,
-            emotionTrigger: EMOTION_TRIGGERS[fallback.emotion],
-            emotionIntensity: fallback.emotionIntensity,
-          };
-        })())
-      : createTimedStage(
-          'emotionStageMs',
-          latencyBudgets.emotionMs,
-          stageTimingsMs,
-          stageContracts,
-          'avatar-voice-agent',
-          `deep=${socialPlanning.plan.responseLength === 'deep'}`,
-          (result: { emotion: string; emotionTrigger: string; emotionIntensity: number }) =>
-            `emotion=${result.emotion},intensity=${result.emotionIntensity.toFixed(2)}`,
-        )(() => analyzeConversation(userMessage, aiContent, effectiveRecentMessages)).catch((error: any) => {
-          skippedAgents.push('avatar-voice-agent-emotion-timeout-fallback');
-          functions.logger.warn('Emotion analysis timed out; using fallback', {
-            userId,
-            error: error?.message,
-          });
-          const fallback = inferEmotionFallback(userMessage, aiContent);
-          return {
-            emotion: fallback.emotion,
-            emotionTrigger: EMOTION_TRIGGERS[fallback.emotion],
-            emotionIntensity: fallback.emotionIntensity,
-          };
-        });
+    const createAvatarVoiceStage = <T>(
+      stageName: string,
+      budgetMs: number,
+      inputSummary: string,
+      outputSummary: (result: T) => string,
+    ) =>
+      createTimedStage(
+        stageName,
+        budgetMs,
+        stageTimingsMs,
+        stageContracts,
+        'avatar-voice-agent',
+        inputSummary,
+        outputSummary,
+      );
 
-    // ── Shadow benchmark — fire-and-forget (never blocks response) ────────
-    const shouldSampleShadow =
-      Boolean(userId) &&
-      SHADOW_BENCHMARK_ENABLED &&
-      !routeDecision.skipQualityAgent &&
-      Math.random() <= SHADOW_BENCHMARK_SAMPLE_RATE &&
-      !socialPlanning.signals.lowEffort;
+    const postResponseResult = await runPostResponseOrchestration({
+      userId,
+      userMessage,
+      aiContent,
+      effectiveRecentMessages,
+      recentMessages,
+      effectiveSystemPrompt,
+      modelUsed,
+      memory,
+      plan: socialPlanning.plan,
+      signals: socialPlanning.signals,
+      routeDecision,
+      usedGeminiFallback,
+      skippedAgents,
+      modelEmotionAnalysisEnabled: MODEL_EMOTION_ANALYSIS_ENABLED,
+      shadowBenchmarkEnabled: SHADOW_BENCHMARK_ENABLED,
+      shadowBenchmarkSampleRate: SHADOW_BENCHMARK_SAMPLE_RATE,
+      latencyBudgets: {
+        emotionMs: latencyBudgets.emotionMs,
+      },
+      qualityScores: {
+        engagement: selectedScores.engagement,
+        empathy: selectedScores.empathy,
+        safety: selectedScores.safety,
+        novelty: selectedScores.novelty,
+      },
+      finalPersonaAudit,
+      temporalContext,
+      createAvatarVoiceStage,
+      analyzeConversation,
+      inferEmotionFallback,
+      emotionTriggers: EMOTION_TRIGGERS,
+      runShadowBenchmarkEvaluationWithTimeout,
+      updateMemoryInBackground: updateIntelligentMemory,
+      logInfo: (message, metadata = {}) => functions.logger.info(message, metadata),
+      logWarn: (message, metadata) => functions.logger.warn(message, metadata),
+      logError: (message, metadata) => functions.logger.error(message, metadata),
+    });
 
-    let shadowBenchmark: ShadowBenchmarkOutcome = { sampled: false };
-    if (shouldSampleShadow && userId) {
-      // Fire-and-forget: log results but never block the response path
-      const shadowStartMs = Date.now();
-      runShadowBenchmarkEvaluationWithTimeout(
-        userId,
-        userMessage,
-        aiContent,
-        recentMessages,
-        memory,
-        effectiveSystemPrompt,
-        modelUsed,
-        socialPlanning.plan,
-        socialPlanning.signals,
-      ).then((result) => {
-        const durationMs = Date.now() - shadowStartMs;
-        functions.logger.info('Shadow benchmark completed (background)', {
-          userId,
-          durationMs,
-          sampled: result.sampled,
-          winner: result.winner,
-          primaryScore: result.primaryScore,
-          shadowScore: result.shadowScore,
-        });
-      }).catch((error: any) => {
-        functions.logger.warn('Shadow benchmark failed (background); ignoring', {
-          userId,
-          error: error?.message,
-        });
-      });
-      shadowBenchmark = { sampled: true };
-    } else {
-      skippedAgents.push('quality-agent-shadow');
-    }
-
-    // Await emotion analysis (was running in parallel with shadow kick-off)
-    const analysis = await emotionPromise;
-    
-    // Update intelligent memory (extracts facts, emotional moments, filters noise)
-    if (userId) {
-      // Run memory update in background (don't block response)
-      updateIntelligentMemory(userId, userMessage, aiContent, {
-        personaScore: finalPersonaAudit.score,
-        personaViolations: finalPersonaAudit.violations,
-        qualitySnapshot: {
-          engagement: selectedScores.engagement,
-          empathy: selectedScores.empathy,
-          safety: selectedScores.safety,
-          novelty: selectedScores.novelty,
-        },
-        timeZoneOffsetMinutes: temporalContext.timeZoneOffsetMinutes,
-        timeZoneName: temporalContext.timeZoneName,
-        clientEpochMs: temporalContext.now.getTime(),
-      }).catch(err => {
-        functions.logger.error('Background memory update failed', { userId, error: err });
-      });
-    }
+    const analysis = postResponseResult.analysis;
+    const shadowBenchmark: ShadowBenchmarkOutcome = postResponseResult.shadowBenchmark;
 
     functions.logger.info('AI response generated', {
       userId,

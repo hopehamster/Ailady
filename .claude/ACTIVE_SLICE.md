@@ -34,6 +34,7 @@ Do not hand-edit it unless you also update the generator.
 - Response-generation request assembly is extracted into `tools/girlai2/functions/src/services/responseAssemblyService.ts`.
 - Provider execution helpers are extracted into `tools/girlai2/functions/src/services/providerExecutionService.ts`.
 - Post-generation quality orchestration is extracted into `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`.
+- Post-response emotion, shadow, and background-update orchestration is extracted into `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
 
 ## What Is Still Broken Or Incomplete
@@ -49,7 +50,7 @@ Do not hand-edit it unless you also update the generator.
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by extracting emotion/shadow/background-update orchestration into a dedicated service while preserving current behavior.
+- Continue the next `llmService.ts` shrink slice by extracting remaining response-path logging and return assembly into a dedicated service while preserving current behavior.
 
 ## Do Not Touch
 
@@ -93,17 +94,17 @@ Do not hand-edit it unless you also update the generator.
 
 ## Title
 
-Extract emotion, shadow, and background-update orchestration out of `llmService.ts`
+Extract response-path logging and return assembly out of `llmService.ts`
 
 ## Goal
 
-Move the remaining post-response orchestration out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shrinking while preserving emotion analysis, shadow benchmarking, and background memory-update behavior.
+Move the remaining response-path logging and final return assembly out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` becomes primarily a coordinator for request flow and feature routing.
 
 ## Files Allowed To Change
 
 - `tools/girlai2/functions/src/services/llmService.ts`
-- one new or existing quality-orchestration service under `tools/girlai2/functions/src/services/`
 - one new or existing post-response orchestration service under `tools/girlai2/functions/src/services/`
+- one new or existing response-finalization service under `tools/girlai2/functions/src/services/`
 - `PROJECT_MEMORY_LEDGER.md`
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
@@ -120,6 +121,7 @@ Move the remaining post-response orchestration out of `tools/girlai2/functions/s
 - `tools/girlai2/functions/src/services/chatModeService.ts`
 - `tools/girlai2/functions/src/services/responseAssemblyService.ts`
 - `tools/girlai2/functions/src/services/providerExecutionService.ts`
+- `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`
 - client Flutter files under `tools/girlai2/lib/`
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
@@ -132,15 +134,14 @@ Move the remaining post-response orchestration out of `tools/girlai2/functions/s
 - Fast-turn routing and prompt-cost behavior must remain intact.
 - Story mode behavior must remain immersive and consistent.
 - Journal mode behavior must remain reflective and gentle.
-- Emotion fallback behavior must remain the same.
-- Shadow benchmark must remain fire-and-forget and never block the response.
-- Background memory update must remain non-blocking.
+- Logging detail and quality metadata shape must remain the same.
+- Final returned `AIResponse` fields must remain the same.
 - No new broad prompt/history loading should be introduced.
 
 ## Acceptance Criteria
 
-- `llmService.ts` no longer owns the main emotion/shadow/background-update orchestration body.
-- The extracted service has a clear boundary and does not absorb provider routing or earlier prompt assembly.
+- `llmService.ts` no longer owns the main response-path logging and return assembly body.
+- The extracted service has a clear boundary and does not absorb earlier prompt assembly or provider execution.
 - `npm run build` passes.
 - `npm test` passes.
 - Memory and ops docs reflect the new ownership state.
@@ -155,7 +156,7 @@ Move the remaining post-response orchestration out of `tools/girlai2/functions/s
 
 - Use a scoped checkpoint commit only for the verified slice.
 - Prefer:
-  - `scripts/checkpoint-work.ps1 -Message "Checkpoint post-response orchestration extraction" -OnlyPaths <verified paths>`
+  - `scripts/checkpoint-work.ps1 -Message "Checkpoint response finalization extraction" -OnlyPaths <verified paths>`
 
 
 ## Execution Checklist

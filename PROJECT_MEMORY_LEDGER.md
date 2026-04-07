@@ -274,6 +274,21 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now emotion/shadow/background-update orchestration extraction from `llmService.ts`.
 
+## Latest Post-Response Orchestration Extraction
+
+- Added `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
+- Moved post-response orchestration out of `tools/girlai2/functions/src/services/llmService.ts`.
+- The extracted service now owns:
+  - emotion analysis orchestration
+  - emotion fallback handling
+  - shadow benchmark kickoff and logging
+  - background intelligent-memory update kickoff
+- Preserved response-path logging, quality metadata assembly, and final `AIResponse` return structure in `llmService.ts`.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now response-path logging and return assembly extraction from `llmService.ts`.
+
 ## Latest Local Agent Adapter Layer
 
 - Expanded `.codex/` from a thin shim into a richer Codex adapter layer:
