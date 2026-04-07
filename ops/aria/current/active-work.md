@@ -14,8 +14,8 @@ The clean repo now has its own local operating system and the first selective pr
 ## Immediate Next Actions
 
 1. Use the new low-token execution packet as the default handoff surface.
-2. Continue the next `llmService.ts` shrink slice from the now-extracted `postResponseOrchestrationService.ts` boundary.
-3. Extract remaining response-path logging and return assembly next.
+2. Re-evaluate `tools/girlai2/functions/src/services/llmService.ts` as a coordinator after the now-extracted `responseFinalizationService.ts` boundary.
+3. Decide whether the remaining shared types/helpers should move out or whether the current coordinator shape is good enough.
 4. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
 5. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
 
@@ -65,4 +65,8 @@ The clean repo now has its own local operating system and the first selective pr
 - Post-response shrink progress after the current slice:
   - new service: `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`
   - emotion, shadow-benchmark kickoff, and background memory-update orchestration are now moved out of `llmService.ts`
+  - local build/test validation is complete
+- Response-finalization shrink progress after the current slice:
+  - new service: `tools/girlai2/functions/src/services/responseFinalizationService.ts`
+  - response-path logging and final `AIResponse` assembly are now moved out of `llmService.ts`
   - local build/test validation is complete

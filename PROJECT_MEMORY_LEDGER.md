@@ -289,6 +289,20 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now response-path logging and return assembly extraction from `llmService.ts`.
 
+## Latest Response Finalization Extraction
+
+- Added `tools/girlai2/functions/src/services/responseFinalizationService.ts`.
+- Moved response-path logging and final `AIResponse` assembly out of `tools/girlai2/functions/src/services/llmService.ts`.
+- The extracted service now owns:
+  - final response logging
+  - quality metadata assembly
+  - final `AIResponse` object construction
+- Preserved route coordination, provider routing, quality flow, and post-response orchestration in `llmService.ts`.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next step is now a coordinator audit of the remaining `llmService.ts` ownership to decide whether more shrinking is justified.
+
 ## Latest Local Agent Adapter Layer
 
 - Expanded `.codex/` from a thin shim into a richer Codex adapter layer:

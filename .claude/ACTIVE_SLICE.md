@@ -35,11 +35,12 @@ Do not hand-edit it unless you also update the generator.
 - Provider execution helpers are extracted into `tools/girlai2/functions/src/services/providerExecutionService.ts`.
 - Post-generation quality orchestration is extracted into `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`.
 - Post-response emotion, shadow, and background-update orchestration is extracted into `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
+- Response-path logging and final `AIResponse` assembly are extracted into `tools/girlai2/functions/src/services/responseFinalizationService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` still owns too much orchestration and response assembly.
+- `tools/girlai2/functions/src/services/llmService.ts` is much smaller now, but still owns the top-level route coordination and some shared local types/helpers.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
@@ -50,7 +51,7 @@ Do not hand-edit it unless you also update the generator.
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by extracting remaining response-path logging and return assembly into a dedicated service while preserving current behavior.
+- Continue the next `llmService.ts` shrink slice by deciding whether any remaining shared types/helpers should move out, or whether the file is now small enough to treat as the stable coordinator.
 
 ## Do Not Touch
 
@@ -94,17 +95,16 @@ Do not hand-edit it unless you also update the generator.
 
 ## Title
 
-Extract response-path logging and return assembly out of `llmService.ts`
+Audit remaining `llmService.ts` ownership and decide whether to stop or continue shrinking
 
 ## Goal
 
-Move the remaining response-path logging and final return assembly out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` becomes primarily a coordinator for request flow and feature routing.
+Review the remaining contents of `tools/girlai2/functions/src/services/llmService.ts` and decide, from the current architecture, whether the file is now an acceptable coordinator or whether one more bounded extraction is justified.
 
 ## Files Allowed To Change
 
 - `tools/girlai2/functions/src/services/llmService.ts`
-- one new or existing post-response orchestration service under `tools/girlai2/functions/src/services/`
-- one new or existing response-finalization service under `tools/girlai2/functions/src/services/`
+- one new or existing helper service under `tools/girlai2/functions/src/services/` only if a clearly justified boundary is found
 - `PROJECT_MEMORY_LEDGER.md`
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
@@ -122,29 +122,28 @@ Move the remaining response-path logging and final return assembly out of `tools
 - `tools/girlai2/functions/src/services/responseAssemblyService.ts`
 - `tools/girlai2/functions/src/services/providerExecutionService.ts`
 - `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`
+- `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`
+- `tools/girlai2/functions/src/services/responseFinalizationService.ts`
 - client Flutter files under `tools/girlai2/lib/`
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
 ## Invariants To Preserve
 
+- Do not force another extraction unless it creates a real ownership improvement.
 - Output behavior must stay functionally the same.
 - Capability truthfulness must not regress.
 - Chronology handling must stay exact and non-robotic.
 - Repair mode must stay concise and non-defensive.
 - Fast-turn routing and prompt-cost behavior must remain intact.
-- Story mode behavior must remain immersive and consistent.
-- Journal mode behavior must remain reflective and gentle.
-- Logging detail and quality metadata shape must remain the same.
-- Final returned `AIResponse` fields must remain the same.
-- No new broad prompt/history loading should be introduced.
 
 ## Acceptance Criteria
 
-- `llmService.ts` no longer owns the main response-path logging and return assembly body.
-- The extracted service has a clear boundary and does not absorb earlier prompt assembly or provider execution.
-- `npm run build` passes.
-- `npm test` passes.
-- Memory and ops docs reflect the new ownership state.
+- We end with one of two outcomes:
+  - `llmService.ts` is accepted as the stable coordinator and docs are updated accordingly, or
+  - one clearly justified final bounded slice is defined and documented.
+- `npm run build` passes if code changes are made.
+- `npm test` passes if code changes are made.
+- Memory and ops docs reflect the decision.
 
 ## Verification Commands
 
@@ -154,9 +153,9 @@ Move the remaining response-path logging and final return assembly out of `tools
 
 ## Checkpoint Instruction
 
-- Use a scoped checkpoint commit only for the verified slice.
+- Use a scoped checkpoint commit only if code or docs materially change.
 - Prefer:
-  - `scripts/checkpoint-work.ps1 -Message "Checkpoint response finalization extraction" -OnlyPaths <verified paths>`
+  - `scripts/checkpoint-work.ps1 -Message "Checkpoint llmService coordinator audit" -OnlyPaths <verified paths>`
 
 
 ## Execution Checklist

@@ -70,6 +70,7 @@ import {
 } from './providerExecutionService';
 import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService';
 import { runPostResponseOrchestration } from './postResponseOrchestrationService';
+import { finalizeAIResponse } from './responseFinalizationService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3652,48 +3653,21 @@ export async function generateAIResponse(
     const analysis = postResponseResult.analysis;
     const shadowBenchmark: ShadowBenchmarkOutcome = postResponseResult.shadowBenchmark;
 
-    functions.logger.info('AI response generated', {
+    return finalizeAIResponse({
       userId,
-      model: modelUsed,
-      route: routeDecision.route,
-      escalated: routeDecision.escalated,
-      escalationReasons: routeDecision.reasons,
-      socialPlanSource: socialPlanning.source,
-      socialStrategy: socialPlanning.plan.strategy,
-      socialAskQuestion: socialPlanning.plan.askQuestion,
-      qualityScores: selectedScores,
-      personaScore: finalPersonaAudit.score,
-      personaViolations: finalPersonaAudit.violations,
+      modelUsed,
+      aiContent,
+      selectedScores,
+      socialPlanning,
+      finalPersonaAudit,
       stageContracts,
       stageTimingsMs,
       skippedAgents,
-      shadowBenchmarkSampled: shadowBenchmark.sampled,
-      shadowBenchmarkWinner: shadowBenchmark.winner,
-      shadowBenchmarkPrimaryScore: shadowBenchmark.primaryScore,
-      shadowBenchmarkShadowScore: shadowBenchmark.shadowScore,
-      emotion: analysis.emotion,
-      emotionTrigger: analysis.emotionTrigger,
+      shadowBenchmark,
+      routeDecision,
+      analysis,
+      logInfo: (message, metadata) => functions.logger.info(message, metadata),
     });
-
-    return {
-      content: aiContent,
-      emotion: analysis.emotion,
-      emotionTrigger: analysis.emotionTrigger,
-      emotionIntensity: analysis.emotionIntensity,
-      modelUsed,
-      qualityMeta: {
-        strategy: socialPlanning.plan.strategy,
-        questionBudget: socialPlanning.plan.questionBudget,
-        repairMode: socialPlanning.plan.repairMode,
-        consentCheckRequired: socialPlanning.plan.consentCheckRequired,
-        scoreSummary: selectedScores,
-        planSource: socialPlanning.source,
-        route: routeDecision.route,
-        escalated: routeDecision.escalated,
-        skippedAgents,
-        stageTimingsMs,
-      },
-    };
   } catch (error: any) {
     functions.logger.error('OpenAI API error', {
       error: error.message,

@@ -28,11 +28,12 @@
 - Provider execution helpers are extracted into `tools/girlai2/functions/src/services/providerExecutionService.ts`.
 - Post-generation quality orchestration is extracted into `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`.
 - Post-response emotion, shadow, and background-update orchestration is extracted into `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
+- Response-path logging and final `AIResponse` assembly are extracted into `tools/girlai2/functions/src/services/responseFinalizationService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` still owns too much orchestration and response assembly.
+- `tools/girlai2/functions/src/services/llmService.ts` is much smaller now, but still owns the top-level route coordination and some shared local types/helpers.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
@@ -43,7 +44,7 @@
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by extracting remaining response-path logging and return assembly into a dedicated service while preserving current behavior.
+- Continue the next `llmService.ts` shrink slice by deciding whether any remaining shared types/helpers should move out, or whether the file is now small enough to treat as the stable coordinator.
 
 ## Do Not Touch
 
