@@ -274,6 +274,30 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now emotion/shadow/background-update orchestration extraction from `llmService.ts`.
 
+## Latest Local Agent Adapter Layer
+
+- Expanded `.codex/` from a thin shim into a richer Codex adapter layer:
+  - `README.md`
+  - `CATCHUP.md`
+  - `ACTIVE_SLICE.md`
+  - `WORKFLOW.md`
+  - `GUARDRAILS.md`
+  - `COMMANDS.md`
+  - `CHECKPOINTING.md`
+- Expanded `.claude/` with the same local adapter structure so Claude can recover safely if needed.
+- Added `scripts/sync-agent-adapters.ps1` to regenerate the low-risk adapter files from canonical `ops/aria/current/*` state:
+  - `.codex/CATCHUP.md`
+  - `.codex/ACTIVE_SLICE.md`
+  - `.claude/CATCHUP.md`
+  - `.claude/ACTIVE_SLICE.md`
+- Updated `scripts/resume.ps1` to run adapter sync before printing the read order.
+- Updated `scripts/checkpoint-work.ps1` to auto-run adapter sync unless explicitly skipped and to auto-include changed generated adapter files when using scoped `-OnlyPaths`.
+- Updated `ops/aria/README.md` and `ops/aria/current/EXECUTION_CHECKLIST.md` so the canonical docs mention the adapter sync rule.
+- Validation completed locally:
+  - `scripts/sync-agent-adapters.ps1` ran successfully
+  - `scripts/resume.ps1` ran successfully with adapter sync
+  - `scripts/checkpoint-work.ps1 -DryRun` correctly included generated adapter files
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.

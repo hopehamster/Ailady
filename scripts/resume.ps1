@@ -3,6 +3,10 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
 
+if (Test-Path 'scripts/sync-agent-adapters.ps1') {
+  & "$PSScriptRoot\sync-agent-adapters.ps1" | Out-Null
+}
+
 $readOrder = @(
   'ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md',
   'ops/aria/current/NEXT_EXECUTION_SLICE.md',

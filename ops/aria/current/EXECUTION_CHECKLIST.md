@@ -10,7 +10,8 @@
    - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
    - `ops/aria/current/NEXT_EXECUTION_SLICE.md` if the active slice changed
    - one new `ops/aria/log/YYYY-MM-DD-*.md` file
-7. Create a scoped checkpoint commit.
+7. Run `scripts/sync-agent-adapters.ps1` or use `scripts/checkpoint-work.ps1` without `-SkipAdapterSync`.
+8. Create a scoped checkpoint commit.
 
 ## Rules
 

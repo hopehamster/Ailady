@@ -1,14 +1,25 @@
-# Claude Repo Catch-Up
+# Claude Adapter
 
-This repo uses `ops/aria/` as the canonical Aria operations hub.
+This folder is the Claude-specific adapter for the canonical Aria operating system in `ops/aria/`.
 
-If chat history is lost or a new Claude session starts, read:
+Use it for:
+
+1. fast catch-up
+2. execution guardrails
+3. checkpoint discipline
+4. current-slice focus
+
+Read order for a new or resumed Claude session:
 
 1. `.claude/CATCHUP.md`
-2. `PROJECT_MEMORY_LEDGER.md`
-3. `ops/aria/README.md`
-4. `ops/aria/current/*`
-5. latest `ops/aria/log/*`
+2. `.claude/ACTIVE_SLICE.md`
+3. `.claude/WORKFLOW.md`
+4. `.claude/GUARDRAILS.md`
+5. `.claude/CHECKPOINTING.md`
+6. only then read deeper canonical files in `ops/aria/` if needed
 
-Do not treat this `.claude` folder as a second source of truth.
-It is only a shim that points Claude to the canonical Aria memory.
+Rules:
+
+- `ops/aria/` remains the only canonical project brain.
+- `.claude/` is an adapter layer, not a second source of truth.
+- Generated files in this folder are refreshed by `scripts/sync-agent-adapters.ps1`.

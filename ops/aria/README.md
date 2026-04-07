@@ -24,6 +24,7 @@ Use this when:
 12. newest files in `ops/aria/log/`
 
 If another model lands in `.codex/` or `.claude/`, those folders should point here instead of maintaining parallel memory.
+Generated adapter files in `.codex/` and `.claude/` are refreshed by `scripts/sync-agent-adapters.ps1`.
 
 ## Scope
 

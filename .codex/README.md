@@ -1,14 +1,25 @@
-# Codex Repo Catch-Up
+# Codex Adapter
 
-This repo uses `ops/aria/` as the canonical Aria operations hub.
+This folder is the Codex-specific adapter for the canonical Aria operating system in `ops/aria/`.
 
-If chat history is lost or a new Codex session starts, read:
+Use it for:
+
+1. fast catch-up
+2. execution guardrails
+3. checkpoint discipline
+4. current-slice focus
+
+Read order for a new or resumed Codex session:
 
 1. `.codex/CATCHUP.md`
-2. `PROJECT_MEMORY_LEDGER.md`
-3. `ops/aria/README.md`
-4. `ops/aria/current/*`
-5. latest `ops/aria/log/*`
+2. `.codex/ACTIVE_SLICE.md`
+3. `.codex/WORKFLOW.md`
+4. `.codex/GUARDRAILS.md`
+5. `.codex/CHECKPOINTING.md`
+6. only then read deeper canonical files in `ops/aria/` if needed
 
-Do not treat this `.codex` folder as a second source of truth.
-It is only a shim that points Codex to the canonical Aria memory.
+Rules:
+
+- `ops/aria/` remains the only canonical project brain.
+- `.codex/` is an adapter layer, not a second source of truth.
+- Generated files in this folder are refreshed by `scripts/sync-agent-adapters.ps1`.
