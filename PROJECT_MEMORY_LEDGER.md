@@ -258,6 +258,22 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now post-generation quality orchestration extraction from `llmService.ts`.
 
+## Latest Quality Orchestration Extraction
+
+- Added `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`.
+- Moved post-generation critic/persona/guard orchestration out of `tools/girlai2/functions/src/services/llmService.ts`.
+- The extracted service now owns:
+  - critic pass orchestration
+  - guard-only fallback handling
+  - persona audit orchestration
+  - persona rewrite decision flow
+  - chronology re-enforcement across the quality path
+- Preserved provider routing, emotion analysis, shadow benchmarking, and background memory-update behavior in `llmService.ts`.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now emotion/shadow/background-update orchestration extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.

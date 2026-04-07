@@ -2,17 +2,17 @@
 
 ## Title
 
-Extract post-generation quality orchestration out of `llmService.ts`
+Extract emotion, shadow, and background-update orchestration out of `llmService.ts`
 
 ## Goal
 
-Move the post-generation quality orchestration out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shrinking while preserving critic, persona-audit, chronology, and guard behavior.
+Move the remaining post-response orchestration out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shrinking while preserving emotion analysis, shadow benchmarking, and background memory-update behavior.
 
 ## Files Allowed To Change
 
 - `tools/girlai2/functions/src/services/llmService.ts`
-- one new or existing provider-execution service under `tools/girlai2/functions/src/services/`
 - one new or existing quality-orchestration service under `tools/girlai2/functions/src/services/`
+- one new or existing post-response orchestration service under `tools/girlai2/functions/src/services/`
 - `PROJECT_MEMORY_LEDGER.md`
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
@@ -28,6 +28,7 @@ Move the post-generation quality orchestration out of `tools/girlai2/functions/s
 - `tools/girlai2/functions/src/services/proactiveMessageService.ts`
 - `tools/girlai2/functions/src/services/chatModeService.ts`
 - `tools/girlai2/functions/src/services/responseAssemblyService.ts`
+- `tools/girlai2/functions/src/services/providerExecutionService.ts`
 - client Flutter files under `tools/girlai2/lib/`
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
@@ -40,13 +41,15 @@ Move the post-generation quality orchestration out of `tools/girlai2/functions/s
 - Fast-turn routing and prompt-cost behavior must remain intact.
 - Story mode behavior must remain immersive and consistent.
 - Journal mode behavior must remain reflective and gentle.
-- Critic, persona-audit, and guard-only fallback behavior must remain the same.
+- Emotion fallback behavior must remain the same.
+- Shadow benchmark must remain fire-and-forget and never block the response.
+- Background memory update must remain non-blocking.
 - No new broad prompt/history loading should be introduced.
 
 ## Acceptance Criteria
 
-- `llmService.ts` no longer owns the main post-generation quality orchestration body.
-- The extracted service has a clear boundary and does not absorb provider routing or memory update behavior.
+- `llmService.ts` no longer owns the main emotion/shadow/background-update orchestration body.
+- The extracted service has a clear boundary and does not absorb provider routing or earlier prompt assembly.
 - `npm run build` passes.
 - `npm test` passes.
 - Memory and ops docs reflect the new ownership state.
@@ -61,4 +64,4 @@ Move the post-generation quality orchestration out of `tools/girlai2/functions/s
 
 - Use a scoped checkpoint commit only for the verified slice.
 - Prefer:
-  - `scripts/checkpoint-work.ps1 -Message "Checkpoint post-generation quality extraction" -OnlyPaths <verified paths>`
+  - `scripts/checkpoint-work.ps1 -Message "Checkpoint post-response orchestration extraction" -OnlyPaths <verified paths>`

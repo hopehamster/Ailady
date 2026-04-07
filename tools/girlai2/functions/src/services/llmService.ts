@@ -68,6 +68,7 @@ import {
   executeGeminiFallback,
   executeOpenAICompletion,
 } from './providerExecutionService';
+import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3548,124 +3549,49 @@ export async function generateAIResponse(
       }
     }
 
-    // Gemini fallback should still get deterministic guard cleanup. Only the
-    // model-backed critic/persona passes are skipped on that path.
-    let finalPersonaAudit: PersonaAuditResult = {
-      score: 0.82,
-      needsRewrite: false,
-      violations: [],
-    };
-    if (!usedGeminiFallback) {
-      if (!routeDecision.skipQualityAgent && shouldRunCriticForTurn(socialPlanning.signals, socialPlanning.plan)) {
-        const runCriticStage = createTimedStage(
-          'criticStageMs',
-          latencyBudgets.criticMs,
-          stageTimingsMs,
-          stageContracts,
-          'quality-agent',
-          `strategy=${socialPlanning.plan.strategy}`,
-          (result: string) => `contentLen=${result.length}`,
-        );
-        aiContent = await runCriticStage(() =>
-          runConversationCriticPass(
-            aiContent,
-            userMessage,
-            socialPlanning.plan,
-            socialPlanning.signals,
-            recentMessages,
-            memory,
-          ),
-        ).catch((error: any) => {
-          skippedAgents.push('quality-agent-critic-timeout-fallback');
-          functions.logger.warn('Critic pass timed out, using guard-only path', {
-            userId,
-            error: error?.message,
-          });
-          return applyConversationPolicyResponseGuards(
-            aiContent,
-            socialPlanning.plan,
-            socialPlanning.signals,
-            {
-              recentMessages,
-              userMessage,
-              memory,
-            },
-          );
-        });
-      } else {
-        skippedAgents.push('quality-agent-critic');
-        aiContent = applyConversationPolicyResponseGuards(
-          aiContent,
-          socialPlanning.plan,
-          socialPlanning.signals,
-          {
-            recentMessages,
-            userMessage,
-            memory,
-          },
-        );
-      }
-      aiContent = enforceChronologyConsistency(userMessage, aiContent, temporalContext);
-
-      if (!routeDecision.skipQualityAgent && shouldRunPersonaAuditForTurn(socialPlanning.signals, userMessage)) {
-        const runPersonaStage = createTimedStage(
-          'personaAuditStageMs',
-          latencyBudgets.personaAuditMs,
-          stageTimingsMs,
-          stageContracts,
-          'quality-agent',
-          `responseLen=${aiContent.length}`,
-          (result: PersonaAuditResult) => `score=${result.score.toFixed(2)},rewrite=${result.needsRewrite}`,
-        );
-        const personaAudit = await runPersonaStage(() =>
-          runPersonaConsistencyAudit(userMessage, aiContent),
-        ).catch((error: any) => {
-          skippedAgents.push('quality-agent-persona-timeout-fallback');
-          functions.logger.warn('Persona audit timed out; using existing response', {
-            userId,
-            error: error?.message,
-          });
-          return {
-            score: 0.75,
-            needsRewrite: false,
-            violations: ['audit_timeout'],
-          };
-        });
-        if (personaAudit.needsRewrite || personaAudit.score < 0.64) {
-          aiContent = await rewriteForPersonaConsistency(
-            userMessage,
-            aiContent,
-            personaAudit,
-            socialPlanning.plan,
-            socialPlanning.signals,
-            recentMessages,
-            memory,
-          );
-        }
-        finalPersonaAudit = await runPersonaStage(() =>
-          runPersonaConsistencyAudit(userMessage, aiContent),
-        ).catch(() => personaAudit);
-      } else {
-        skippedAgents.push('quality-agent-persona');
-      }
-      aiContent = enforceChronologyConsistency(userMessage, aiContent, temporalContext);
-    } else {
-      skippedAgents.push('quality-agent-gemini-fallback');
-      skippedAgents.push('quality-agent-critic');
-      skippedAgents.push('quality-agent-persona');
-      aiContent = applyConversationPolicyResponseGuards(
-        aiContent,
-        socialPlanning.plan,
-        socialPlanning.signals,
-        {
-          recentMessages,
-          userMessage,
-          memory,
-        },
+    const createQualityStage = <T>(
+      stageName: string,
+      budgetMs: number,
+      inputSummary: string,
+      outputSummary: (result: T) => string,
+    ) =>
+      createTimedStage(
+        stageName,
+        budgetMs,
+        stageTimingsMs,
+        stageContracts,
+        'quality-agent',
+        inputSummary,
+        outputSummary,
       );
-      aiContent = enforceChronologyConsistency(userMessage, aiContent, temporalContext);
-      functions.logger.info('Applied guard-only post-processing (Gemini fallback path)');
-    }
+
+    const qualityResult = await runPostGenerationQualityWorkflow({
+      aiContent,
+      userId,
+      userMessage,
+      usedGeminiFallback,
+      skipQualityAgent: routeDecision.skipQualityAgent,
+      plan: socialPlanning.plan,
+      signals: socialPlanning.signals,
+      recentMessages,
+      memory,
+      skippedAgents,
+      createQualityStage,
+      criticBudgetMs: latencyBudgets.criticMs,
+      personaAuditBudgetMs: latencyBudgets.personaAuditMs,
+      shouldRunCriticForTurn,
+      shouldRunPersonaAuditForTurn,
+      runConversationCriticPass,
+      applyResponseGuards: applyConversationPolicyResponseGuards,
+      enforceChronologyConsistency: (message, content) =>
+        enforceChronologyConsistency(message, content, temporalContext),
+      runPersonaConsistencyAudit,
+      rewriteForPersonaConsistency,
+      logWarn: (message, metadata) => functions.logger.warn(message, metadata),
+      logInfo: (message, metadata = {}) => functions.logger.info(message, metadata),
+    });
+    aiContent = qualityResult.aiContent;
+    const finalPersonaAudit: PersonaAuditResult = qualityResult.finalPersonaAudit;
 
     // ── Emotion analysis — run in parallel with shadow benchmark ────────
     // Emotion analysis only needs userMessage + aiContent; it does NOT depend
