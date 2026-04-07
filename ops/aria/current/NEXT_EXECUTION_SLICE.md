@@ -2,17 +2,17 @@
 
 ## Title
 
-Extract chat-mode overlay ownership out of `llmService.ts`
+Extract response-generation request assembly out of `llmService.ts`
 
 ## Goal
 
-Move chat-mode overlay and related special-mode prompt handling out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shedding orchestration weight without changing runtime behavior.
+Move the main response-generation request assembly out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shedding orchestration weight without changing runtime behavior.
 
 ## Files Allowed To Change
 
 - `tools/girlai2/functions/src/services/llmService.ts`
 - one new or existing prompt-shell service under `tools/girlai2/functions/src/services/`
-- one new or existing special-mode service under `tools/girlai2/functions/src/services/`
+- one new or existing response-assembly service under `tools/girlai2/functions/src/services/`
 - `PROJECT_MEMORY_LEDGER.md`
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/active-work.md`
@@ -25,6 +25,7 @@ Move chat-mode overlay and related special-mode prompt handling out of `tools/gi
 - `tools/girlai2/functions/src/services/memoryControllerService.ts`
 - `tools/girlai2/functions/src/services/promptShellService.ts` unless a tiny import adjustment is required
 - `tools/girlai2/functions/src/services/proactiveMessageService.ts`
+- `tools/girlai2/functions/src/services/chatModeService.ts`
 - client Flutter files under `tools/girlai2/lib/`
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
@@ -37,11 +38,12 @@ Move chat-mode overlay and related special-mode prompt handling out of `tools/gi
 - Fast-turn routing and prompt-cost behavior must remain intact.
 - Story mode behavior must remain immersive and consistent.
 - Journal mode behavior must remain reflective and gentle.
+- Main response-generation prompt assembly must keep stable-shell-first ordering.
 - No new broad prompt/history loading should be introduced.
 
 ## Acceptance Criteria
 
-- `llmService.ts` no longer owns the main chat-mode overlay body.
+- `llmService.ts` no longer owns the main response-generation request assembly body.
 - The extracted service has a clear boundary and does not absorb provider routing.
 - `npm run build` passes.
 - `npm test` passes.
@@ -57,4 +59,4 @@ Move chat-mode overlay and related special-mode prompt handling out of `tools/gi
 
 - Use a scoped checkpoint commit only for the verified slice.
 - Prefer:
-  - `scripts/checkpoint-work.ps1 -Message "Checkpoint chat mode overlay extraction" -OnlyPaths <verified paths>`
+  - `scripts/checkpoint-work.ps1 -Message "Checkpoint response assembly extraction" -OnlyPaths <verified paths>`

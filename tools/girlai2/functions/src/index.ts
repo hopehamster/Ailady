@@ -10,8 +10,8 @@ import {
   getCompanionQualityInsights as getCompanionQualityInsightsData,
   ConversationMessage,
   UserTemporalContext,
-  ChatMode,
 } from './services/llmService';
+import type { ChatMode } from './services/chatModeService';
 import {
   runGoldenPromptSuiteEval,
   getLatestGoldenSuiteRun,

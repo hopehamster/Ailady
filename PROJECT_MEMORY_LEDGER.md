@@ -217,6 +217,16 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now chat-mode overlay extraction from `llmService.ts`.
 
+## Latest Chat-Mode Extraction
+
+- Added `tools/girlai2/functions/src/services/chatModeService.ts`.
+- Moved the `ChatMode` type and chat-mode overlay builder out of `tools/girlai2/functions/src/services/llmService.ts`.
+- Updated `tools/girlai2/functions/src/index.ts` to import the `ChatMode` type from the new service.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now response-generation request assembly extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.
