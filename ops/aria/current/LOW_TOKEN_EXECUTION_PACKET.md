@@ -9,7 +9,7 @@
 ## Current Goal
 
 - Keep Aria stable, fast enough to feel good on `IN2017`, and feature-complete enough for serious testing.
-- Continue shrinking `tools/girlai2/functions/src/services/llmService.ts` without breaking truthfulness, chronology, repair, or latency.
+- Treat the current `llmService.ts` shape as the stable coordinator baseline and stop shrinking it unless a future boundary clearly improves ownership.
 - Treat `HeyGen WebView` as the next avatar direction, but do not start serious migration work until the pre-migration gate is satisfied.
 
 ## What Is Stable
@@ -33,7 +33,7 @@
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` is much smaller now, but still owns the top-level route coordination and some shared local types/helpers.
+- `tools/girlai2/functions/src/services/llmService.ts` still contains shared top-level route coordination and helper types, but this is now accepted as the stable coordinator shape.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
@@ -44,7 +44,7 @@
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by deciding whether any remaining shared types/helpers should move out, or whether the file is now small enough to treat as the stable coordinator.
+- Move forward from the now-stable coordinator baseline and focus on product quality, feature readiness, and migration-gate work instead of more `llmService.ts` shrinking.
 
 ## Do Not Touch
 

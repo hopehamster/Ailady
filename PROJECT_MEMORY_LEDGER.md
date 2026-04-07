@@ -303,6 +303,16 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next step is now a coordinator audit of the remaining `llmService.ts` ownership to decide whether more shrinking is justified.
 
+## Latest Coordinator Decision
+
+- `tools/girlai2/functions/src/services/llmService.ts` is now accepted as the stable coordinator baseline.
+- We are explicitly stopping the shrink phase here.
+- Future extractions from `llmService.ts` should only happen if they create a real ownership improvement tied to product work, not to chase file size.
+- Focus now shifts back to:
+  - product quality
+  - feature readiness
+  - pre-HeyGen migration gate progress
+
 ## Latest Local Agent Adapter Layer
 
 - Expanded `.codex/` from a thin shim into a richer Codex adapter layer:

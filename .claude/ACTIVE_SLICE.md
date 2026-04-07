@@ -16,7 +16,7 @@ Do not hand-edit it unless you also update the generator.
 ## Current Goal
 
 - Keep Aria stable, fast enough to feel good on `IN2017`, and feature-complete enough for serious testing.
-- Continue shrinking `tools/girlai2/functions/src/services/llmService.ts` without breaking truthfulness, chronology, repair, or latency.
+- Treat the current `llmService.ts` shape as the stable coordinator baseline and stop shrinking it unless a future boundary clearly improves ownership.
 - Treat `HeyGen WebView` as the next avatar direction, but do not start serious migration work until the pre-migration gate is satisfied.
 
 ## What Is Stable
@@ -40,7 +40,7 @@ Do not hand-edit it unless you also update the generator.
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` is much smaller now, but still owns the top-level route coordination and some shared local types/helpers.
+- `tools/girlai2/functions/src/services/llmService.ts` still contains shared top-level route coordination and helper types, but this is now accepted as the stable coordinator shape.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
@@ -51,7 +51,7 @@ Do not hand-edit it unless you also update the generator.
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by deciding whether any remaining shared types/helpers should move out, or whether the file is now small enough to treat as the stable coordinator.
+- Move forward from the now-stable coordinator baseline and focus on product quality, feature readiness, and migration-gate work instead of more `llmService.ts` shrinking.
 
 ## Do Not Touch
 
@@ -95,16 +95,14 @@ Do not hand-edit it unless you also update the generator.
 
 ## Title
 
-Audit remaining `llmService.ts` ownership and decide whether to stop or continue shrinking
+Coordinator accepted: shift focus back to product quality and migration-gate work
 
 ## Goal
 
-Review the remaining contents of `tools/girlai2/functions/src/services/llmService.ts` and decide, from the current architecture, whether the file is now an acceptable coordinator or whether one more bounded extraction is justified.
+Treat the current `tools/girlai2/functions/src/services/llmService.ts` shape as the accepted stable coordinator baseline and stop shrinking it unless a future extraction offers a clear ownership win. Use the next implementation slice to improve product readiness instead of more orchestrator refactoring.
 
 ## Files Allowed To Change
 
-- `tools/girlai2/functions/src/services/llmService.ts`
-- one new or existing helper service under `tools/girlai2/functions/src/services/` only if a clearly justified boundary is found
 - `PROJECT_MEMORY_LEDGER.md`
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
@@ -113,49 +111,25 @@ Review the remaining contents of `tools/girlai2/functions/src/services/llmServic
 
 ## Files Not To Change
 
-- `tools/girlai2/functions/src/services/conversationPolicyService.ts`
-- `tools/girlai2/functions/src/services/truthKernelService.ts`
-- `tools/girlai2/functions/src/services/memoryControllerService.ts`
-- `tools/girlai2/functions/src/services/promptShellService.ts`
-- `tools/girlai2/functions/src/services/proactiveMessageService.ts`
-- `tools/girlai2/functions/src/services/chatModeService.ts`
-- `tools/girlai2/functions/src/services/responseAssemblyService.ts`
-- `tools/girlai2/functions/src/services/providerExecutionService.ts`
-- `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`
-- `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`
-- `tools/girlai2/functions/src/services/responseFinalizationService.ts`
-- client Flutter files under `tools/girlai2/lib/`
+- `tools/girlai2/functions/src/services/llmService.ts` unless a later product slice explicitly requires it
+- any of the extracted service modules unless a later product slice explicitly requires them
+- client Flutter files under `tools/girlai2/lib/` until the next product slice is chosen
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
 ## Invariants To Preserve
 
-- Do not force another extraction unless it creates a real ownership improvement.
-- Output behavior must stay functionally the same.
-- Capability truthfulness must not regress.
-- Chronology handling must stay exact and non-robotic.
-- Repair mode must stay concise and non-defensive.
-- Fast-turn routing and prompt-cost behavior must remain intact.
+- `llmService.ts` shrink phase is complete for now.
+- Future extractions must be justified by real ownership improvement, not line-count pressure.
+- Product quality, feature readiness, and the pre-HeyGen migration gate are now the main focus.
 
 ## Acceptance Criteria
 
-- We end with one of two outcomes:
-  - `llmService.ts` is accepted as the stable coordinator and docs are updated accordingly, or
-  - one clearly justified final bounded slice is defined and documented.
-- `npm run build` passes if code changes are made.
-- `npm test` passes if code changes are made.
-- Memory and ops docs reflect the decision.
-
-## Verification Commands
-
-- `Set-Location tools/girlai2/functions`
-- `npm run build`
-- `npm test`
+- Memory and ops docs clearly record that the `llmService.ts` shrink phase is complete for now.
+- The next real work should come from product quality or migration-gate needs, not more speculative coordinator refactoring.
 
 ## Checkpoint Instruction
 
-- Use a scoped checkpoint commit only if code or docs materially change.
-- Prefer:
-  - `scripts/checkpoint-work.ps1 -Message "Checkpoint llmService coordinator audit" -OnlyPaths <verified paths>`
+- Use a scoped checkpoint commit for the docs-only decision.
 
 
 ## Execution Checklist
