@@ -244,6 +244,20 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now provider execution helper extraction from `llmService.ts`.
 
+## Latest Provider Execution Extraction
+
+- Added `tools/girlai2/functions/src/services/providerExecutionService.ts`.
+- Moved provider execution helpers out of `tools/girlai2/functions/src/services/llmService.ts`.
+- The extracted service now owns:
+  - OpenAI completion execution and rerank handoff
+  - Anthropic completion execution and rerank handoff
+  - Gemini fallback request construction and execution
+- Preserved provider routing order, fallback behavior, chronology enforcement, and guard/post-processing behavior in `llmService.ts`.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now post-generation quality orchestration extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.

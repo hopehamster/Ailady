@@ -2,17 +2,17 @@
 
 ## Title
 
-Extract provider execution helpers out of `llmService.ts`
+Extract post-generation quality orchestration out of `llmService.ts`
 
 ## Goal
 
-Move the provider-specific execution helpers out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shedding orchestration weight without changing runtime behavior.
+Move the post-generation quality orchestration out of `tools/girlai2/functions/src/services/llmService.ts` into a dedicated service so `llmService.ts` keeps shrinking while preserving critic, persona-audit, chronology, and guard behavior.
 
 ## Files Allowed To Change
 
 - `tools/girlai2/functions/src/services/llmService.ts`
-- one new or existing response-assembly service under `tools/girlai2/functions/src/services/`
 - one new or existing provider-execution service under `tools/girlai2/functions/src/services/`
+- one new or existing quality-orchestration service under `tools/girlai2/functions/src/services/`
 - `PROJECT_MEMORY_LEDGER.md`
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
@@ -27,6 +27,7 @@ Move the provider-specific execution helpers out of `tools/girlai2/functions/src
 - `tools/girlai2/functions/src/services/promptShellService.ts`
 - `tools/girlai2/functions/src/services/proactiveMessageService.ts`
 - `tools/girlai2/functions/src/services/chatModeService.ts`
+- `tools/girlai2/functions/src/services/responseAssemblyService.ts`
 - client Flutter files under `tools/girlai2/lib/`
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
@@ -39,14 +40,13 @@ Move the provider-specific execution helpers out of `tools/girlai2/functions/src
 - Fast-turn routing and prompt-cost behavior must remain intact.
 - Story mode behavior must remain immersive and consistent.
 - Journal mode behavior must remain reflective and gentle.
-- Main response-generation prompt assembly must keep stable-shell-first ordering.
-- Provider routing order and fallback behavior must remain the same.
+- Critic, persona-audit, and guard-only fallback behavior must remain the same.
 - No new broad prompt/history loading should be introduced.
 
 ## Acceptance Criteria
 
-- `llmService.ts` no longer owns the main provider execution helper bodies.
-- The extracted service has a clear boundary and does not absorb route selection or post-generation guard logic.
+- `llmService.ts` no longer owns the main post-generation quality orchestration body.
+- The extracted service has a clear boundary and does not absorb provider routing or memory update behavior.
 - `npm run build` passes.
 - `npm test` passes.
 - Memory and ops docs reflect the new ownership state.
@@ -61,4 +61,4 @@ Move the provider-specific execution helpers out of `tools/girlai2/functions/src
 
 - Use a scoped checkpoint commit only for the verified slice.
 - Prefer:
-  - `scripts/checkpoint-work.ps1 -Message "Checkpoint provider execution extraction" -OnlyPaths <verified paths>`
+  - `scripts/checkpoint-work.ps1 -Message "Checkpoint post-generation quality extraction" -OnlyPaths <verified paths>`

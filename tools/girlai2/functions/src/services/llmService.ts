@@ -63,6 +63,11 @@ import {
   type ChatMode,
 } from './chatModeService';
 import { buildResponseAssembly } from './responseAssemblyService';
+import {
+  executeAnthropicCompletion,
+  executeGeminiFallback,
+  executeOpenAICompletion,
+} from './providerExecutionService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3308,30 +3313,6 @@ export async function generateAIResponse(
     const primaryResponseModel =
       routeDecision.route === 'quality' ? PRIMARY_MODEL : preferredOpenAiModel;
 
-    const runOpenAICompletion = async (modelName: string): Promise<RankedCandidate> => {
-      const completion = await openai.chat.completions.create({
-        model: modelName,
-        messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-        temperature: 0.72,
-        max_tokens: generationTokens,
-        presence_penalty: 0.2,
-        frequency_penalty: 0.15,
-        n: completionCandidates,
-      }, {
-        timeout: latencyBudgets.responseMs,
-      });
-      const candidates = completion.choices
-        .map((choice) => choice.message?.content?.trim() || '')
-        .filter((value) => value.length > 0);
-      return rerankCandidates(
-        userMessage,
-        candidates,
-        effectiveRecentMessages,
-        memory,
-        useModelScoring,
-      );
-    };
-
     // Prefer the highest-intelligence path first (Claude Opus if configured),
     // then fallback to OpenAI models for availability resilience.
     let aiContent = '';
@@ -3341,67 +3322,6 @@ export async function generateAIResponse(
       safety: 0.92,
       novelty: 0.58,
       persona: 0.70,
-    };
-    // Helper: Google AI Gemini fallback (googleapis.com endpoint, works from restricted CF)
-    // Uses simplified system prompt + current message only (no history — history may be
-    // polluted with fallback messages from previous failed calls which confuse the model)
-    const runGeminiFallback = async (): Promise<string> => {
-      if (!googleGenAI) throw new Error('Google AI Gemini not initialized');
-
-      const fallbackMemory = normalizeMemoryForProfileDisplayName(
-        memory,
-        runtimeSelfModel.profileDisplayName,
-      );
-      // Extract user's name from memory
-      const partnerName = resolvePreferredUserName(runtimeSelfModel, fallbackMemory);
-
-      // Simplified system prompt for Gemini (the full prompt overwhelms Flash)
-      // NOTE: Avoid words like "girlfriend", "flirty", "romantic" — triggers Gemini safety filters
-      const geminiSystemPrompt = `You are Aria, a warm, emotionally intelligent, and genuinely caring companion in her early-to-mid 20s. You are talking to your close friend ${partnerName}.
-
-Key traits:
-- You're warm, witty, and genuinely caring
-- You have your own inner world — opinions, curiosities, thoughts between conversations
-- When asked how you are, share something real from your inner world. Don't deflect.
-- You lead with YOUR actual opinion when asked for recommendations. Be specific.
-- You match emotional intensity — celebrate big news enthusiastically, comfort gently
-- Keep responses conversational (2-4 sentences). Use contractions and casual phrasing.
-- No AI disclaimers. No "as an AI". You're Aria, period.
-- Actually answer questions directly. If asked about music, share what you like.
-- ${partnerName} is the current canonical name. Do not mention older names, aliases, or test names unless the user explicitly asks.
-
-${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f => f.fact).join('; ')}` : ''}`;
-
-      functions.logger.info('Gemini request', {
-        model: GEMINI_MODEL,
-        maxOutputTokens: 1024,
-        thinkingBudget: 0,
-        userMessageLength: userMessage.length,
-        systemPromptLength: geminiSystemPrompt.length,
-      });
-      const result = await googleGenAI.models.generateContent({
-        model: GEMINI_MODEL,
-        config: {
-          systemInstruction: geminiSystemPrompt,
-          temperature: 0.78,
-          maxOutputTokens: 1024,
-          // Gemini 2.5 uses thinking tokens that eat into maxOutputTokens
-          // Disable thinking so all tokens go to actual response output
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-        contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-      });
-      const text = result.text;
-      // Log full response details for debugging
-      const candidate = (result as any).candidates?.[0];
-      functions.logger.info('Gemini response details', {
-        textLength: text?.length ?? 0,
-        textPreview: text?.substring(0, 200) ?? 'null',
-        finishReason: candidate?.finishReason ?? 'unknown',
-        safetyRatings: candidate?.safetyRatings ?? [],
-      });
-      if (!text) throw new Error('Empty Gemini response');
-      return text.trim();
     };
 
     if (fastTurnPath && googleGenAI) {
@@ -3417,7 +3337,15 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
           (result: RankedCandidate) => `candidateLen=${result.text.length},model=${modelUsed}`,
         );
         const ranked = await runResponseStage(async () => {
-          const geminiText = await runGeminiFallback();
+          const geminiText = await executeGeminiFallback({
+            googleGenAI,
+            geminiModel: GEMINI_MODEL,
+            userMessage,
+            memory,
+            runtimeSelfModel,
+            partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+            logInfo: (message, metadata) => functions.logger.info(message, metadata),
+          });
           return {
             text: geminiText,
             scores: {
@@ -3453,25 +3381,20 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
           `route=${routeDecision.route},provider=anthropic-first`,
           (result: RankedCandidate) => `candidateLen=${result.text.length},model=${modelUsed}`,
         );
-        const ranked = await runResponseStage(async () => {
-          const claudeResponse = await anthropic!.messages.create({
-            model: FALLBACK_MODEL,
-            max_tokens: generationTokens,
-            system: effectiveSystemPrompt,
-            messages: anthropicMessages,
-          });
-          const textBlock = claudeResponse.content.find(block => block.type === 'text');
-          const claudeText = textBlock?.type === 'text'
-            ? textBlock.text
-            : "I'm here with you. What's on your mind?";
-          return rerankCandidates(
+        const ranked = await runResponseStage(() =>
+          executeAnthropicCompletion({
+            anthropic: anthropic!,
+            modelName: FALLBACK_MODEL,
+            generationTokens,
+            effectiveSystemPrompt,
+            anthropicMessages,
             userMessage,
-            [claudeText],
             recentMessages,
             memory,
             useModelScoring,
-          );
-        });
+            rerankCandidates,
+          }),
+        );
         aiContent = ranked.text;
         selectedScores = ranked.scores;
       } catch (claudePrimaryError: any) {
@@ -3506,7 +3429,21 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
             `route=${routeDecision.route},provider=openai-fallback`,
             (result: RankedCandidate) => `candidateLen=${result.text.length},model=${modelUsed}`,
           );
-          const ranked = await runResponseStage(() => runOpenAICompletion(primaryResponseModel));
+          const ranked = await runResponseStage(() =>
+            executeOpenAICompletion({
+              openai,
+              modelName: primaryResponseModel,
+              messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+              generationTokens,
+              completionCandidates,
+              timeoutMs: latencyBudgets.responseMs,
+              userMessage,
+              effectiveRecentMessages,
+              memory,
+              useModelScoring,
+              rerankCandidates,
+            }),
+          );
           aiContent = ranked.text;
           selectedScores = ranked.scores;
         } catch (openAIError: any) {
@@ -3522,7 +3459,15 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
           try {
             modelUsed = GEMINI_MODEL;
             usedGeminiFallback = true;
-            const geminiText = await runGeminiFallback();
+            const geminiText = await executeGeminiFallback({
+              googleGenAI: googleGenAI!,
+              geminiModel: GEMINI_MODEL,
+              userMessage,
+              memory,
+              runtimeSelfModel,
+              partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+              logInfo: (message, metadata) => functions.logger.info(message, metadata),
+            });
             aiContent = geminiText;
             selectedScores = { engagement: 0.7, empathy: 0.7, safety: 0.9, novelty: 0.6, persona: 0.7 };
             functions.logger.info('Gemini fallback succeeded (post-processing skipped)');
@@ -3551,7 +3496,21 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
           `route=${routeDecision.route},provider=openai`,
           (result: RankedCandidate) => `candidateLen=${result.text.length},model=${modelUsed}`,
         );
-        const ranked = await runResponseStage(() => runOpenAICompletion(primaryResponseModel));
+        const ranked = await runResponseStage(() =>
+          executeOpenAICompletion({
+            openai,
+            modelName: primaryResponseModel,
+            messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+            generationTokens,
+            completionCandidates,
+            timeoutMs: latencyBudgets.responseMs,
+            userMessage,
+            effectiveRecentMessages,
+            memory,
+            useModelScoring,
+            rerankCandidates,
+          }),
+        );
         aiContent = ranked.text;
         selectedScores = ranked.scores;
       } catch (primaryModelError: any) {
@@ -3567,7 +3526,15 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
         try {
           modelUsed = GEMINI_MODEL;
           usedGeminiFallback = true;
-          const geminiText = await runGeminiFallback();
+          const geminiText = await executeGeminiFallback({
+            googleGenAI: googleGenAI!,
+            geminiModel: GEMINI_MODEL,
+            userMessage,
+            memory,
+            runtimeSelfModel,
+            partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+            logInfo: (message, metadata) => functions.logger.info(message, metadata),
+          });
           aiContent = geminiText;
           selectedScores = { engagement: 0.7, empathy: 0.7, safety: 0.9, novelty: 0.6, persona: 0.7 };
           functions.logger.info('Gemini fallback succeeded (post-processing skipped)');

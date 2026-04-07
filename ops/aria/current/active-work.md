@@ -14,8 +14,8 @@ The clean repo now has its own local operating system and the first selective pr
 ## Immediate Next Actions
 
 1. Use the new low-token execution packet as the default handoff surface.
-2. Continue the next `llmService.ts` shrink slice from the now-extracted `responseAssemblyService.ts` boundary.
-3. Extract provider execution helpers next.
+2. Continue the next `llmService.ts` shrink slice from the now-extracted `providerExecutionService.ts` boundary.
+3. Extract post-generation quality orchestration next.
 4. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
 5. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
 
@@ -53,4 +53,8 @@ The clean repo now has its own local operating system and the first selective pr
 - Response-assembly shrink progress after the current slice:
   - new service: `tools/girlai2/functions/src/services/responseAssemblyService.ts`
   - main response-generation request assembly is now moved out of `llmService.ts`
+  - local build/test validation is complete
+- Provider-execution shrink progress after the current slice:
+  - new service: `tools/girlai2/functions/src/services/providerExecutionService.ts`
+  - OpenAI, Anthropic, and Gemini execution helpers are now moved out of `llmService.ts`
   - local build/test validation is complete
