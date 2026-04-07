@@ -24,6 +24,7 @@
 - System-prompt shell ownership is extracted into `tools/girlai2/functions/src/services/promptShellService.ts`.
 - Proactive companion message composition is extracted into `tools/girlai2/functions/src/services/proactiveMessageService.ts`.
 - Chat-mode overlay ownership is extracted into `tools/girlai2/functions/src/services/chatModeService.ts`.
+- Response-generation request assembly is extracted into `tools/girlai2/functions/src/services/responseAssemblyService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
 
 ## What Is Still Broken Or Incomplete
@@ -39,7 +40,7 @@
 
 ## Current Next Step
 
-- Continue the next `llmService.ts` shrink slice by extracting response-generation request assembly into a dedicated service while preserving current behavior.
+- Continue the next `llmService.ts` shrink slice by extracting provider execution helpers into a dedicated service while preserving current behavior.
 
 ## Do Not Touch
 

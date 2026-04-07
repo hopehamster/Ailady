@@ -39,7 +39,6 @@ import { getRelationshipStage } from './ariaRelationshipService';
 import {
   buildConversationPolicy,
   buildConversationPolicyDirectives,
-  buildConversationPolicyEnhancers,
   applyConversationPolicyResponseGuards,
   mapSocialSignalsToConversationPolicySignals,
   mapSessionStageToConversationPolicyContext,
@@ -55,19 +54,15 @@ import {
   buildChronologyRouterResponse,
 } from './memoryControllerService';
 import {
-  compactPromptAugmentsForRoute,
-  composeSystemPromptSections,
-} from './promptCostService';
-import {
   buildPromptAugments,
   type PromptAugments,
 } from './promptAugmentService';
 import { buildSystemPrompt } from './promptShellService';
 import { buildProactiveCompanionRequest } from './proactiveMessageService';
 import {
-  buildChatModeOverlayBlock,
   type ChatMode,
 } from './chatModeService';
+import { buildResponseAssembly } from './responseAssemblyService';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3258,9 +3253,6 @@ export async function generateAIResponse(
         source: 'rules' as const,
       };
     });
-    const effectiveRecentMessages =
-      routeDecision.route === 'fast' ? recentMessages.slice(-8) : recentMessages;
-
     // Compute per-turn enhancement context
     const tzOffset = temporalContext.timeZoneOffsetMinutes;
     const shiftedMs = temporalContext.now.getTime() + tzOffset * 60 * 1000;
@@ -3276,65 +3268,30 @@ export async function generateAIResponse(
       avgSentimentScore,
     );
 
-    const chatModeBlock = buildChatModeOverlayBlock(chatMode);
-
-    const compactedPromptAugments = compactPromptAugmentsForRoute(promptAugments, {
+    const {
+      effectiveRecentMessages,
+      effectiveSystemPrompt,
+      messages,
+      anthropicMessages,
+    } = buildResponseAssembly({
+      systemPrompt,
+      promptAugments,
       route: routeDecision.route,
       preferRecentExchange,
-    });
-
-    const effectiveSystemPrompt = composeSystemPromptSections([
-      systemPrompt,
-      compactedPromptAugments.personalityBlock,
-      compactedPromptAugments.personaVoiceBlock,
-      compactedPromptAugments.innerLifeBlock,
-      compactedPromptAugments.relationshipBlock,
-      compactedPromptAugments.emotionalMemoryBlock,
-      compactedPromptAugments.moodBlock,
-      compactedPromptAugments.loreBlock,
-      compactedPromptAugments.semanticRecallBlock,
       recentExchangePriorityBlock,
-      // Inject upcoming important dates so Aria can acknowledge them proactively
-      datesContextBlock ?? '',
-      chatModeBlock,
-      buildConversationPolicyDirectives(
-        socialPlanning.plan,
-        socialPlanning.signals,
-        {
-          memory,
-          hourOfDay,
-          sessionTurnCount,
-          stage: turnStage,
-        },
-      ),
-      buildConversationPolicyEnhancers(
-        userMessage,
-        socialPlanning.plan,
-        socialPlanning.signals,
-        {
-          memory,
-          hourOfDay,
-          sessionTurnCount,
-          stage: turnStage,
-        },
-      ),
-    ]);
-
-    // Build messages array
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      {
-        role: 'system',
-        content: effectiveSystemPrompt,
+      datesContextBlock,
+      chatMode,
+      userMessage,
+      recentMessages,
+      policyPlan: socialPlanning.plan,
+      policySignals: socialPlanning.signals,
+      policyContext: {
+        memory,
+        hourOfDay,
+        sessionTurnCount,
+        stage: turnStage,
       },
-      ...effectiveRecentMessages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-      })),
-      {
-        role: 'user',
-        content: userMessage,
-      },
-    ];
+    });
 
     const generationTokens = fastTurnPath
       ? Math.min(resolveGenerationTokens(socialPlanning.plan), 130)
@@ -3385,11 +3342,6 @@ export async function generateAIResponse(
       novelty: 0.58,
       persona: 0.70,
     };
-    const anthropicMessages = messages.slice(1).map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content as string,
-    }));
-
     // Helper: Google AI Gemini fallback (googleapis.com endpoint, works from restricted CF)
     // Uses simplified system prompt + current message only (no history — history may be
     // polluted with fallback messages from previous failed calls which confuse the model)

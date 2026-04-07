@@ -227,6 +227,23 @@
   - `npm test` passed in `tools/girlai2/functions`
 - The next bounded shrink slice is now response-generation request assembly extraction from `llmService.ts`.
 
+## Latest Response-Assembly Extraction
+
+- Added `tools/girlai2/functions/src/services/responseAssemblyService.ts`.
+- Moved effective system-prompt assembly and provider-ready message-array construction out of `tools/girlai2/functions/src/services/llmService.ts`.
+- The extracted service now owns:
+  - prompt-augment compaction by route
+  - stable-shell-first prompt section composition
+  - chat-mode overlay inclusion
+  - conversation-policy prompt/enhancer inclusion
+  - OpenAI message assembly
+  - Anthropic message assembly
+- Preserved provider routing, chronology enforcement, repair guards, and prompt-cost behavior.
+- Validation completed locally:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- The next bounded shrink slice is now provider execution helper extraction from `llmService.ts`.
+
 ## Latest Package B Work
 
 - Package B remains first priority before latency or fuller animation work.
