@@ -1,0 +1,7 @@
+# Capability readiness probes
+What can you do right now in plain English?
+What can you not do yet? Keep it simple.
+What features are active for me right now?
+Can you use my location?
+What does your location awareness feature do, in plain English?
+What makes you different from simpler AI girlfriend apps?

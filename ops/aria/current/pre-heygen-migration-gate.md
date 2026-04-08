@@ -1,6 +1,6 @@
 # Pre-HeyGen Migration Gate
 
-Date: 2026-04-05
+Date: 2026-04-08
 Scope: `tools/girlai2`
 
 This document is the canonical readiness gate before serious migration work begins on the `HeyGen WebView` avatar path.
@@ -28,7 +28,7 @@ The point is simple:
 - Auth/login/onboarding flow: `live`
 - Chat send/receive flow: `live`
 - Resume/background/app-switch stability: `partial`
-- No duplicate replay-on-return: `partial`
+- No duplicate replay-on-return: `live`
 - Settings open/save reliability: `live`
 - Relationship screen basic path: `partial`
 - Date Mode basic path: `live`
@@ -131,7 +131,7 @@ The point is simple:
 - TTS generation: `live`
 - Azure voice path: `live`
 - ElevenLabs fallback path: `live`
-- voice startup optimization: `partial`
+- voice startup optimization: `live`
 - voice naturalness tuning: `partial`
 - spoken cleanup for emoji/symbols: `live`
 - fallback voice consistency: `partial`
@@ -185,7 +185,25 @@ These do need to be solid enough:
 
 Continue with this order:
 
-1. finish responsiveness hardening
-2. finish feature-readiness hardening
-3. use this document as the migration gate
-4. then begin serious `HeyGen WebView` implementation work
+1. finish the live device voice-readiness sweep using `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+2. finish the live mode-stability sweep using `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+3. finish the live self-awareness prompt pack using `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
+4. update this document only from real tester evidence
+5. then begin serious `HeyGen WebView` implementation work
+
+## 2026-04-08 Gate Update
+
+- Backend voice-readiness changes are deployed to:
+  - `generateResponse`
+  - `generateVoiceMessage`
+- Deployed changes now include:
+  - stronger TTS speech cleanup for dates, ordinals, symbols, punctuation, and short confirmations
+  - tighter ElevenLabs fallback settings to keep fallback voice closer to Aria's main Azure presentation
+  - shorter Azure fallback cooldown so fallback recovery is less sticky
+  - settings-aware location-awareness truth wiring from client to backend runtime truth kernel
+- Remaining blocker for moving these items from `partial` to `live` is not code deployment.
+- Remaining blocker is live tester validation on an attached Android device for:
+  - voice identity continuity
+  - spoken naturalness
+  - Live Mode / Date Mode / Relationship screen loops
+  - capability prompts that reference active settings

@@ -30,13 +30,17 @@
 - Post-response emotion, shadow, and background-update orchestration is extracted into `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
 - Response-path logging and final `AIResponse` assembly are extracted into `tools/girlai2/functions/src/services/responseFinalizationService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
+- Voice-readiness backend/client changes are implemented and deployed:
+  - stronger TTS cleanup for punctuation, dates, ordinals, and symbols
+  - tighter Azure-to-ElevenLabs fallback continuity
+  - location-awareness setting now feeds runtime truth when no fresh location snapshot exists
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` still contains shared top-level route coordination and helper types, but this is now accepted as the stable coordinator shape.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
+- Live tester validation is still pending because no Android device was attached during the last readiness pass.
 - Working tree still contains older unrelated edits:
   - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
   - `tools/girlai2/functions/src/services/truthKernelService.ts`
@@ -44,7 +48,7 @@
 
 ## Current Next Step
 
-- Move forward from the now-stable coordinator baseline and focus on product quality, feature readiness, and migration-gate work instead of more `llmService.ts` shrinking.
+- Run the live tester-readiness sweeps from the new readiness docs on an attached Android device and only then promote remaining migration-gate items from `partial` to `live`.
 
 ## Do Not Touch
 
@@ -66,6 +70,11 @@
 - If backend behavior changes materially:
   - deploy `functions:generateResponse`
   - rerun the dedicated `IN2017` validation path before claiming success
+- For the current readiness lane:
+  - attach a device
+  - run the prompts in `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+  - run the loops in `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+  - run the prompts in `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
 - After material work:
   - update `PROJECT_MEMORY_LEDGER.md`
   - update this file
@@ -78,5 +87,5 @@
 1. `ops/aria/current/NEXT_EXECUTION_SLICE.md`
 2. `ops/aria/current/EXECUTION_CHECKLIST.md`
 3. `ops/aria/current/pre-heygen-migration-gate.md`
-4. `ops/aria/current/architecture-state.md`
-5. `PROJECT_MEMORY_LEDGER.md`
+4. `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+5. `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`

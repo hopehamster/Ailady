@@ -1397,3 +1397,48 @@ pm run build passed in 	ools/girlai2/functions; lutter pub get passed in 	ools/
 - Next required step:
   - deploy the clean-branch prompt-cost pass
   - run the dedicated latency pass on `IN2017`
+
+## 2026-04-08 Tester-Readiness Pass
+
+- Implemented the tester-ready-fast slice in the clean repo with two main product changes:
+  - voice reliability hardening
+  - settings-aware self-awareness breadth for location awareness
+- Voice reliability work landed in:
+  - `tools/girlai2/functions/src/services/voiceService.ts`
+- Voice changes:
+  - stronger TTS cleanup for dates, ordinals, symbols, punctuation, and short confirmations
+  - shorter Azure fallback cooldown
+  - tighter ElevenLabs fallback settings to better preserve Aria continuity when Azure falls back
+  - fallback timing metadata now captures fallback reason and continuity mode for future inspection
+- Self-awareness breadth work landed across:
+  - `tools/girlai2/lib/core/services/firebase_service.dart`
+  - `tools/girlai2/lib/features/chat/chat_service.dart`
+  - `tools/girlai2/lib/features/settings/screens/settings_screen.dart`
+  - `tools/girlai2/functions/src/index.ts`
+  - `tools/girlai2/functions/src/services/llmService.ts`
+  - `tools/girlai2/functions/src/services/truthKernelService.ts`
+- Functional result:
+  - location-awareness setting now reaches the backend truth runtime even when there is no fresh location snapshot
+  - capability answers can stay truthful about location-aware functionality without pretending there is current live location context
+- Readiness artifacts added:
+  - `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+  - `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+  - `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
+  - `tools/girlai2/scripts/prompts/voice_readiness_20260408.txt`
+  - `tools/girlai2/scripts/prompts/capability_readiness_20260408.txt`
+- Validation completed:
+  - `dart analyze` passed for the touched Flutter files
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- Deployment completed successfully when functions were targeted one at a time:
+  - `generateResponse`
+  - `generateVoiceMessage`
+- Important constraint:
+  - no Android device was attached during this pass, so live tester validation still remains for:
+    - voice identity continuity
+    - spoken naturalness
+    - Live Mode / Date Mode / Relationship screen loops
+    - settings-aware capability prompts across real turns
+- Migration-gate implication:
+  - this pass removed code/deploy blockers for the tester-readiness lane
+  - the remaining blocker is live device evidence, not backend implementation

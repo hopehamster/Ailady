@@ -37,13 +37,17 @@ Do not hand-edit it unless you also update the generator.
 - Post-response emotion, shadow, and background-update orchestration is extracted into `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
 - Response-path logging and final `AIResponse` assembly are extracted into `tools/girlai2/functions/src/services/responseFinalizationService.ts`.
 - Build and tests pass in `tools/girlai2/functions` for the current backend slice.
+- Voice-readiness backend/client changes are implemented and deployed:
+  - stronger TTS cleanup for punctuation, dates, ordinals, and symbols
+  - tighter Azure-to-ElevenLabs fallback continuity
+  - location-awareness setting now feeds runtime truth when no fresh location snapshot exists
 
 ## What Is Still Broken Or Incomplete
 
-- `tools/girlai2/functions/src/services/llmService.ts` still contains shared top-level route coordination and helper types, but this is now accepted as the stable coordinator shape.
 - Voice identity and timbre consistency are still partial.
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
+- Live tester validation is still pending because no Android device was attached during the last readiness pass.
 - Working tree still contains older unrelated edits:
   - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
   - `tools/girlai2/functions/src/services/truthKernelService.ts`
@@ -51,7 +55,7 @@ Do not hand-edit it unless you also update the generator.
 
 ## Current Next Step
 
-- Move forward from the now-stable coordinator baseline and focus on product quality, feature readiness, and migration-gate work instead of more `llmService.ts` shrinking.
+- Run the live tester-readiness sweeps from the new readiness docs on an attached Android device and only then promote remaining migration-gate items from `partial` to `live`.
 
 ## Do Not Touch
 
@@ -73,6 +77,11 @@ Do not hand-edit it unless you also update the generator.
 - If backend behavior changes materially:
   - deploy `functions:generateResponse`
   - rerun the dedicated `IN2017` validation path before claiming success
+- For the current readiness lane:
+  - attach a device
+  - run the prompts in `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+  - run the loops in `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+  - run the prompts in `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
 - After material work:
   - update `PROJECT_MEMORY_LEDGER.md`
   - update this file
@@ -85,8 +94,8 @@ Do not hand-edit it unless you also update the generator.
 1. `ops/aria/current/NEXT_EXECUTION_SLICE.md`
 2. `ops/aria/current/EXECUTION_CHECKLIST.md`
 3. `ops/aria/current/pre-heygen-migration-gate.md`
-4. `ops/aria/current/architecture-state.md`
-5. `PROJECT_MEMORY_LEDGER.md`
+4. `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+5. `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
 
 
 ## Active Slice
@@ -95,11 +104,11 @@ Do not hand-edit it unless you also update the generator.
 
 ## Title
 
-Coordinator accepted: shift focus back to product quality and migration-gate work
+Run the live tester-readiness sweep for voice, modes, and self-awareness
 
 ## Goal
 
-Treat the current `tools/girlai2/functions/src/services/llmService.ts` shape as the accepted stable coordinator baseline and stop shrinking it unless a future extraction offers a clear ownership win. Use the next implementation slice to improve product readiness instead of more orchestrator refactoring.
+Use the shipped readiness artifacts to validate the deployed backend/client changes on an attached Android device. The purpose of this slice is to turn remaining `partial` migration-gate items into evidence-backed `live` items where warranted, or name the specific blockers if not.
 
 ## Files Allowed To Change
 
@@ -107,29 +116,35 @@ Treat the current `tools/girlai2/functions/src/services/llmService.ts` shape as 
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
 - `ops/aria/current/active-work.md`
+- `ops/aria/current/known-regressions.md`
+- `ops/aria/current/pre-heygen-migration-gate.md`
+- `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+- `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+- `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
 - one new `ops/aria/log/YYYY-MM-DD-*.md`
 
 ## Files Not To Change
 
-- `tools/girlai2/functions/src/services/llmService.ts` unless a later product slice explicitly requires it
-- any of the extracted service modules unless a later product slice explicitly requires them
-- client Flutter files under `tools/girlai2/lib/` until the next product slice is chosen
+- backend and Flutter source files unless live validation reveals a concrete defect that requires a bounded fix
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
 ## Invariants To Preserve
 
-- `llmService.ts` shrink phase is complete for now.
-- Future extractions must be justified by real ownership improvement, not line-count pressure.
-- Product quality, feature readiness, and the pre-HeyGen migration gate are now the main focus.
+- `llmService.ts` shrink phase remains complete for now.
+- The clean repo remains the only active implementation repo.
+- The pre-HeyGen migration gate should only be promoted from `partial` to `live` using real tester evidence.
 
 ## Acceptance Criteria
 
-- Memory and ops docs clearly record that the `llmService.ts` shrink phase is complete for now.
-- The next real work should come from product quality or migration-gate needs, not more speculative coordinator refactoring.
+- Voice, mode, and self-awareness sweeps are run on a live attached device.
+- `ops/aria/current/pre-heygen-migration-gate.md` is updated from observed evidence.
+- The result is a clear verdict:
+  - ready for structured tester pass
+  - or still blocked, with named blockers only
 
 ## Checkpoint Instruction
 
-- Use a scoped checkpoint commit for the docs-only decision.
+- Use a scoped checkpoint commit after the live sweep writeback is complete.
 
 
 ## Execution Checklist

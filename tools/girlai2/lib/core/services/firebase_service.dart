@@ -103,6 +103,7 @@ class FirebaseService {
     String message, {
     String? chatMode,
     UserEnvironmentContext? userContext,
+    bool? locationAwarenessEnabled,
   }) async {
     final startTime = DateTime.now();
     final messageId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -177,6 +178,10 @@ class FirebaseService {
         },
         if (chatMode != null) 'chatMode': chatMode,
         if (userContext != null) 'userContext': userContext.toMap(),
+        if (locationAwarenessEnabled != null)
+          'featureSettings': <String, dynamic>{
+            'locationAwarenessEnabled': locationAwarenessEnabled,
+          },
       }).timeout(
         const Duration(seconds: 30),
         onTimeout: () {

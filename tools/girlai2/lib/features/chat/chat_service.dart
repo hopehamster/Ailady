@@ -179,12 +179,14 @@ class ChatService extends ChangeNotifier {
 
         // Gather environment context (fire-and-forget safe — returns null on failure)
         final userContext = await ContextService.instance.getContext();
+        final locationAwarenessEnabled = await ContextService.instance.isOptedIn();
 
         // Call Cloud Function which handles saving both user message and AI response
         final response = await _firebaseService.generateResponse(
           content,
           chatMode: chatMode,
           userContext: userContext,
+          locationAwarenessEnabled: locationAwarenessEnabled,
         );
 
         // Update emotion state from AI response for avatar animations

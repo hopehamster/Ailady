@@ -1,6 +1,6 @@
 # Aria Active Work
 
-Date: 2026-04-05
+Date: 2026-04-08
 
 ## Current State
 
@@ -15,9 +15,13 @@ The clean repo now has its own local operating system and the first selective pr
 
 1. Use the new low-token execution packet as the default handoff surface.
 2. Treat `tools/girlai2/functions/src/services/llmService.ts` as the accepted stable coordinator shape.
-3. Return focus to product quality, feature readiness, and the pre-HeyGen migration gate.
-4. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
-5. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
+3. Return focus to product quality, feature readiness, and the pre-Heygen migration gate.
+4. Run the live tester-readiness sweeps on an attached Android device:
+   - `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+   - `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+   - `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
+5. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
+6. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
 
 ## Do Not Lose These Facts
 
@@ -74,3 +78,9 @@ The clean repo now has its own local operating system and the first selective pr
   - stop here
   - current file shape is accepted as the stable coordinator baseline
   - future extractions must be justified by real ownership improvement, not line-count pressure
+- 2026-04-08 tester-readiness work already landed locally and is deployed:
+  - `generateResponse` updated successfully
+  - `generateVoiceMessage` updated successfully
+  - voice cleanup and fallback-continuity changes are live
+  - settings-aware location-awareness truth wiring is live
+  - remaining blocker is live tester validation, not deployment

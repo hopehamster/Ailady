@@ -40,6 +40,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _toggleLocationOptIn(bool value) async {
+    final authService = context.read<AuthService>();
+    final userService = context.read<UserService>();
     if (value) {
       // Ask for permission before persisting opt-in
       final granted = await ContextService.instance.requestPermission();
@@ -58,6 +60,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
     await ContextService.instance.setOptIn(value);
+    final userId = authService.user?.uid;
+    if (userId != null) {
+      try {
+        await userService.updateUserProfile(userId, {
+          'locationAwarenessEnabled': value,
+        });
+      } catch (e, stack) {
+        DebugLogger.logError(
+          'SettingsScreen._toggleLocationOptIn',
+          e,
+          stackTrace: stack,
+        );
+      }
+    }
     if (value) {
       // Warm the city/time/weather snapshot now so the next send does not pay
       // the whole geolocation and network cost on the critical chat path.

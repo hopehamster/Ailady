@@ -2,11 +2,11 @@
 
 ## Title
 
-Coordinator accepted: shift focus back to product quality and migration-gate work
+Run the live tester-readiness sweep for voice, modes, and self-awareness
 
 ## Goal
 
-Treat the current `tools/girlai2/functions/src/services/llmService.ts` shape as the accepted stable coordinator baseline and stop shrinking it unless a future extraction offers a clear ownership win. Use the next implementation slice to improve product readiness instead of more orchestrator refactoring.
+Use the shipped readiness artifacts to validate the deployed backend/client changes on an attached Android device. The purpose of this slice is to turn remaining `partial` migration-gate items into evidence-backed `live` items where warranted, or name the specific blockers if not.
 
 ## Files Allowed To Change
 
@@ -14,26 +14,32 @@ Treat the current `tools/girlai2/functions/src/services/llmService.ts` shape as 
 - `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
 - `ops/aria/current/NEXT_EXECUTION_SLICE.md`
 - `ops/aria/current/active-work.md`
+- `ops/aria/current/known-regressions.md`
+- `ops/aria/current/pre-heygen-migration-gate.md`
+- `tools/girlai2/docs/VOICE_READINESS_PASS.md`
+- `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+- `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
 - one new `ops/aria/log/YYYY-MM-DD-*.md`
 
 ## Files Not To Change
 
-- `tools/girlai2/functions/src/services/llmService.ts` unless a later product slice explicitly requires it
-- any of the extracted service modules unless a later product slice explicitly requires them
-- client Flutter files under `tools/girlai2/lib/` until the next product slice is chosen
+- backend and Flutter source files unless live validation reveals a concrete defect that requires a bounded fix
 - temp artifacts under `tools/girlai2/docs/_tmp_*`
 
 ## Invariants To Preserve
 
-- `llmService.ts` shrink phase is complete for now.
-- Future extractions must be justified by real ownership improvement, not line-count pressure.
-- Product quality, feature readiness, and the pre-HeyGen migration gate are now the main focus.
+- `llmService.ts` shrink phase remains complete for now.
+- The clean repo remains the only active implementation repo.
+- The pre-HeyGen migration gate should only be promoted from `partial` to `live` using real tester evidence.
 
 ## Acceptance Criteria
 
-- Memory and ops docs clearly record that the `llmService.ts` shrink phase is complete for now.
-- The next real work should come from product quality or migration-gate needs, not more speculative coordinator refactoring.
+- Voice, mode, and self-awareness sweeps are run on a live attached device.
+- `ops/aria/current/pre-heygen-migration-gate.md` is updated from observed evidence.
+- The result is a clear verdict:
+  - ready for structured tester pass
+  - or still blocked, with named blockers only
 
 ## Checkpoint Instruction
 
-- Use a scoped checkpoint commit for the docs-only decision.
+- Use a scoped checkpoint commit after the live sweep writeback is complete.

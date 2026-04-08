@@ -93,6 +93,10 @@ export interface UserEnvironmentContext {
   localDayOfWeek?: string;
 }
 
+export interface UserFeatureSettings {
+  locationAwarenessEnabled?: boolean;
+}
+
 export interface AIResponse {
   content: string;
   emotion: string;
@@ -2350,8 +2354,9 @@ async function getCompanionRuntimeSelfModel(
   userId: string,
   memory: IntelligentMemory | null,
   userEnvCtx?: UserEnvironmentContext,
+  featureSettings?: UserFeatureSettings,
 ): Promise<CompanionRuntimeSelfModel> {
-  const fallback = buildDefaultRuntimeSelfModel(memory, userEnvCtx);
+  const fallback = buildDefaultRuntimeSelfModel(memory, userEnvCtx, featureSettings);
   try {
     const db = admin.firestore();
     const userDoc = await db.collection('users').doc(userId).get();
@@ -2364,6 +2369,7 @@ async function getCompanionRuntimeSelfModel(
       userDoc.data() as Record<string, unknown>,
       memory,
       userEnvCtx,
+      featureSettings,
     );
   } catch (error: any) {
     functions.logger.error('Error getting companion runtime self model', {
@@ -2377,6 +2383,7 @@ async function getCompanionRuntimeSelfModel(
 async function bootstrapConversationRuntime(
   userId: string,
   userEnvCtx?: UserEnvironmentContext,
+  featureSettings?: UserFeatureSettings,
 ): Promise<{
   memory: IntelligentMemory | null;
   runtimeSelfModel: CompanionRuntimeSelfModel;
@@ -2418,6 +2425,7 @@ async function bootstrapConversationRuntime(
       userData,
       memory,
       userEnvCtx,
+      featureSettings,
     ),
   };
 }
@@ -2916,6 +2924,7 @@ export async function generateAIResponse(
   chatMode?: ChatMode,
   datesContextBlock?: string,
   userEnvCtx?: UserEnvironmentContext,
+  featureSettings?: UserFeatureSettings,
 ): Promise<AIResponse> {
   let modelUsed = PRIMARY_MODEL;
   let usedGeminiFallback = false;
@@ -2934,10 +2943,14 @@ export async function generateAIResponse(
   try {
     const runtimeBootstrapStartedAt = Date.now();
     const runtimeBootstrap = userId
-      ? await bootstrapConversationRuntime(userId, userEnvCtx)
+      ? await bootstrapConversationRuntime(userId, userEnvCtx, featureSettings)
       : {
           memory: null,
-          runtimeSelfModel: buildDefaultRuntimeSelfModel(null, userEnvCtx),
+          runtimeSelfModel: buildDefaultRuntimeSelfModel(
+            null,
+            userEnvCtx,
+            featureSettings,
+          ),
         };
     const runtimeSelfModel = runtimeBootstrap.runtimeSelfModel;
     const memory = normalizeMemoryForProfileDisplayName(

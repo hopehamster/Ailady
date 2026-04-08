@@ -33,6 +33,8 @@ export interface VoiceResult {
     totalMs?: number;
     audioFormat?: string;
     deliveryProfile?: string;
+    fallbackReason?: string;
+    continuityMode?: string;
   };
 }
 
@@ -76,7 +78,7 @@ let cachedVoiceBucketName: string | null = null;
 const inlineAudioMaxBytes = 1024 * 1024;
 let azureThrottleCooldownUntilMs = 0;
 let azureProviderFallbackUntilMs = 0;
-const azureProviderFallbackCooldownMs = 180_000;
+const azureProviderFallbackCooldownMs = 45_000;
 const azureVoicePolish = {
   // Warmer and more conversational without sounding synthetic.
   volume: '+7.0%',
@@ -90,6 +92,13 @@ const elevenLabsVoicePolish = {
   stability: 0.38,
   similarity_boost: 0.84,
   style: 0.30,
+  use_speaker_boost: true,
+} as const;
+const elevenLabsAzureFallbackPolish = {
+  // Keep fallback delivery closer to Azure's warmer, steadier regular-tier feel.
+  stability: 0.5,
+  similarity_boost: 0.88,
+  style: 0.14,
   use_speaker_boost: true,
 } as const;
 
@@ -500,6 +509,13 @@ function sanitizeSpeechTextForTts(value: string): string {
   cleaned = cleaned.replace(/https?:\/\/\S+/gi, ' ');
   cleaned = cleaned.replace(/[#*_`~>|]/g, ' ');
   cleaned = cleaned.replace(/[\u200B-\u200D\uFE0E\uFE0F]/g, '');
+  cleaned = cleaned.replace(/[–—]/g, ', ');
+  cleaned = cleaned.replace(/\s*&\s*/g, ' and ');
+  cleaned = cleaned.replace(/(?<!\d)\s*\/\s*(?!\d)/g, ' ');
+  cleaned = cleaned.replace(/…/g, '...');
+  cleaned = cleaned.replace(/\b(?:ok|okay)[.!?]{2,}\b/gi, 'okay.');
+  cleaned = cleaned.replace(/\bmm-?hmm\b/gi, 'mm hmm');
+  cleaned = cleaned.replace(/\buh-?huh\b/gi, 'uh huh');
 
   // Remove emoji/pictographic symbols that sound unnatural when spoken.
   // Do not strip Emoji_Component here because it includes digits used in dates/keycaps.
@@ -507,10 +523,15 @@ function sanitizeSpeechTextForTts(value: string): string {
 
   // Normalize whitespace and punctuation spacing.
   cleaned = cleaned.replace(/\s+([,.!?;:])/g, '$1');
+  cleaned = cleaned.replace(/([,;:]){2,}/g, '$1');
   cleaned = cleaned.replace(/([!?.,])\1{2,}/g, '$1$1');
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
 
   return cleaned;
+}
+
+export function prepareSpeechTextForTts(value: string): string {
+  return normalizeDatesForPlainSpeech(sanitizeSpeechTextForTts(value));
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -602,6 +623,41 @@ function deriveVoiceDeliveryProfile(text: string): VoiceDeliveryProfile {
       style: elevenLabsVoicePolish.style,
       use_speaker_boost: elevenLabsVoicePolish.use_speaker_boost,
     },
+  };
+}
+
+function resolveElevenLabsVoiceSettings(
+  profile: VoiceDeliveryProfile,
+  consistencyMode: 'primary' | 'azure_fallback',
+) {
+  if (consistencyMode === 'azure_fallback') {
+    return {
+      stability: clamp(
+        Math.max(profile.elevenLabs.stability, elevenLabsAzureFallbackPolish.stability),
+        0,
+        1,
+      ),
+      similarity_boost: clamp(
+        Math.max(profile.elevenLabs.similarity_boost, elevenLabsAzureFallbackPolish.similarity_boost),
+        0,
+        1,
+      ),
+      style: clamp(
+        Math.min(profile.elevenLabs.style, elevenLabsAzureFallbackPolish.style),
+        0,
+        1,
+      ),
+      use_speaker_boost:
+        profile.elevenLabs.use_speaker_boost ||
+        elevenLabsAzureFallbackPolish.use_speaker_boost,
+    };
+  }
+
+  return {
+    stability: clamp(profile.elevenLabs.stability, 0, 1),
+    similarity_boost: clamp(profile.elevenLabs.similarity_boost, 0, 1),
+    style: clamp(profile.elevenLabs.style, 0, 1),
+    use_speaker_boost: profile.elevenLabs.use_speaker_boost,
   };
 }
 
@@ -747,7 +803,7 @@ export async function generateVoiceWithVisemes(
   subscriptionTier: 'regular' | 'ultra',
   voiceId?: string
 ): Promise<VoiceResult> {
-  const speechText = normalizeDatesForPlainSpeech(sanitizeSpeechTextForTts(text));
+  const speechText = prepareSpeechTextForTts(text);
   const deliveryProfile = deriveVoiceDeliveryProfile(speechText);
 
   functions.logger.info('[VoiceService] Generating voice', {
@@ -772,7 +828,9 @@ export async function generateVoiceWithVisemes(
 
   try {
     if (subscriptionTier === 'ultra') {
-      return await generateWithElevenLabs(truncatedText, deliveryProfile, voiceId);
+      return await generateWithElevenLabs(truncatedText, deliveryProfile, {
+        voiceIdOverride: voiceId,
+      });
     }
     return await generateWithAzure(truncatedText, deliveryProfile, voiceId);
   } catch (providerError: unknown) {
@@ -801,7 +859,11 @@ async function generateWithAzure(
       provider: 'azure',
       providerFallbackDelayMs,
     });
-    return generateWithElevenLabs(text, profile);
+    return generateWithElevenLabs(text, profile, {
+      voiceIdOverride: voiceNameOverride,
+      fallbackReason: 'azure_provider_cooldown',
+      consistencyMode: 'azure_fallback',
+    });
   }
 
   const config = getAzureConfig();
@@ -863,7 +925,11 @@ async function generateWithAzure(
         provider: 'azure',
         cooldownDelayMs,
       });
-      return generateWithElevenLabs(text, profile, voiceNameOverride);
+      return generateWithElevenLabs(text, profile, {
+        voiceIdOverride: voiceNameOverride,
+        fallbackReason: 'azure_throttle_cooldown',
+        consistencyMode: 'azure_fallback',
+      });
     }
 
     functions.logger.info('[VoiceService] Waiting for Azure throttle cooldown without configured fallback', {
@@ -916,7 +982,10 @@ async function generateWithAzure(
             attempt: attempt.label,
             cooldownMs: azureProviderFallbackCooldownMs,
           });
-          return generateWithElevenLabs(text, profile);
+          return generateWithElevenLabs(text, profile, {
+            fallbackReason: 'azure_quota_throttle',
+            consistencyMode: 'azure_fallback',
+          });
         }
 
         const backoffMs = attempt.throttleBackoffMs;
@@ -982,7 +1051,10 @@ async function generateWithAzure(
           provider: 'azure',
           cooldownMs: azureProviderFallbackCooldownMs,
         });
-        return generateWithElevenLabs(text, profile);
+        return generateWithElevenLabs(text, profile, {
+          fallbackReason: 'azure_rest_quota_throttle',
+          consistencyMode: 'azure_fallback',
+        });
       }
     }
   }
@@ -1204,7 +1276,11 @@ async function runAzureSynthesisAttempt(
 async function generateWithElevenLabs(
   text: string,
   profile: VoiceDeliveryProfile,
-  voiceIdOverride?: string,
+  options?: {
+    voiceIdOverride?: string;
+    fallbackReason?: string;
+    consistencyMode?: 'primary' | 'azure_fallback';
+  },
 ): Promise<VoiceResult> {
   const startedAt = Date.now();
   const config = getElevenLabsConfig();
@@ -1216,7 +1292,7 @@ async function generateWithElevenLabs(
     });
   }
 
-  const voiceId = voiceIdOverride || config.voiceId;
+  const voiceId = options?.voiceIdOverride || config.voiceId;
   if (!voiceId) {
     throw new VoiceServiceError('voice_not_configured', 'ElevenLabs voice ID not configured', {
       provider: 'elevenlabs',
@@ -1226,6 +1302,8 @@ async function generateWithElevenLabs(
 
   const requestStartedAt = Date.now();
   const outputFormat = selectElevenLabsOutputFormat(text, profile);
+  const continuityMode = options?.consistencyMode ?? 'primary';
+  const voiceSettings = resolveElevenLabsVoiceSettings(profile, continuityMode);
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/with-timestamps`,
     {
@@ -1238,12 +1316,7 @@ async function generateWithElevenLabs(
         text,
         model_id: config.modelId,
         output_format: outputFormat,
-        voice_settings: {
-          stability: clamp(profile.elevenLabs.stability, 0, 1),
-          similarity_boost: clamp(profile.elevenLabs.similarity_boost, 0, 1),
-          style: clamp(profile.elevenLabs.style, 0, 1),
-          use_speaker_boost: profile.elevenLabs.use_speaker_boost,
-        },
+        voice_settings: voiceSettings,
       }),
     }
   );
@@ -1295,6 +1368,8 @@ async function generateWithElevenLabs(
       totalMs: Date.now() - startedAt,
       audioFormat: outputFormat,
       deliveryProfile: profile.id,
+      fallbackReason: options?.fallbackReason,
+      continuityMode,
     },
   };
 }

@@ -1,3 +1,5 @@
+import type { IntelligentMemory } from './memoryService';
+
 export type TruthKernelVersion = 'truth-kernel.v1';
 
 export type TruthRuntimeSource = 'resolved' | 'fallback';
@@ -93,6 +95,22 @@ export interface TruthKernel {
   camera: TruthFeatureState;
 }
 
+export type CompanionSubscriptionTier = 'free' | 'regular' | 'ultra';
+
+export interface CompanionRuntimeSelfModel {
+  relationshipDays: number;
+  subscriptionTier: CompanionSubscriptionTier;
+  hasVoiceAccess: boolean | null;
+  hasVisionAccess: boolean | null;
+  proactiveEnabled: boolean | null;
+  freeModeEnabled: boolean | null;
+  runtimeSource: 'resolved' | 'fallback';
+  profileDisplayName?: string;
+  userTimeZoneOffsetMinutes: number;
+  userTimeZoneName?: string;
+  truthKernel: TruthKernel;
+}
+
 export interface TruthCapabilitySnapshotData extends TruthKernel {
   kind: 'truth_capability_snapshot';
 }
@@ -105,6 +123,7 @@ export interface TruthKernelUserRecordInput {
   subscriptionTier?: unknown;
   isPremium?: unknown;
   freeModeEnabled?: unknown;
+  locationAwarenessEnabled?: unknown;
 }
 
 export interface TruthKernelSubscriptionInput {
@@ -139,6 +158,11 @@ export interface TruthKernelBuildInput {
   location?: TruthKernelLocationInput | null;
   voice?: TruthKernelFeatureInput | null;
   camera?: TruthKernelFeatureInput | null;
+  featureSettings?: TruthRuntimeFeatureSettingsInput | null;
+}
+
+export interface TruthRuntimeFeatureSettingsInput {
+  locationAwarenessEnabled?: boolean | null;
 }
 
 export type TruthDateLike =
@@ -219,6 +243,27 @@ function resolveTruthSignal<T>(
     source,
     ...(options?.derivedFrom ? { derivedFrom: options.derivedFrom } : {}),
   };
+}
+
+function mapTruthAvailabilityToBoolean(
+  availability: TruthAvailability | null | undefined,
+): boolean | null {
+  if (availability === 'available') {
+    return true;
+  }
+  if (availability === 'unavailable') {
+    return false;
+  }
+  return null;
+}
+
+function mapTruthTierToRuntimeTier(
+  tier: TruthAccessTier | null,
+): CompanionSubscriptionTier {
+  if (tier === 'free' || tier === 'regular' || tier === 'ultra') {
+    return tier;
+  }
+  return 'regular';
 }
 
 function resolveTruthySignal(
@@ -533,6 +578,125 @@ export function buildTruthKernelFromRuntimeContext(
     voice,
     camera,
   };
+}
+
+export function buildRuntimeSelfModelFromTruthKernel(
+  kernel: TruthKernel,
+): CompanionRuntimeSelfModel {
+  return {
+    relationshipDays: kernel.relationshipDays.value ?? 0,
+    subscriptionTier: mapTruthTierToRuntimeTier(kernel.subscription.tier.value),
+    hasVoiceAccess:
+      kernel.voice.enabled.value ?? mapTruthAvailabilityToBoolean(kernel.voice.availability),
+    hasVisionAccess:
+      kernel.camera.enabled.value ?? mapTruthAvailabilityToBoolean(kernel.camera.availability),
+    proactiveEnabled: kernel.proactiveEnabled.value,
+    freeModeEnabled: kernel.freeModeEnabled.value,
+    runtimeSource: kernel.runtimeSource,
+    profileDisplayName: kernel.profileDisplayName.value ?? undefined,
+    userTimeZoneOffsetMinutes: kernel.timezone.offsetMinutes.value ?? 0,
+    userTimeZoneName: kernel.timezone.name.value ?? undefined,
+    truthKernel: kernel,
+  };
+}
+
+export function buildTruthKernelForRuntimeContext(
+  userData: Record<string, unknown> | null | undefined,
+  memory: IntelligentMemory | null,
+  userEnvCtx?: TruthUserEnvironmentContext,
+  featureSettings?: TruthRuntimeFeatureSettingsInput | null,
+): TruthKernel {
+  const hasLiveWorldSnapshot = !!(
+    userEnvCtx &&
+    (userEnvCtx.city ||
+      userEnvCtx.region ||
+      userEnvCtx.weatherDesc ||
+      userEnvCtx.localHour !== undefined ||
+      userEnvCtx.localDayOfWeek)
+  );
+  const locationAwarenessEnabled =
+    typeof featureSettings?.locationAwarenessEnabled === 'boolean'
+      ? featureSettings.locationAwarenessEnabled
+      : typeof userData?.locationAwarenessEnabled === 'boolean'
+        ? (userData.locationAwarenessEnabled as boolean)
+        : null;
+  const locationSource =
+    hasLiveWorldSnapshot
+      ? {
+          kind: 'location_context' as const,
+          field: 'environmentContext',
+          note: 'fresh client environment snapshot supplied for this turn',
+        }
+      : locationAwarenessEnabled !== null
+        ? {
+            kind: 'settings' as const,
+            field: 'locationAwarenessEnabled',
+            note: 'client or persisted location-awareness setting supplied',
+          }
+        : {
+            kind: 'unknown' as const,
+            field: 'environmentContext',
+            note: 'no fresh environment snapshot or location-awareness setting supplied for this turn',
+          };
+
+  return buildTruthKernelFromRuntimeContext({
+    runtimeSource: userData ? 'resolved' : 'fallback',
+    userRecord: userData ?? null,
+    memoryProactiveEnabled: memory?.proactiveConfig?.enabled ?? null,
+    location: {
+      enabled: hasLiveWorldSnapshot ? true : locationAwarenessEnabled,
+      freshSnapshotAvailable: hasLiveWorldSnapshot ? true : false,
+      precision: hasLiveWorldSnapshot || locationAwarenessEnabled ? 'city_level' : null,
+      storesLocationHistory: false,
+      usesApproximateContext: hasLiveWorldSnapshot || locationAwarenessEnabled ? true : null,
+      source: locationSource,
+    },
+    voice: {
+      availability: 'available',
+      enabled: true,
+      activeNow: null,
+      source: {
+        kind: 'explicit',
+        field: 'voice',
+        note: 'voice feature implemented in app; current provider/runtime state may vary',
+      },
+    },
+    camera: {
+      availability: 'available',
+      enabled: true,
+      activeNow: null,
+      source: {
+        kind: 'explicit',
+        field: 'camera',
+        note: 'camera feature implemented in app; permission/runtime state may vary',
+      },
+    },
+  });
+}
+
+export function buildCompanionRuntimeSelfModelFromUserData(
+  userData: Record<string, unknown> | null | undefined,
+  memory: IntelligentMemory | null,
+  userEnvCtx?: TruthUserEnvironmentContext,
+  featureSettings?: TruthRuntimeFeatureSettingsInput | null,
+): CompanionRuntimeSelfModel {
+  const kernel = buildTruthKernelForRuntimeContext(
+    userData,
+    memory,
+    userEnvCtx,
+    featureSettings,
+  );
+  return buildRuntimeSelfModelFromTruthKernel(kernel);
+}
+
+export function buildDefaultRuntimeSelfModel(
+  memory: IntelligentMemory | null,
+  userEnvCtx?: TruthUserEnvironmentContext,
+  featureSettings?: TruthRuntimeFeatureSettingsInput | null,
+): CompanionRuntimeSelfModel {
+  return buildRuntimeSelfModelFromTruthKernel(
+    buildTruthKernelForRuntimeContext(null, memory, userEnvCtx, featureSettings),
+  );
 }
 
 export function buildTruthCapabilitySnapshotData(

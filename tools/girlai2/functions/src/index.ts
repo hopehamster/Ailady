@@ -237,6 +237,9 @@ export const generateResponse = functions
     const userEnvCtx = (data.userContext && typeof data.userContext === 'object')
       ? data.userContext as import('./services/llmService').UserEnvironmentContext
       : undefined;
+    const featureSettings = (data.featureSettings && typeof data.featureSettings === 'object')
+      ? data.featureSettings as import('./services/llmService').UserFeatureSettings
+      : undefined;
     const chatMode = (data.chatMode === 'story' || data.chatMode === 'journal')
       ? (data.chatMode as ChatMode)
       : undefined;
@@ -375,6 +378,7 @@ export const generateResponse = functions
         chatMode,
         datesContextBlock,
         userEnvCtx,
+        featureSettings,
       );
       aiResponseMs = Date.now() - aiResponseStartedAt;
 
