@@ -10,6 +10,7 @@ Date: 2026-04-08
 - Some broader settings-aware self-awareness coverage is still partial.
 - Live tester validation is pending because there was no attached Android device during the 2026-04-08 readiness pass.
 - Canned closing-family repetition was confirmed by live user feedback on 2026-04-11 and is now patched/deployed, but still needs real-chat confirmation that the repetition rate dropped enough.
+- Repetitive empathy-lead phrasing (`yeah, i feel that` / `that really hits`) was confirmed by live user feedback on 2026-04-11 and is now patched/deployed, but still needs real-chat confirmation that the lead cadence feels natural again.
 
 ## Watch During Next Validation Pass
 
@@ -24,6 +25,7 @@ Date: 2026-04-08
 - Azure-to-ElevenLabs fallback continuity still needs live ear-check confirmation after deploy
 - settings-aware capability prompts still need live cross-turn confirmation after deploy
 - canned `we can take this...` / `we can keep this...` style tails should be watched in the next live chat pass
+- repetitive empathy leads should be watched in the next live chat pass
 
 ## Latest Evidence
 

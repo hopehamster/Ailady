@@ -1471,3 +1471,29 @@ pm run build passed in 	ools/girlai2/functions; lutter pub get passed in 	ools/
   - `generateResponse` deployed successfully from the clean repo
 - Current next check:
   - observe live conversations for whether the canned closing family meaningfully drops without losing warmth or low-pressure tone
+
+## 2026-04-11 Opener Variety Follow-Up
+
+- After the canned-tail suppression deploy, live user feedback confirmed the ending repetition improved.
+- New issue surfaced immediately:
+  - many replies started with variants of:
+    - `yeah, i feel that`
+    - `that really hits`
+- Root cause was again inside:
+  - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
+- The empathy-lead and supportive-template diversification logic still had a narrow opener family and left `I feel that` under-normalized.
+- Follow-up fix:
+  - widened `buildEmpathyLead(...)` opener pool
+  - changed repetition reduction away from repeatedly normalizing to `I get that`
+  - added diversification for:
+    - `I feel that`
+    - `That really hits`
+  - normalized repeated punctuation in supportive-template cleanup
+- Added regression test:
+  - `tools/girlai2/functions/test/conversation-policy-opener-variety.test.js`
+- Validation:
+  - `npm test` passed in `tools/girlai2/functions`
+- Deployment:
+  - `generateResponse` deployed successfully from the clean repo again
+- Current next check:
+  - observe whether lead variety now feels natural without swinging flat or detached

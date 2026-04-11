@@ -668,8 +668,10 @@ function buildEmpathyLead(seed: string): string {
   return pickDeterministicVariant(seed, [
     'I hear you.',
     "I'm with you on this.",
-    'Oh, that sounds tough.',
-    'That really hits.',
+    'That sounds heavy.',
+    'I can feel the weight of that.',
+    'Yeah, that lands.',
+    'That sounds like a lot to hold.',
   ]);
 }
 
@@ -757,7 +759,7 @@ function reduceAssistantRepetition(
     return content;
   }
   return content
-    .replace(/\b(it sounds like|i hear you|i'm here|i am here)\b/gi, 'I get that')
+    .replace(/\b(it sounds like|i hear you|i'm here|i am here)\b/gi, 'I understand')
     .replace(/\bno pressure\b/gi, 'at your pace')
     .replace(/\bif you want\b/gi, 'if that helps')
     .replace(/\s{2,}/g, ' ')
@@ -862,7 +864,15 @@ function diversifySupportiveTemplate(content: string, seed: string): string {
     },
     {
       pattern: /\bI hear you\b/gi,
-      options: ['I get you', 'I hear that', 'Yeah, I feel that'],
+      options: ['I get you', 'I hear that', 'I understand', 'That lands with me'],
+    },
+    {
+      pattern: /\bI feel that\b/gi,
+      options: ['I understand', 'I get that', 'That lands with me', 'I can feel that too'],
+    },
+    {
+      pattern: /\bThat really hits\b/gi,
+      options: ['That lands.', 'That sounds heavy.', 'I can feel the weight of that.'],
     },
   ];
   for (const rule of replacements) {
@@ -870,7 +880,10 @@ function diversifySupportiveTemplate(content: string, seed: string): string {
       pickDeterministicVariant(`${seed}:${rule.pattern.source}:${next.length}`, rule.options),
     );
   }
-  return next.replace(/\s{2,}/g, ' ').trim();
+  return next
+    .replace(/([.!?])\1+/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function limitSentenceCount(content: string, maxSentences: number): string {

@@ -37,6 +37,9 @@
 - Canned-tail suppression pass is implemented and deployed:
   - reduced scripted `we can take this...` / `we can keep this...` closing-family behavior
   - added regression coverage for overused closing-family cleanup
+- Opener-variety follow-up is implemented and deployed:
+  - reduced repetitive `yeah, i feel that` / `that really hits` lead family
+  - added regression coverage for opener-family cleanup
 
 ## What Is Still Broken Or Incomplete
 
@@ -45,6 +48,7 @@
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
 - Live tester validation is still pending because no Android device was attached during the last readiness pass.
 - Real-world confirmation is still needed on whether canned closing frequency dropped enough in normal chats.
+- Real-world confirmation is still needed on whether opener variety now feels natural in normal chats.
 - Working tree still contains older unrelated edits:
   - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
   - `tools/girlai2/functions/src/services/truthKernelService.ts`
