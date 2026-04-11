@@ -1442,3 +1442,32 @@ pm run build passed in 	ools/girlai2/functions; lutter pub get passed in 	ools/
 - Migration-gate implication:
   - this pass removed code/deploy blockers for the tester-readiness lane
   - the remaining blocker is live device evidence, not backend implementation
+
+## 2026-04-11 Canned-Tail Suppression Pass
+
+- User-reported live behavior after the tester-readiness pass:
+  - voice works
+  - mouth movement works
+  - subtle avatar motion is present
+  - remaining quality issue was linguistic repetition, especially variants of:
+    - `we can take this...`
+    - `we can keep this...`
+- Root cause was confirmed in:
+  - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
+- The overused closing-family cleanup was too narrow and often replaced one scripted tail with another cousin from the same family.
+- Fix implemented:
+  - reduced use of `we can take this...` / `we can keep this...` style closers in:
+    - warm-closing rhythm
+    - short-reply choreography
+    - overused closing-family replacement
+  - broadened suppression patterns so nearby variants of the same family are treated as one overused cluster
+  - kept the low-pressure policy intact while widening realization away from the same templated closing cadence
+- Added regression test:
+  - `tools/girlai2/functions/test/conversation-policy-voice-tone.test.js`
+- Validation:
+  - `npm run build` passed in `tools/girlai2/functions`
+  - `npm test` passed in `tools/girlai2/functions`
+- Deployment:
+  - `generateResponse` deployed successfully from the clean repo
+- Current next check:
+  - observe live conversations for whether the canned closing family meaningfully drops without losing warmth or low-pressure tone

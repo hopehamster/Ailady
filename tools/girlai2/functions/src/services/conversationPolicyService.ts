@@ -776,10 +776,10 @@ function ensureWarmClosingRhythm(
     return content;
   }
   const closers = [
-    'If it helps, we can take this one step at a time.',
     "Whenever you're ready, I'm right here with you.",
-    "There's no rush. We can let this unfold naturally.",
-    'If you want, we can stay with whatever feels easiest next.',
+    "There's no rush here.",
+    "You don't have to force the next part.",
+    'If that helps, we can pause right here for a moment.',
   ];
   const index = Math.abs(content.length) % closers.length;
   return `${content} ${closers[index]}`;
@@ -1084,30 +1084,30 @@ function applyShortReplyChoreography(
   if (signals.lightnessRequested) {
     return pickDeterministicVariant(`${userMessage}:lightness-direct`, [
       'We can stay light and easy from here.',
-      'We can keep this gentle and uncomplicated.',
+      'This can stay gentle and uncomplicated.',
       'No need to force anything here.',
     ]);
   }
   if (signals.flatAcknowledgement) {
     return pickDeterministicVariant(`${userMessage}:flat-direct`, [
-      'That is okay. We can take one small step at a time.',
+      'That is okay. We can keep it simple from here.',
       'Okay. No need to force anything here.',
-      'No problem. We can leave this simple for now.',
+      'No problem. This can stay simple for now.',
     ]);
   }
-  if (/\b(stay light and easy|gentle and uncomplicated|one small step at a time|no need to force anything here|leave this simple for now)\b/i.test(content)) {
+  if (/\b(stay light and easy|gentle and uncomplicated|keep it simple from here|no need to force anything here|stay simple for now)\b/i.test(content)) {
     return content;
   }
   const tail = signals.lightnessRequested
     ? pickDeterministicVariant(`${userMessage}:short-choreo:light:${content.length}`, [
-        'We can stay light and easy from here.',
-        'We can stay gentle and uncomplicated.',
-        'No need to force anything here.',
-      ])
+      'We can stay light and easy from here.',
+      'This can stay gentle and uncomplicated.',
+      'No need to force anything here.',
+    ])
     : pickDeterministicVariant(`${userMessage}:short-choreo:${content.length}`, [
-        'We can take this one small step at a time.',
-        'We can leave this light for now.',
-        'We can stay with short steps and keep it calm.',
+        'We can keep it simple from here.',
+        'This can stay light for now.',
+        'Short steps are enough here.',
       ]);
   return `${limitSentenceCount(content, 2)} ${tail}`.trim();
 }
@@ -1131,13 +1131,17 @@ function injectEngagementHook(content: string, plan: ConversationPolicyPlanSourc
 function reduceOverusedClosingFamily(content: string, seedKey: string): string {
   const replacement = pickDeterministicVariant(`${seedKey}:overused-closing`, [
     'There is no rush here.',
-    'We can take this one small step at a time.',
+    'You do not have to force the next part.',
     'I can stay with you gently here.',
-    'We can let this unfold at your pace.',
-    'We can stay with whatever feels easiest next.',
+    'It is okay to keep this simple for now.',
+    'If that helps, we can pause right here for a moment.',
   ]);
 
   const patterns: RegExp[] = [
+    /\bif it helps, we can take this one step at a time\.?/i,
+    /\bwe can take this one (?:small )?step at a time\.?/i,
+    /\bwe can take things one (?:small )?step at a time\.?/i,
+    /\bwe can take this slowly\.?/i,
     /\bif it helps, we can keep going gently from here\.?/i,
     /\bwhenever you're ready, we can keep this flowing naturally\.?/i,
     /\bwe can keep this easy and steady if you'd like\.?/i,
@@ -1147,6 +1151,9 @@ function reduceOverusedClosingFamily(content: string, seedKey: string): string {
     /\bwe can keep it light and easy from here\.?/i,
     /\bwe can keep it simple and go one step at a time\.?/i,
     /\bwe can keep it simple from here\.?/i,
+    /\bwe can let this unfold naturally\.?/i,
+    /\bwe can let this unfold at your pace\.?/i,
+    /\bwe can stay with whatever feels easiest next\.?/i,
     /\bokay\. we can keep this easy and low pressure\.?/i,
     /\bthat is okay\. we can keep it simple and take one small step at a time\.?/i,
   ];
@@ -1532,44 +1539,4 @@ export function mapSessionStageToConversationPolicyContext(
     };
   }
   return { relationshipDays };
-}
-
-export function buildSocialDirectives(
-  plan: ConversationPolicyPlanSource,
-  signals: ConversationPolicySignalSource,
-  context: ConversationPolicyPromptContext,
-): string {
-  return buildConversationPolicyDirectives(plan, signals, context);
-}
-
-export function buildDynamicTurnEnhancers(
-  userMessage: string,
-  signals: ConversationPolicySignalSource,
-  plan: ConversationPolicyPlanSource,
-  memory: IntelligentMemory | null,
-  hourOfDay: number,
-  sessionTurnCount: number,
-  stage: RelationshipStage,
-): string {
-  return buildConversationPolicyEnhancers(userMessage, plan, signals, {
-    memory,
-    hourOfDay,
-    sessionTurnCount,
-    stage,
-  });
-}
-
-export function enforceResponseGuards(
-  content: string,
-  plan: ConversationPolicyPlanSource,
-  signals: ConversationPolicySignalSource,
-  recentMessages: ConversationPolicyConversationMessage[] = [],
-  userMessage = '',
-  memory: IntelligentMemory | null = null,
-): string {
-  return applyConversationPolicyResponseGuards(content, plan, signals, {
-    recentMessages,
-    userMessage,
-    memory,
-  });
 }

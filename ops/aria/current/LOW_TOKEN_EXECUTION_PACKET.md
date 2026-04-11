@@ -34,6 +34,9 @@
   - stronger TTS cleanup for punctuation, dates, ordinals, and symbols
   - tighter Azure-to-ElevenLabs fallback continuity
   - location-awareness setting now feeds runtime truth when no fresh location snapshot exists
+- Canned-tail suppression pass is implemented and deployed:
+  - reduced scripted `we can take this...` / `we can keep this...` closing-family behavior
+  - added regression coverage for overused closing-family cleanup
 
 ## What Is Still Broken Or Incomplete
 
@@ -41,6 +44,7 @@
 - Settings-aware self-awareness breadth is still partial.
 - Resume/background stability and some mode paths are not fully at `live` in the migration gate.
 - Live tester validation is still pending because no Android device was attached during the last readiness pass.
+- Real-world confirmation is still needed on whether canned closing frequency dropped enough in normal chats.
 - Working tree still contains older unrelated edits:
   - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
   - `tools/girlai2/functions/src/services/truthKernelService.ts`
@@ -48,7 +52,7 @@
 
 ## Current Next Step
 
-- Run the live tester-readiness sweeps from the new readiness docs on an attached Android device and only then promote remaining migration-gate items from `partial` to `live`.
+- Validate live chats for canned-tail reduction, then continue the broader live tester-readiness sweeps on an attached Android device and only then promote remaining migration-gate items from `partial` to `live`.
 
 ## Do Not Touch
 
