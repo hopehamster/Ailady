@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
@@ -9,6 +10,7 @@ import '../../../core/services/user_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/debug_logger.dart';
 import '../../auth/screens/login_screen.dart';
+import '../../chat/widgets/chrome_visibility_controller.dart';
 import '../../../models/user_profile.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -27,16 +29,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Location-awareness opt-in state
   bool _locationOptIn = false;
 
+  // Immersive mode (chat-screen chrome auto-hide). Default ON; persisted by
+  // ChromeVisibilityController so chat screen and Settings stay in sync.
+  bool _immersiveMode = true;
+
   @override
   void initState() {
     super.initState();
     _loadUserProfile();
     _loadLocationPref();
+    _loadImmersiveModePref();
   }
 
   Future<void> _loadLocationPref() async {
     final value = await ContextService.instance.isOptedIn();
     if (mounted) setState(() => _locationOptIn = value);
+  }
+
+  Future<void> _loadImmersiveModePref() async {
+    final value = await ChromeVisibilityController.readImmersiveModePref();
+    if (mounted) setState(() => _immersiveMode = value);
+  }
+
+  Future<void> _toggleImmersiveMode(bool value) async {
+    // Optimistic update so the toggle feels instant; persistence + cross-
+    // instance sync happens via the controller's broadcast bus.
+    setState(() => _immersiveMode = value);
+    await ChromeVisibilityController.setImmersiveModePref(value);
   }
 
   Future<void> _toggleLocationOptIn(bool value) async {
@@ -270,6 +289,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Permanently deletes the user's account and all associated data.
+  ///
+  /// This calls the `deleteUserData` Cloud Function which:
+  ///   - removes the Firestore profile + all subcollections (relationship,
+  ///     memory, conversations)
+  ///   - removes Storage files under `users/{uid}/**`
+  ///   - deletes the Firebase Auth user
+  ///
+  /// Required by App Store / Play Store: every account must support deletion.
+  /// Active subscriptions are NOT cancelled by this call — that requires the
+  /// user to cancel via Apple/Google account settings (the dialog warns them).
+  Future<void> _handleDeleteAccount() async {
+    // Capture context-dependent refs before any async gap.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Account?'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This permanently deletes:',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            SizedBox(height: 8),
+            Text('• Your profile and display name'),
+            Text('• Your entire chat history'),
+            Text('• Aria\'s memory of you'),
+            Text('• All photos you\'ve shared'),
+            SizedBox(height: 12),
+            Text(
+              'This cannot be undone.',
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Active subscription? Cancel separately via Apple/Google '
+              'account settings — deleting your account does NOT cancel '
+              'billing.',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text('Delete Forever'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    // Show progress while we're calling the backend — deletion of
+    // subcollections can take a few seconds for users with long history.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Expanded(child: Text('Deleting your account...')),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final callable = FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('deleteUserData');
+      await callable.call();
+      DebugLogger.log('SettingsScreen._handleDeleteAccount', 'deleted');
+
+      if (!mounted) return;
+      // Dismiss progress dialog.
+      navigator.pop();
+
+      // The auth user is gone — back to login. Use pushAndRemoveUntil
+      // so no lingering authenticated state survives.
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } catch (e, stack) {
+      DebugLogger.logError('SettingsScreen._handleDeleteAccount', e,
+          stackTrace: stack);
+      if (!mounted) return;
+      navigator.pop(); // dismiss progress dialog
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not delete account: ${e.toString()}\n'
+            'Please retry or contact support.',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -495,6 +630,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                       const SizedBox(height: 14),
 
+                      // ── Immersive Mode ────────────────────────────────────
+                      _GlassCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _SectionHeader(
+                              icon: Icons.auto_awesome_rounded,
+                              label: 'Immersive Mode',
+                            ),
+                            const SizedBox(height: 10),
+                            Text(
+                              'Hide the chat interface a few seconds after you '
+                              'stop tapping, so Aria fills the whole screen. '
+                              'Tap anywhere to bring the controls back.',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                height: 1.5,
+                                color: Colors.white.withValues(alpha: 0.55),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  _immersiveMode
+                                      ? 'Chrome auto-hides'
+                                      : 'Chrome always visible',
+                                  style: TextStyle(
+                                    color: _immersiveMode
+                                        ? AppTheme.primaryColor
+                                        : Colors.white38,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                Switch.adaptive(
+                                  value: _immersiveMode,
+                                  onChanged: _toggleImmersiveMode,
+                                  activeTrackColor: AppTheme.primaryColor,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
                       // ── Subscription ──────────────────────────────────────
                       _GlassCard(
                         onTap: _openCustomerCenter,
@@ -553,6 +736,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             Icon(
                               Icons.chevron_right_rounded,
                               color: Colors.white.withValues(alpha: 0.35),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+
+                      // ── Delete Account ────────────────────────────────────
+                      _GlassCard(
+                        onTap: _handleDeleteAccount,
+                        borderColor:
+                            Colors.redAccent.withValues(alpha: 0.30),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color:
+                                    Colors.redAccent.withValues(alpha: 0.12),
+                              ),
+                              child: const Icon(
+                                Icons.delete_forever_rounded,
+                                color: Colors.redAccent,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Delete Account',
+                                    style: TextStyle(
+                                      color: Colors.redAccent,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Permanently remove all your data',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.redAccent,
                             ),
                           ],
                         ),

@@ -18,6 +18,9 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final TextEditingController _nameController = TextEditingController();
   bool _isLoading = false;
+  // Age-gate self-attestation. Stored to Firestore on submit alongside a
+  // server timestamp so we have audit evidence the user agreed at signup.
+  bool _ageConfirmed = false;
 
   @override
   void dispose() {
@@ -40,6 +43,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _showSnack('Name is too long (max 50 characters)');
       return;
     }
+    if (!_ageConfirmed) {
+      // The continue button is disabled in this case, but defend in depth
+      // in case it's hit via keyboard "done" action.
+      _showSnack('Please confirm you are 18 or older to continue');
+      return;
+    }
 
     setState(() => _isLoading = true);
     HapticFeedback.mediumImpact();
@@ -51,7 +60,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
       if (userId == null) throw Exception('User not authenticated');
 
-      await userService.completeOnboarding(userId, displayName);
+      await userService.completeOnboarding(
+        userId,
+        displayName,
+        ageAttested18Plus: _ageConfirmed,
+      );
 
       DebugLogger.log(
         'OnboardingScreen',
@@ -133,6 +146,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _buildSubtitle(),
                 const SizedBox(height: 52),
                 _buildNameField(),
+                const SizedBox(height: 20),
+                _buildAgeAttestation(),
                 const SizedBox(height: 24),
                 _buildContinueButton(),
                 const SizedBox(height: 20),
@@ -224,22 +239,76 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  Widget _buildAgeAttestation() {
+    // Tap-anywhere row (checkbox + label) so the hit target is generous.
+    // The checkbox is the source of truth; tapping the row toggles it.
+    return InkWell(
+      onTap: _isLoading
+          ? null
+          : () => setState(() => _ageConfirmed = !_ageConfirmed),
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Use a tighter checkbox for the tight signup layout.
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: Checkbox(
+                value: _ageConfirmed,
+                onChanged: _isLoading
+                    ? null
+                    : (v) => setState(() => _ageConfirmed = v ?? false),
+                activeColor: AppTheme.primaryColor,
+                checkColor: Colors.white,
+                side: const BorderSide(color: Colors.white54, width: 1.5),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'I confirm I am 18 or older and agree this is an adult AI '
+                'companion experience.',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildContinueButton() {
+    final canSubmit = !_isLoading && _ageConfirmed;
     return SizedBox(
       width: double.infinity,
       child: DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          gradient: const LinearGradient(
-            colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+          gradient: LinearGradient(
+            colors: canSubmit
+                ? const [AppTheme.primaryColor, AppTheme.secondaryColor]
+                : [
+                    AppTheme.primaryColor.withValues(alpha: 0.35),
+                    AppTheme.secondaryColor.withValues(alpha: 0.35),
+                  ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.primaryColor.withValues(alpha: 0.45),
-              blurRadius: 20,
-              offset: const Offset(0, 6),
-            ),
-          ],
+          boxShadow: canSubmit
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.45),
+                    blurRadius: 20,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
         ),
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -251,7 +320,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               borderRadius: BorderRadius.circular(30),
             ),
           ),
-          onPressed: _isLoading ? null : _completeOnboarding,
+          onPressed: canSubmit ? _completeOnboarding : null,
           child: _isLoading
               ? const SizedBox(
                   width: 22,

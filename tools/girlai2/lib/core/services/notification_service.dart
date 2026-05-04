@@ -1,5 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'firebase_service.dart';
 
 /// Top-level background handler — MUST be a top-level (non-class) function.
@@ -36,6 +37,17 @@ class NotificationService {
   factory NotificationService() => _instance;
 
   NotificationService._internal();
+
+  /// Global key used by the foreground notification handler to show an
+  /// in-app banner via the active ScaffoldMessenger. Set by `MyApp` and
+  /// passed to `MaterialApp`.
+  static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
+  /// Global navigator key used by the notification-tap handler to deep-link
+  /// into the requested screen. Set by `MyApp` and passed to `MaterialApp`.
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
 
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FirebaseService _firebaseService = FirebaseService();
@@ -150,8 +162,76 @@ class NotificationService {
       debugPrint(
           '📬 [FCM] Foreground message: ${message.notification?.title}');
     }
-    // TODO (post-launch): Show an in-app banner / overlay notification.
-    // For now the user is already in the app, so no action needed.
+
+    final messenger = scaffoldMessengerKey.currentState;
+    if (messenger == null) {
+      // App is mid-build or scaffold not ready — silently drop the banner.
+      // The OS push notification has already been shown; no user-visible loss.
+      return;
+    }
+
+    final title = message.notification?.title;
+    final body = message.notification?.body;
+    if (title == null && body == null) {
+      // Data-only message — nothing user-visible to show.
+      return;
+    }
+
+    final screen = message.data['screen'];
+
+    messenger.clearMaterialBanners();
+    messenger.showMaterialBanner(
+      MaterialBanner(
+        content: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (title != null && title.isNotEmpty)
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                ),
+              if (body != null && body.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    body,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        leading: const Icon(Icons.notifications, size: 22),
+        backgroundColor: Colors.pink.shade50,
+        actions: [
+          if (screen != null)
+            TextButton(
+              onPressed: () {
+                messenger.hideCurrentMaterialBanner();
+                _routeToScreen(screen);
+              },
+              child: const Text('Open'),
+            ),
+          TextButton(
+            onPressed: messenger.hideCurrentMaterialBanner,
+            child: const Text('Dismiss'),
+          ),
+        ],
+      ),
+    );
+
+    // Auto-dismiss after 6 seconds so it doesn't linger.
+    Future.delayed(const Duration(seconds: 6), () {
+      // Only hide if it's still the current banner (user hasn't acted).
+      final current = scaffoldMessengerKey.currentState;
+      current?.hideCurrentMaterialBanner();
+    });
   }
 
   void _handleNotificationTap(RemoteMessage message) {
@@ -159,7 +239,53 @@ class NotificationService {
       debugPrint(
           '📬 [FCM] Notification tapped — data: ${message.data}');
     }
-    // TODO (post-launch): Deep-link routing based on message.data['screen'].
-    // Example: if data['screen'] == 'chat' → navigate to ChatScreen.
+
+    final screen = message.data['screen'];
+    if (screen == null) {
+      // No deep-link target — user lands on the app's current state.
+      return;
+    }
+
+    _routeToScreen(screen, args: message.data);
+  }
+
+  /// Deep-link router for notification-driven navigation.
+  ///
+  /// Recognised `screen` values:
+  ///   - `chat`          → main chat screen
+  ///   - `relationship`  → My Bond with Aria screen
+  ///   - `settings`      → settings screen (e.g., billing)
+  ///
+  /// Unknown values are logged and ignored so a server-side typo cannot
+  /// crash the client.
+  void _routeToScreen(String screen, {Map<String, dynamic>? args}) {
+    final navigator = navigatorKey.currentState;
+    if (navigator == null) {
+      if (kDebugMode) {
+        debugPrint(
+            '📬 [FCM] Cannot route to $screen — navigator not ready');
+      }
+      return;
+    }
+
+    String? routeName;
+    switch (screen) {
+      case 'chat':
+        routeName = '/chat';
+        break;
+      case 'relationship':
+        routeName = '/relationship';
+        break;
+      case 'settings':
+        routeName = '/settings';
+        break;
+      default:
+        if (kDebugMode) {
+          debugPrint('📬 [FCM] Unknown screen "$screen" — ignoring');
+        }
+        return;
+    }
+
+    navigator.pushNamed(routeName, arguments: args);
   }
 }

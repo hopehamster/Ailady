@@ -1497,3 +1497,140 @@ pm run build passed in 	ools/girlai2/functions; lutter pub get passed in 	ools/
   - `generateResponse` deployed successfully from the clean repo again
 - Current next check:
   - observe whether lead variety now feels natural without swinging flat or detached
+
+## 2026-04-29 Closed-Beta Launch Readiness Pass + Immersive Mode
+
+### Scope
+
+Build-first session targeting closed-beta launch readiness gaps. User direction:
+"build the app and its features, then correct anything that needs correcting."
+Architectural audits and refactoring deferred per
+`feedback_build_first.md` memory.
+
+### Shipped (8 features)
+
+1. **Foreground notification UI** — `_handleForegroundMessage` in
+   `notification_service.dart` now renders a `MaterialBanner` via a global
+   `scaffoldMessengerKey` set on `MaterialApp`. Banner shows
+   title/body/Open/Dismiss with 6s auto-hide. Replaces TODO in code.
+
+2. **Deep-link routing on notification tap** — `_handleNotificationTap`
+   reads `message.data['screen']` and routes to `/chat`,
+   `/relationship`, or `/settings` via a global `navigatorKey`.
+   Named routes added to `main.dart` `MaterialApp.routes`. Replaces TODO.
+
+3. **Crashlytics + Analytics integration** — added
+   `firebase_crashlytics: ^4.1.3` and `firebase_analytics: ^11.3.3` to
+   `pubspec.yaml`. `main.dart` initializes Crashlytics with collection
+   disabled in debug mode, wires `FlutterError.onError` and
+   `PlatformDispatcher.onError`, and wraps everything in
+   `runZonedGuarded` so async errors flow to Crashlytics.
+   Created `core/services/analytics_service.dart` — singleton wrapper
+   around `FirebaseAnalytics.instance` exposing 25 named events
+   (session_start, message_sent, voice_started, voice_completed,
+   live_mode_started, milestone_acknowledged, paywall_viewed,
+   subscription_purchased, etc.) so event names are centralized and
+   typo-resistant.
+
+4. **Crashlytics Gradle plugin** — applied
+   `com.google.firebase.crashlytics` v3.0.2 in
+   `android/settings.gradle.kts` + `android/app/build.gradle.kts`
+   so native symbol files (NDK + R8 mappings) upload automatically
+   on release builds.
+
+5. **Android release signing config** — `build.gradle.kts` now reads
+   `key.properties` (gitignored) for keystore path + passwords.
+   Falls back to debug keystore if `key.properties` is missing so
+   `flutter run --release` still works locally. Added gitignore
+   patterns for `*.jks`, `*.keystore`, `key.properties`. Created
+   `tools/girlai2/android/RELEASE.md` documenting the one-time
+   keystore generation process.
+
+6. **iOS NSAppTransportSecurity lockdown** — `Info.plist` now sets
+   `NSAllowsArbitraryLoads = false` (was `true`) and
+   `NSAllowsLocalNetworking = true` for the Dart Observatory in
+   debug builds. Verified no `http://` URLs in `lib/`. Required
+   for App Store submission.
+
+7. **Account deletion (GDPR)** — added `deleteUserData` callable
+   to `functions/src/index.ts`. Deletes Firestore subcollections
+   recursively + parent doc, Storage files under `users/{uid}/`,
+   and the Firebase Auth user. Added "Delete Account" button to
+   `settings_screen.dart` with confirmation dialog warning about
+   subscription cancellation. Required for App Store / Play Store
+   submission.
+
+8. **Age gate at signup** — `onboarding_screen.dart` now requires
+   a 18+ self-attestation checkbox before the "Meet Aria" CTA
+   activates. `user_service.completeOnboarding` requires the
+   `ageAttested18Plus: true` parameter and writes
+   `ageAttested18Plus`, `ageAttested18PlusAt` (server timestamp),
+   and `ageAttestationVersion: 1` to the user profile for
+   audit-grade evidence. Service-level `StateError` rejects
+   any future caller that bypasses the UI.
+
+### Bonus: Immersive Mode (auto-hide chrome)
+
+Decoupled chat-screen chrome from the avatar surface so the avatar
+can feel like a real presence. Works for current Live2D AND for the
+future HeyGen WebView migration without further UI work.
+
+- `lib/features/chat/widgets/chrome_visibility_controller.dart` (NEW)
+  — `ChangeNotifier` that fades chrome to 0 opacity after 4 seconds
+  of inactivity. Stays visible when keyboard is open (typing) or
+  transcript panel is open (reading). Persists user choice in
+  `SharedPreferences` under `aria.chat.immersive_mode` (default ON).
+  Static prefs API + cross-instance broadcast bus so Settings can
+  toggle without rebuilding the chat screen.
+
+- `chat_screen.dart` — wraps app bar in a `_ChromeFader`
+  (PreferredSize), wraps chip cluster + input row in
+  `ListenableBuilder` + `AnimatedOpacity` + `IgnorePointer`. Adds
+  a translucent `GestureDetector` over the whole stack so a tap
+  anywhere on the avatar surface toggles chrome visibility.
+
+- `settings_screen.dart` — new "Immersive Mode" card with
+  `Switch.adaptive`, mirrors the Location toggle pattern.
+
+The avatar surface, room background, and reaction overlay NEVER
+fade — that's the realism layer.
+
+### Verification
+
+- `npm run build`: clean (TypeScript)
+- `npm test`: 11/11 passing
+- `dart analyze` on the full `lib/`: 5 info-level warnings, all
+  pre-existing (`_testerUids`, `_isTester` underscore lints +
+  3 `Color.red/.green/.blue` deprecations in `room_background_widget.dart`).
+  Zero errors. Zero warnings introduced by this session.
+- `flutter pub get`: succeeded after one PATH retry (PowerShell.exe
+  must be on PATH for flutter.bat to spawn its hooks).
+
+### Files touched
+
+- `tools/girlai2/.gitignore`
+- `tools/girlai2/android/RELEASE.md` (NEW)
+- `tools/girlai2/android/app/build.gradle.kts`
+- `tools/girlai2/android/settings.gradle.kts`
+- `tools/girlai2/functions/src/index.ts` (+ `deleteUserData`)
+- `tools/girlai2/ios/Runner/Info.plist`
+- `tools/girlai2/lib/main.dart`
+- `tools/girlai2/lib/core/services/analytics_service.dart` (NEW)
+- `tools/girlai2/lib/core/services/notification_service.dart`
+- `tools/girlai2/lib/core/services/user_service.dart`
+- `tools/girlai2/lib/features/chat/screens/chat_screen.dart`
+- `tools/girlai2/lib/features/chat/widgets/chrome_visibility_controller.dart` (NEW)
+- `tools/girlai2/lib/features/onboarding/screens/onboarding_screen.dart`
+- `tools/girlai2/lib/features/settings/screens/settings_screen.dart`
+- `tools/girlai2/macos/Flutter/GeneratedPluginRegistrant.swift` (auto)
+- `tools/girlai2/pubspec.yaml`
+- `tools/girlai2/pubspec.lock`
+
+### Pending after this commit
+
+- `firebase deploy --only functions:deleteUserData` from the clean repo
+- Privacy policy + Terms of Service draft (templates acceptable for beta)
+- Apple Developer + Google Play Console enrollment status check
+- Marketing assets for store listings (icon, screenshots, descriptions)
+- Live tester sweep on `70578ba3` to close the 8 partial pre-HeyGen
+  gate items

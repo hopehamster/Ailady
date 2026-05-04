@@ -88,12 +88,28 @@ class UserService {
 
   /// Complete onboarding
   /// Creates the user document if it doesn't exist, or updates it if it does
-  Future<void> completeOnboarding(String userId, String displayName) async {
+  /// Current age-attestation wording version. Increment when the wording
+  /// changes so we know which version each user agreed to. Stored on the
+  /// user profile alongside the timestamp.
+  static const int ageAttestationVersion = 1;
+
+  Future<void> completeOnboarding(
+    String userId,
+    String displayName, {
+    required bool ageAttested18Plus,
+  }) async {
+    if (!ageAttested18Plus) {
+      // Defensive: the UI should already block this, but the service refuses
+      // outright so a future caller can't bypass.
+      throw StateError(
+        'Cannot complete onboarding without 18+ age attestation.',
+      );
+    }
     try {
       debugPrint('🔐 UserService.completeOnboarding: Starting for userId: $userId');
-      
+
       final userRef = _firebaseService.firestore.collection('users').doc(userId);
-      
+
       // Use set with merge to create document if it doesn't exist
       // This handles the case where ensureUserProfile wasn't called
       await userRef.set({
@@ -101,10 +117,16 @@ class UserService {
         'displayName': displayName,
         'onboardingCompleted': true,
         'lastLoginAt': FieldValue.serverTimestamp(),
+        // Audit-grade age attestation. App Store / Play Store reviewers
+        // for AI-companion apps look for a timestamped record, not just
+        // a UI flag.
+        'ageAttested18Plus': true,
+        'ageAttested18PlusAt': FieldValue.serverTimestamp(),
+        'ageAttestationVersion': ageAttestationVersion,
       }, SetOptions(merge: true));
-      
+
       debugPrint('✅ UserService.completeOnboarding: Success for userId: $userId');
-      
+
       DebugLogger.log('UserService.completeOnboarding', 'Onboarding completed',
           data: {'userId': userId, 'displayName': displayName});
     } catch (e, stack) {

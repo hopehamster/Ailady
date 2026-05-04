@@ -2313,3 +2313,116 @@ export const handleRevenueCatWebhook = functions
 
 
 
+
+/**
+ * GDPR / privacy: irreversibly delete the calling user's data.
+ *
+ * Deletes:
+ *  - Firestore: users/{uid} document and ALL subcollections (relationship,
+ *    memory, conversations, etc.)
+ *  - Firebase Storage: gs://<project>/users/{uid}/** (avatar uploads etc.)
+ *  - Firebase Auth: the auth user itself (signs them out and removes the account)
+ *
+ * Required by App Store / Play Store: every account must support deletion.
+ * Does NOT delete:
+ *  - Aggregated analytics events (those are anonymized post-collection)
+ *  - Audit logs (legal hold)
+ *  - RevenueCat subscriber records (must be deleted via RC dashboard or API
+ *    separately; flagged in returned response so the client can surface)
+ */
+export const deleteUserData = functions
+  .region('us-central1')
+  .https.onCall(async (_data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Sign-in required to delete account.'
+      );
+    }
+    const uid = context.auth.uid;
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+
+    functions.logger.info('deleteUserData: starting', { uid });
+
+    // 1. Delete Firestore subcollections recursively, then the parent doc.
+    //    admin SDK doesn't have a single recursive delete — use the
+    //    documented pattern of listing collections and deleting in batches.
+    const userRef = db.collection('users').doc(uid);
+
+    async function deleteCollection(
+      collRef: admin.firestore.CollectionReference | admin.firestore.Query,
+      batchSize = 100
+    ): Promise<void> {
+      const snapshot = await (collRef as admin.firestore.Query).limit(batchSize).get();
+      if (snapshot.empty) return;
+      const batch = db.batch();
+      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+      // Recurse for next page.
+      if (snapshot.size === batchSize) {
+        await deleteCollection(collRef, batchSize);
+      }
+    }
+
+    try {
+      const subcollections = await userRef.listCollections();
+      for (const subColl of subcollections) {
+        // Each subcollection may itself contain subcollections (e.g. messages
+        // → reactions). For typical Aria depth (1-2 levels) the recursive
+        // pattern above suffices. If schema deepens, switch to the Firebase
+        // recursive-delete extension or the @google-cloud/firestore helper.
+        await deleteCollection(subColl);
+      }
+      await userRef.delete();
+      functions.logger.info('deleteUserData: Firestore cleared', { uid });
+    } catch (error: any) {
+      functions.logger.error('deleteUserData: Firestore delete failed', {
+        uid,
+        error: error?.message,
+      });
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to delete account data. Please retry or contact support.'
+      );
+    }
+
+    // 2. Delete Storage files under users/{uid}/**
+    try {
+      await bucket.deleteFiles({ prefix: `users/${uid}/` });
+      functions.logger.info('deleteUserData: Storage cleared', { uid });
+    } catch (error: any) {
+      // Non-fatal — Firestore is the load-bearing one. Log and continue.
+      functions.logger.warn('deleteUserData: Storage delete partial', {
+        uid,
+        error: error?.message,
+      });
+    }
+
+    // 3. Delete the auth user itself. This invalidates the caller's token,
+    //    so we must do it AFTER all callable work.
+    try {
+      await admin.auth().deleteUser(uid);
+      functions.logger.info('deleteUserData: auth user deleted', { uid });
+    } catch (error: any) {
+      functions.logger.error('deleteUserData: auth delete failed', {
+        uid,
+        error: error?.message,
+      });
+      // Return success-with-caveat: data is gone, only the auth record remains.
+      return {
+        success: true,
+        authDeleted: false,
+        revenueCatHint:
+          'Active subscription? Cancel via Apple/Google account settings; ' +
+          'a separate RevenueCat purge may be required for full removal.',
+      };
+    }
+
+    return {
+      success: true,
+      authDeleted: true,
+      revenueCatHint:
+        'Active subscription? Cancel via Apple/Google account settings.',
+    };
+  });

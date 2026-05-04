@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +11,7 @@ import 'core/theme/app_theme.dart';
 import 'core/services/firebase_service.dart';
 import 'core/services/user_service.dart';
 import 'core/services/revenuecat_service.dart';
+import 'core/services/analytics_service.dart';
 import 'core/utils/debug_logger.dart';
 import 'features/auth/auth_service.dart';
 import 'features/auth/screens/login_screen.dart';
@@ -15,10 +19,15 @@ import 'features/chat/chat_service.dart';
 import 'features/chat/screens/chat_screen.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
 import 'features/paywall/screens/paywall_screen.dart';
+import 'features/relationship/screens/relationship_screen.dart';
+import 'features/settings/screens/settings_screen.dart';
 import 'core/services/notification_service.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  // runZonedGuarded is needed so async errors not caught by Flutter's framework
+  // (e.g., uncaught futures in `microtask` queues) still flow into Crashlytics.
+  await runZonedGuarded<Future<void>>(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
   try {
     // Use debugPrint so logs are visible in Xcode console
@@ -34,6 +43,25 @@ void main() async {
 
     debugPrint('✅ DART: Firebase initialized successfully!');
     debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
+
+    // ── Crashlytics ────────────────────────────────────────────────────────
+    // Disable in debug to keep crash reports clean from dev iteration.
+    // Route Flutter framework + platform errors through Crashlytics in release.
+    await FirebaseCrashlytics.instance
+        .setCrashlyticsCollectionEnabled(!kDebugMode);
+    FlutterError.onError = (errorDetails) {
+      FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+    };
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+    debugPrint('✅ DART: Crashlytics wired (collection enabled = ${!kDebugMode})');
+
+    // ── Analytics ──────────────────────────────────────────────────────────
+    // Single emission so we can confirm pipe is open in dashboard DebugView.
+    unawaited(AnalyticsService().sessionStart());
+    debugPrint('✅ DART: Analytics session_start logged');
 
     // Keep release posture strict, but avoid debug placeholder-token noise.
     // In debug builds we skip App Check activation entirely because current
@@ -74,6 +102,10 @@ void main() async {
   }
 
   runApp(const MyApp());
+  }, (error, stack) {
+    // Catches any uncaught async errors that escape Flutter's framework.
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -125,6 +157,15 @@ class MyApp extends StatelessWidget {
           theme: AppTheme.darkTheme,
           home: const AuthWrapper(),
           debugShowCheckedModeBanner: false,
+          // Keys used by NotificationService to show in-app banners and
+          // to deep-link from notification taps.
+          scaffoldMessengerKey: NotificationService.scaffoldMessengerKey,
+          navigatorKey: NotificationService.navigatorKey,
+          routes: {
+            '/chat': (_) => const ChatScreen(),
+            '/relationship': (_) => const RelationshipScreen(),
+            '/settings': (_) => const SettingsScreen(),
+          },
           builder: (context, child) {
             // Error boundary for production
             ErrorWidget.builder = (FlutterErrorDetails details) {

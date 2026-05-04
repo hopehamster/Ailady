@@ -27,6 +27,7 @@ import '../../settings/screens/settings_screen.dart';
 import '../../relationship/screens/relationship_screen.dart';
 import '../widgets/upcoming_dates_chip.dart';
 import '../widgets/virtual_date_chip.dart';
+import '../widgets/chrome_visibility_controller.dart';
 
 enum _MessageFeedbackVote { up, down }
 
@@ -82,10 +83,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // TIER 3: Conversation mode (normal / story / journal)
   ChatMode _chatMode = ChatMode.normal;
 
+  // Auto-hide chrome controller — drives the immersive-mode fade-on-inactivity.
+  // Created in initState so we can dispose it cleanly.
+  late final ChromeVisibilityController _chrome;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _chrome = ChromeVisibilityController();
     // Prefer native request headers on Android to avoid proxy overhead
     // for public Cloud Storage voice URLs.
     _audioPlayer = AudioPlayer(useProxyForRequestHeaders: false);
@@ -99,6 +105,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _playerStateSubscription?.cancel();
     _playbackEventSubscription?.cancel();
     _audioPlayer.dispose();
+    _chrome.dispose();
     super.dispose();
   }
 
@@ -537,11 +544,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       height: 36,
     );
 
+    // Push state changes that affect chrome auto-hide into the controller
+    // AFTER this build completes, so we don't notifyListeners mid-build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _chrome.setKeyboardVisible(keyboardVisible);
+      _chrome.setTranscriptOpen(_showTranscriptPanel);
+      _chrome.setVoiceOnly(_voiceOnlyMode);
+    });
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       // Keep native Live2D surface stable while keyboard is shown.
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
+      appBar: _ChromeFader(
+        controller: _chrome,
+        preferredSize: const Size.fromHeight(compactToolbarHeight),
+        child: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
@@ -685,6 +704,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+      ),
       body: Stack(
         children: [
           // 0. Room atmosphere (gradient + particles) — restored from the
@@ -704,6 +724,26 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
           const Positioned.fill(
             child: AvatarReactionOverlay(),
+          ),
+
+          // 1.5. Tap-to-toggle chrome. Sits ABOVE the avatar/reaction layers
+          // and BELOW the chrome layers, so a tap on empty space (the avatar
+          // area itself) flips chrome visibility while taps on chrome
+          // controls (top bar, input field) reach those widgets normally.
+          Positioned.fill(
+            child: ListenableBuilder(
+              listenable: _chrome,
+              builder: (context, _) {
+                return GestureDetector(
+                  // Use opaque hit test so the gesture catches taps on the
+                  // empty avatar surface, but child widgets in higher layers
+                  // can still receive their own gestures.
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _chrome.toggle,
+                  child: const SizedBox.expand(),
+                );
+              },
+            ),
           ),
 
           Positioned(
@@ -813,57 +853,82 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         !_showTranscriptPanel &&
                         !_voiceOnlyMode) ...<Widget>[
                       const SizedBox(height: 2),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 420),
-                        child: ChatModeBanner(
-                          mode: _chatMode,
-                          onDismiss: () =>
-                              setState(() => _chatMode = ChatMode.normal),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: const Offset(0, chipClusterLift),
+                      // Chip cluster fades together with the rest of the
+                      // chrome under immersive mode.
+                      ListenableBuilder(
+                        listenable: _chrome,
+                        builder: (context, child) {
+                          final visible = _chrome.visible;
+                          return IgnorePointer(
+                            ignoring: !visible,
+                            child: AnimatedOpacity(
+                              duration: const Duration(milliseconds: 240),
+                              curve: Curves.easeOut,
+                              opacity: visible ? 1.0 : 0.0,
+                              child: child,
+                            ),
+                          );
+                        },
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Consumer<ChatService>(
-                              builder: (context, chatService, _) {
-                                if (_transientStatusText(chatService) != null) {
-                                  return const SizedBox.shrink();
-                                }
-                                return ConstrainedBox(
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 300),
-                                  child: Transform.scale(
-                                    scale: 0.88,
-                                    alignment: Alignment.topCenter,
-                                    child: AriaInnerWorldChip(
-                                      onStartConversation: (prompt) {
-                                        _messageController.text = prompt;
-                                        _sendMessage();
-                                      },
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
                             ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 200),
-                              child: Transform.translate(
-                                offset: const Offset(0, -6),
-                                child: Transform.scale(
-                                  scale: 0.84,
-                                  alignment: Alignment.topCenter,
-                                  child: const VirtualDateChip(),
-                                ),
+                              constraints: const BoxConstraints(maxWidth: 420),
+                              child: ChatModeBanner(
+                                mode: _chatMode,
+                                onDismiss: () =>
+                                    setState(() => _chatMode = ChatMode.normal),
                               ),
                             ),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 380),
-                              child: Transform.scale(
-                                scale: 0.9,
-                                alignment: Alignment.topCenter,
-                                child: const UpcomingDatesChip(),
+                            Transform.translate(
+                              offset: const Offset(0, chipClusterLift),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Consumer<ChatService>(
+                                    builder: (context, chatService, _) {
+                                      if (_transientStatusText(chatService) !=
+                                          null) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                            maxWidth: 300),
+                                        child: Transform.scale(
+                                          scale: 0.88,
+                                          alignment: Alignment.topCenter,
+                                          child: AriaInnerWorldChip(
+                                            onStartConversation: (prompt) {
+                                              _messageController.text = prompt;
+                                              _sendMessage();
+                                            },
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 200),
+                                    child: Transform.translate(
+                                      offset: const Offset(0, -6),
+                                      child: Transform.scale(
+                                        scale: 0.84,
+                                        alignment: Alignment.topCenter,
+                                        child: const VirtualDateChip(),
+                                      ),
+                                    ),
+                                  ),
+                                  ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 380),
+                                    child: Transform.scale(
+                                      scale: 0.9,
+                                      alignment: Alignment.topCenter,
+                                      child: const UpcomingDatesChip(),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -968,7 +1033,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       },
                     ),
                     const SizedBox(height: 10),
-                    Padding(
+                    // Input row fades together with chrome under immersive mode.
+                    // We don't fade the transcript panel above; readers need it.
+                    ListenableBuilder(
+                      listenable: _chrome,
+                      builder: (context, child) {
+                        final visible = _chrome.visible;
+                        return IgnorePointer(
+                          ignoring: !visible,
+                          child: AnimatedOpacity(
+                            duration: const Duration(milliseconds: 240),
+                            curve: Curves.easeOut,
+                            opacity: visible ? 1.0 : 0.0,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0),
                       child: Row(
                         children: [
@@ -1080,6 +1161,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                         ],
                       ),
                     ),
+                    ),
                   ],
                 ),
               ),
@@ -1087,6 +1169,41 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// PreferredSize wrapper that fades + ignores pointer events on its [child]
+/// based on a [ChromeVisibilityController]. Used for the chat-screen app bar
+/// so the avatar can feel like a real presence when the user goes idle.
+class _ChromeFader extends StatelessWidget implements PreferredSizeWidget {
+  const _ChromeFader({
+    required this.controller,
+    required this.preferredSize,
+    required this.child,
+  });
+
+  final ChromeVisibilityController controller;
+  @override
+  final Size preferredSize;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        final visible = controller.visible;
+        return IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOut,
+            opacity: visible ? 1.0 : 0.0,
+            child: child,
+          ),
+        );
+      },
     );
   }
 }

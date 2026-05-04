@@ -7,6 +7,8 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
     // Add the Google services Gradle plugin
     id("com.google.gms.google-services")
+    // Firebase Crashlytics
+    id("com.google.firebase.crashlytics")
 }
 
 val localProperties = Properties().apply {
@@ -15,6 +17,20 @@ val localProperties = Properties().apply {
         localPropertiesFile.inputStream().use { load(it) }
     }
 }
+
+// Release signing — keystore + passwords come from android/key.properties
+// (which is gitignored). If the file is missing we fall back to the debug
+// keystore so `flutter run --release` works locally without signing material.
+val keyProperties = Properties().apply {
+    val keyPropertiesFile = rootProject.file("key.properties")
+    if (keyPropertiesFile.exists()) {
+        keyPropertiesFile.inputStream().use { load(it) }
+    }
+}
+val hasReleaseSigning = keyProperties.containsKey("storeFile") &&
+    keyProperties.containsKey("storePassword") &&
+    keyProperties.containsKey("keyAlias") &&
+    keyProperties.containsKey("keyPassword")
 
 val defaultWindowsSdkDir = "C:/Users/Owner/Documents/CubismSdkForNative-5-r.4.1"
 val configuredSdkDir = localProperties.getProperty("live2d.sdk.dir")
@@ -63,11 +79,27 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Use real release signing when key.properties is present; otherwise
+            // fall back to debug keystore so `flutter run --release` still works
+            // for local iteration. Store-listing builds MUST have key.properties.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             // Keep JNI bridge methods intact to avoid runtime method lookup failures.
             isMinifyEnabled = false
             isShrinkResources = false

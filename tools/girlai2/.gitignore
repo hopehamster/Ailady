@@ -51,3 +51,10 @@ service-account-key.json
 firebase-service-account.json
 *firebase-adminsdk*.json
 girlai2-*.json
+
+# Release signing — NEVER commit
+android/key.properties
+android/app/upload-keystore.jks
+android/app/release.keystore
+*.jks
+*.keystore

@@ -28,7 +28,15 @@
 	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<!-- Production: HTTPS-only. App's entire network surface is HTTPS
+		     (Firebase, RevenueCat, LLM providers). Apple App Store reviewers
+		     scrutinize NSAllowsArbitraryLoads = true; we want HTTPS-only. -->
 		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<!-- Permit local-network plaintext only — required for the Flutter
+		     Dart Observatory in debug builds. Does NOT relax production
+		     external network policy. -->
+		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
 	<key>NSBonjourServices</key>
