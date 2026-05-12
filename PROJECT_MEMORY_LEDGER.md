@@ -1634,3 +1634,54 @@ fade — that's the realism layer.
 - Marketing assets for store listings (icon, screenshots, descriptions)
 - Live tester sweep on `70578ba3` to close the 8 partial pre-HeyGen
   gate items
+
+## 2026-04-29 Git Remote Setup (clean repo finally on GitHub)
+
+### Decision
+
+The clean repo (`C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`)
+had never been pushed to a remote. The only configured remote `origin`
+pointed at the OLD `Ailady` repo (which the guardrails mark
+reference-only). Today we created a dedicated GitHub repo for the
+clean codebase and pushed all history (70+ commits on the active
+branch).
+
+### Setup
+
+- **New remote**: `clean` → https://github.com/hopehamster/Ailady_clean_20260327.git (private)
+- **OLD remote preserved**: `origin` still → https://github.com/hopehamster/Ailady.git
+  for reference. NOT removed because some legacy tracking on `main`
+  still points at it.
+- **Active branch renamed**: `aria-clean-recovery-20260327` → `main`.
+  The "recovery" name was historical (this branch began as a recovery
+  effort against the old repo's chaos); the clean repo IS the active
+  codebase now, so `main` is the conventional name.
+- **GitHub default branch**: `main`
+- **Tracking**: `main` → `clean/main`
+
+### Future push workflow
+
+From this commit forward:
+
+```
+git push          # → clean/main (the new repo)
+git pull          # ← clean/main
+```
+
+The OLD `origin` is preserved for reference fetches only.
+
+### Updates needed elsewhere
+
+- `.claude/GUARDRAILS.md` still says "Active implementation repo is
+  `Ailady_clean_20260327`. Old `Ailady` repo is reference-only." Still
+  accurate; no edit needed.
+- `scripts/checkpoint-work.ps1` is repo-relative and doesn't reference
+  the remote by name — works unchanged.
+- `scripts/sync-agent-adapters.ps1` likewise repo-relative — unchanged.
+
+### Pending after this commit
+
+- (carried over from prior session memory)
+- Privacy + ToS
+- Apple Developer + Google Play enrollment status check
+- Live tester sweep on `70578ba3` to close remaining 8 partial pre-HeyGen gate items
