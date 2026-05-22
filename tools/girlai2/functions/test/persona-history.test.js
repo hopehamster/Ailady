@@ -50,7 +50,9 @@ test('writePersonaEvent stores event in persona_history/{scope}/events', async (
     after: { displayName: 'Aria', tone: 'warm' },
     reason: 'initial seed',
   });
-  const last = adminStub.__getLastWrite();
+  const last = adminStub.__findLastWriteTo
+    ? adminStub.__findLastWriteTo('persona_history')
+    : adminStub.__getLastWrite();
   assert.equal(last.collection, 'persona_history');
   assert.equal(last.scope, 'aria-v1');
   assert.equal(last.subcollection, 'events');

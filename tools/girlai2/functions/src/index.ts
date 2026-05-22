@@ -61,6 +61,7 @@ import { createLiveModeRealtimeSession } from './services/realtimeSessionService
 import { estimateInitialHistoryFetchLimit } from './services/promptCostService';
 import { writeAuditLog } from './auditLog';
 import { checkRateLimit, recordUsage } from './rateLimit';
+import { ensureAppCheck } from './appCheckGate';
 import { persistTurnTrace, newTurnId } from './turnTrace';
 import { startTrace, flushLangfuse } from './observability/langfuse';
 import { classifyIntent } from './services/intentClassifierService';
@@ -229,6 +230,9 @@ export const generateResponse = functions
       );
     }
     functions.logger.info('generateResponse called', { uid: userId });
+
+    // T1.F — App Check gate (shadow mode by default; reads live config).
+    await ensureAppCheck(context, 'generateResponse');
 
     // T1.3 — cost-cap gate. Cheap pre-flight check before any LLM token spend.
     await checkRateLimit({ uid: userId, kind: 'llmCalls' });
@@ -647,6 +651,7 @@ export const processLiveModeInput = functions
         'User must be authenticated to use live mode',
       );
     }
+    await ensureAppCheck(context, 'processLiveModeInput');
     // Voice + vision cost-cap gate.
     await checkRateLimit({ uid: userId, kind: 'voiceChars' });
 
@@ -908,6 +913,7 @@ export const analyzeImage = functions
         'User must be authenticated to use vision features'
       );
     }
+    await ensureAppCheck(context, 'analyzeImage');
     // Vision cost-cap gate. Reuses the llmCalls bucket for now; can split
     // to a dedicated visionCalls kind in Phase 1 if needed.
     await checkRateLimit({ uid: userId, kind: 'llmCalls' });
@@ -1023,6 +1029,7 @@ export const generateVoiceMessage = functions
         'User must be authenticated to use voice features'
       );
     }
+    await ensureAppCheck(context, 'generateVoiceMessage');
 
     const text = data.text as string;
     // Voice cost-cap gate — charge by char count, not call count.
@@ -1609,6 +1616,7 @@ export const analyzeGalleryPhoto = functions
         'User must be authenticated to share photos',
       );
     }
+    await ensureAppCheck(context, 'analyzeGalleryPhoto');
     await checkRateLimit({ uid: userId, kind: 'llmCalls' });
 
     const imageBase64 = data.imageBase64 as string;
@@ -2473,6 +2481,7 @@ export const deleteUserData = functions
         'Sign-in required to delete account.'
       );
     }
+    await ensureAppCheck(context, 'deleteUserData');
     const uid = context.auth.uid;
     const db = admin.firestore();
     const bucket = admin.storage().bucket();
