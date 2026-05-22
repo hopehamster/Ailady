@@ -59,6 +59,14 @@ import {
 } from './services/virtualDateService';
 import { createLiveModeRealtimeSession } from './services/realtimeSessionService';
 import { estimateInitialHistoryFetchLimit } from './services/promptCostService';
+import { writeAuditLog } from './auditLog';
+import { checkRateLimit, recordUsage } from './rateLimit';
+import { persistTurnTrace, newTurnId } from './turnTrace';
+import {
+  detectCrisis,
+  CRISIS_RESOURCES,
+  ARIA_CRISIS_REPLY,
+} from './services/crisisDetectionService';
 
 admin.initializeApp();
 
@@ -206,30 +214,21 @@ export const generateResponse = functions
     timeoutSeconds: 60,
   })
   .https.onCall(async (data, context) => {
-    // Log auth context for debugging
-    functions.logger.info('generateResponse called', {
-      hasAuth: !!context.auth,
-      authUid: context.auth?.uid || 'none',
-      dataUserId: data.userId || 'none',
-    });
-
-    // Get userId from auth context, or fallback to client-provided userId
-    // Note: Fallback is temporary for debugging - should require auth in production
-    let userId = context.auth?.uid;
-    
-    if (!userId && data.userId) {
-      functions.logger.warn('Using client-provided userId (auth context was null)', {
-        clientUserId: data.userId,
-      });
-      userId = data.userId;
-    }
-    
+    // Auth gate — Firebase Auth UID is the only identity Aria accepts.
+    // Previously this had a `data.userId` fallback for debugging; removed
+    // in Phase 0 of the rebuild — it was a spoofing vector (client could
+    // claim any uid when auth context was missing). Per audit findings.
+    const userId = context.auth?.uid;
     if (!userId) {
       throw new functions.https.HttpsError(
         'unauthenticated',
         'User must be authenticated to send messages'
       );
     }
+    functions.logger.info('generateResponse called', { uid: userId });
+
+    // T1.3 — cost-cap gate. Cheap pre-flight check before any LLM token spend.
+    await checkRateLimit({ uid: userId, kind: 'llmCalls' });
 
     const userMessage = data.message as string;
     const temporalContext = normalizeTemporalContext(data.clientTime);
@@ -243,6 +242,53 @@ export const generateResponse = functions
     const chatMode = (data.chatMode === 'story' || data.chatMode === 'journal')
       ? (data.chatMode as ChatMode)
       : undefined;
+
+    // T1.E — crisis detection HARD GATE. Runs before any LLM work so the model
+    // never sees flagged content + we don't burn tokens on a turn we're going
+    // to redirect anyway. Audit log entry written on every fire for legal trail.
+    const crisis = detectCrisis(typeof userMessage === 'string' ? userMessage : '');
+    if (crisis.severity !== 'none' && crisis.category) {
+      const resources = CRISIS_RESOURCES[crisis.category] ?? CRISIS_RESOURCES.severe_distress;
+      await writeAuditLog({
+        uid: userId,
+        action: 'crisis.detected',
+        outcome: 'success',
+        detail: {
+          category: crisis.category,
+          severity: crisis.severity,
+          patternsMatched: crisis.matched,
+        },
+      });
+      functions.logger.info('crisis detected — returning resource card', {
+        uid: userId,
+        category: crisis.category,
+        severity: crisis.severity,
+      });
+      // T1.D — record the crisis turn for the indefinitely-retained safety
+      // trace stream. Skips LLM path entirely so model never sees the input.
+      void persistTurnTrace({
+        uid: userId,
+        turnId: newTurnId(),
+        modelUsed: 'crisis-redirect',
+        route: 'crisis',
+        flags: { crisis: true },
+        retain: true,
+      });
+      return {
+        success: true,
+        crisis: {
+          severity: crisis.severity,
+          category: crisis.category,
+          resources,
+          ariaReply: ARIA_CRISIS_REPLY,
+        },
+        // Conventional response shape kept for client compatibility — the
+        // client switches on the `crisis` field if present and renders the
+        // resource card instead of normal chat UI.
+        response: ARIA_CRISIS_REPLY,
+        emotion: 'concerned',
+      };
+    }
 
     // Validate input
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
@@ -382,6 +428,37 @@ export const generateResponse = functions
       );
       aiResponseMs = Date.now() - aiResponseStartedAt;
 
+      // T1.3 — record actual usage post-success. Best-effort; never blocks reply.
+      const promptCharsApprox = trimmedMessage.length;
+      const responseCharsApprox = (aiResponse.content ?? '').length;
+      const tokensApprox = Math.ceil((promptCharsApprox + responseCharsApprox) / 4);
+      void recordUsage({ uid: userId, kind: 'llmCalls', amount: 1 });
+      void recordUsage({ uid: userId, kind: 'llmTokens', amount: tokensApprox });
+
+      // T1.D — persist per-turn trace. Fire-and-forget; never blocks reply.
+      const stageTimings = aiResponse.qualityMeta?.stageTimingsMs ?? {};
+      const injectionSeverity = (stageTimings as any).injectionSeverity ?? 0;
+      void persistTurnTrace({
+        uid: userId,
+        turnId: newTurnId(),
+        modelUsed: aiResponse.modelUsed,
+        route: aiResponse.qualityMeta?.route ?? null,
+        escalated: aiResponse.qualityMeta?.escalated ?? null,
+        stageTimingsMs: stageTimings as Record<string, number>,
+        // stageContracts not on the public QualityMeta type — pull off any
+        // version that does expose it (debug/internal-tester path) without
+        // forcing a wider refactor. Captured here so traces gain stage detail
+        // once the type widens in Phase 1.
+        stageContracts: (aiResponse.qualityMeta as any)?.stageContracts ?? [],
+        injectionFindings: (stageTimings as any).injectionFindings ?? 0,
+        injectionSeverity,
+        outputScanFindings: (stageTimings as any).outputScanFindings ?? 0,
+        outputScanSeverity: (stageTimings as any).outputScanSeverity ?? 0,
+        flags: {
+          highInjection: injectionSeverity >= 1,
+        },
+      });
+
       const persistenceStartedAt = Date.now();
       const [userMessageRef] = await Promise.all([
         userMessageRefPromise,
@@ -511,21 +588,16 @@ export const onUserCreate = functions
 export const processLiveModeInput = functions
   .region('us-central1')
   .https.onCall(async (data, context) => {
-    let userId = context.auth?.uid;
-
-    if (!userId && data.userId) {
-      functions.logger.warn('Using client-provided userId for live mode', {
-        clientUserId: data.userId,
-      });
-      userId = data.userId;
-    }
-
+    // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
+    const userId = context.auth?.uid;
     if (!userId) {
       throw new functions.https.HttpsError(
         'unauthenticated',
         'User must be authenticated to use live mode',
       );
     }
+    // Voice + vision cost-cap gate.
+    await checkRateLimit({ uid: userId, kind: 'voiceChars' });
 
     const sessionId = typeof data.sessionId === 'string' ? data.sessionId.trim() : '';
     const imageBase64 =
@@ -777,22 +849,17 @@ export const createRealtimeSession = functions
 export const analyzeImage = functions
   .region('us-central1')
   .https.onCall(async (data, context) => {
-    // Verify authentication
-    let userId = context.auth?.uid;
-    
-    if (!userId && data.userId) {
-      functions.logger.warn('Using client-provided userId for vision', {
-        clientUserId: data.userId,
-      });
-      userId = data.userId;
-    }
-    
+    // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
+    const userId = context.auth?.uid;
     if (!userId) {
       throw new functions.https.HttpsError(
         'unauthenticated',
         'User must be authenticated to use vision features'
       );
     }
+    // Vision cost-cap gate. Reuses the llmCalls bucket for now; can split
+    // to a dedicated visionCalls kind in Phase 1 if needed.
+    await checkRateLimit({ uid: userId, kind: 'llmCalls' });
 
     const imageBase64 = data.imageBase64 as string;
     const prompt = data.prompt as string | undefined;
@@ -897,16 +964,8 @@ export const generateVoiceMessage = functions
   })
   .https.onCall(async (data, context) => {
     const callableStartedAt = Date.now();
-    // Verify authentication
-    let userId = context.auth?.uid;
-    
-    if (!userId && data.userId) {
-      functions.logger.warn('Using client-provided userId for voice', {
-        clientUserId: data.userId,
-      });
-      userId = data.userId;
-    }
-    
+    // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
+    const userId = context.auth?.uid;
     if (!userId) {
       throw new functions.https.HttpsError(
         'unauthenticated',
@@ -915,6 +974,12 @@ export const generateVoiceMessage = functions
     }
 
     const text = data.text as string;
+    // Voice cost-cap gate — charge by char count, not call count.
+    await checkRateLimit({
+      uid: userId,
+      kind: 'voiceChars',
+      cost: typeof text === 'string' ? text.length : 1,
+    });
     const voiceId = data.voiceId as string | undefined;
 
     // Validate input
@@ -1485,14 +1550,15 @@ export const runStrictLaunchGate = functions
 export const analyzeGalleryPhoto = functions
   .region('us-central1')
   .https.onCall(async (data, context) => {
-    let userId = context.auth?.uid;
-    if (!userId && data.userId) userId = data.userId;
+    // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
+    const userId = context.auth?.uid;
     if (!userId) {
       throw new functions.https.HttpsError(
         'unauthenticated',
         'User must be authenticated to share photos',
       );
     }
+    await checkRateLimit({ uid: userId, kind: 'llmCalls' });
 
     const imageBase64 = data.imageBase64 as string;
     const caption = data.caption as string | undefined;
@@ -2035,11 +2101,8 @@ export const deleteUserMemory = functions
 export const startVirtualDate = functions
   .region('us-central1')
   .https.onCall(async (data, context) => {
-    let userId = context.auth?.uid;
-    if (!userId && data.userId) {
-      functions.logger.warn('startVirtualDate: using client-provided userId fallback', { clientUserId: data.userId });
-      userId = data.userId;
-    }
+    // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
+    const userId = context.auth?.uid;
     if (!userId) {
       throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
     }
@@ -2238,9 +2301,29 @@ export const handleRevenueCatWebhook = functions
     } catch {
       webhookSecret = process.env.REVENUECAT_WEBHOOK_SECRET ?? '';
     }
+    if (!webhookSecret) {
+      webhookSecret = process.env.REVENUECAT_WEBHOOK_SECRET ?? '';
+    }
 
-    if (webhookSecret && req.headers['authorization'] !== webhookSecret) {
+    if (!webhookSecret) {
+      functions.logger.error('handleRevenueCatWebhook: REVENUECAT_WEBHOOK_SECRET unset — refusing request');
+      await writeAuditLog({
+        uid: 'system',
+        action: 'security.webhook_misconfigured',
+        outcome: 'failure',
+        ip: req.ip,
+      });
+      res.status(503).send('Service misconfigured');
+      return;
+    }
+    if (req.headers['authorization'] !== webhookSecret) {
       functions.logger.warn('handleRevenueCatWebhook: unauthorized request');
+      await writeAuditLog({
+        uid: 'unknown',
+        action: 'security.unauthorized_webhook',
+        outcome: 'failure',
+        ip: req.ip,
+      });
       res.status(401).send('Unauthorized');
       return;
     }
@@ -2410,6 +2493,12 @@ export const deleteUserData = functions
         error: error?.message,
       });
       // Return success-with-caveat: data is gone, only the auth record remains.
+      await writeAuditLog({
+        uid,
+        action: 'account.delete_partial',
+        outcome: 'partial',
+        detail: { authDeleted: false },
+      });
       return {
         success: true,
         authDeleted: false,
@@ -2419,10 +2508,199 @@ export const deleteUserData = functions
       };
     }
 
+    await writeAuditLog({
+      uid,
+      action: 'account.delete',
+      outcome: 'success',
+    });
     return {
       success: true,
       authDeleted: true,
       revenueCatHint:
         'Active subscription? Cancel via Apple/Google account settings.',
     };
+  });
+
+/**
+ * T1.J — exportUserData callable. Produces a JSON archive of the user's
+ * Aria data (conversations, memory, persona settings, subscription metadata)
+ * and stores it at users/{uid}/exports/{ts}.json in Cloud Storage. Returns a
+ * 24-hour signed URL.
+ *
+ * Counters the Replika "you don't own anything" complaint that Round 9 found
+ * driving user churn. Also GDPR Article 20 (right to data portability).
+ */
+export const exportUserData = functions
+  .region('us-central1')
+  .runWith({ memory: '512MB', timeoutSeconds: 120 })
+  .https.onCall(async (_data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Sign-in required to export your data.'
+      );
+    }
+    const uid = context.auth.uid;
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+
+    functions.logger.info('exportUserData: starting', { uid });
+
+    // Helper: dump a Firestore (sub)collection to a plain array of {id, data}.
+    async function dumpCollection(
+      collRef: admin.firestore.CollectionReference | admin.firestore.Query
+    ): Promise<Array<{ id: string; data: unknown }>> {
+      const snap = await collRef.get();
+      return snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+    }
+
+    const archive: Record<string, unknown> = {
+      schemaVersion: 1,
+      exportedAt: ts,
+      uid,
+    };
+
+    try {
+      const userRef = db.collection('users').doc(uid);
+      const userDoc = await userRef.get();
+      archive.user = userDoc.exists ? userDoc.data() : null;
+
+      // Subcollections under users/{uid}.
+      const subcollections = await userRef.listCollections();
+      const subData: Record<string, unknown> = {};
+      for (const sub of subcollections) {
+        subData[sub.id] = await dumpCollection(sub);
+      }
+      archive.subcollections = subData;
+
+      // Conversations may live at a top-level `conversations` collection
+      // scoped by userId; include those filtered.
+      const convSnap = await db
+        .collection('conversations')
+        .where('userId', '==', uid)
+        .get();
+      archive.conversations = convSnap.docs.map((d) => ({ id: d.id, data: d.data() }));
+    } catch (error: any) {
+      functions.logger.error('exportUserData: Firestore dump failed', {
+        uid,
+        error: error?.message,
+      });
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to build export. Please retry or contact support.'
+      );
+    }
+
+    // Write the archive to Storage at users/{uid}/exports/{ts}.json.
+    const objectPath = `users/${uid}/exports/aria-export-${ts}.json`;
+    const file = bucket.file(objectPath);
+    try {
+      await file.save(JSON.stringify(archive, null, 2), {
+        contentType: 'application/json',
+        metadata: { metadata: { uid, exportTs: ts, schemaVersion: '1' } },
+      });
+    } catch (error: any) {
+      functions.logger.error('exportUserData: Storage write failed', {
+        uid,
+        error: error?.message,
+      });
+      throw new functions.https.HttpsError(
+        'internal',
+        'Failed to store export. Please retry.'
+      );
+    }
+
+    // 24-hour signed URL.
+    let downloadUrl: string | null = null;
+    try {
+      const [url] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 24 * 60 * 60 * 1000,
+      });
+      downloadUrl = url;
+    } catch (error: any) {
+      functions.logger.warn('exportUserData: signed URL failed; returning path only', {
+        uid,
+        error: error?.message,
+      });
+    }
+
+    await writeAuditLog({
+      uid,
+      action: 'account.export',
+      outcome: 'success',
+      detail: { objectPath },
+    });
+
+    return {
+      success: true,
+      objectPath,
+      downloadUrl,
+      expiresInSeconds: 24 * 60 * 60,
+      schemaVersion: 1,
+    };
+  });
+
+/**
+ * T1.K — harm_report callable. User-submitted report of unwanted Aria
+ * behavior (creepy reply, content that crossed a line, hallucination that
+ * caused distress). Writes to audit_log + a dedicated harm_reports collection
+ * so the founder can triage. No automated escalation at closed-beta scale.
+ *
+ * Required by Washington state consumer-AI law + sound legal hygiene post-Garcia.
+ */
+export const harmReport = functions
+  .region('us-central1')
+  .https.onCall(async (data, context) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'Sign-in required to submit a report.'
+      );
+    }
+    const uid = context.auth.uid;
+
+    const category = typeof data?.category === 'string' ? data.category : 'other';
+    const description =
+      typeof data?.description === 'string' ? data.description.slice(0, 4000) : '';
+    const conversationId =
+      typeof data?.conversationId === 'string' ? data.conversationId : null;
+    const messageId =
+      typeof data?.messageId === 'string' ? data.messageId : null;
+
+    if (!description.trim()) {
+      throw new functions.https.HttpsError(
+        'invalid-argument',
+        'Please include a description of what happened.'
+      );
+    }
+
+    const reportRef = await admin
+      .firestore()
+      .collection('harm_reports')
+      .add({
+        uid,
+        category,
+        description,
+        conversationId,
+        messageId,
+        status: 'open',
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+    await writeAuditLog({
+      uid,
+      action: 'harm.reported',
+      outcome: 'success',
+      detail: { reportId: reportRef.id, category },
+    });
+
+    functions.logger.warn('harm_report submitted', {
+      uid,
+      reportId: reportRef.id,
+      category,
+    });
+
+    return { success: true, reportId: reportRef.id };
   });

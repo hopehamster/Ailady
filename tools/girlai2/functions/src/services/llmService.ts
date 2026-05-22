@@ -71,6 +71,7 @@ import {
 import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService';
 import { runPostResponseOrchestration } from './postResponseOrchestrationService';
 import { finalizeAIResponse } from './responseFinalizationService';
+import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -2940,6 +2941,24 @@ export async function generateAIResponse(
     };
   }
   
+
+  // T1.6 — prompt-injection scan (advisory-only at beta scale).
+  // Findings get logged inside scanUserInput() and propagated via stageTimingsMs
+  // so traces surface them. The delimiter-wrap (cleanText) is intentionally NOT
+  // applied here because user content reaches the LLM through 9+ scattered
+  // construction sites in this file — that wrap belongs at the LiteLLM
+  // chokepoint introduced in Phase 1. Until then, scan is detection-only.
+  const injectionScan = scanUserInput(userMessage);
+  const injectionSeverity = maxSeverity(injectionScan.findings);
+  stageTimingsMs.injectionFindings = injectionScan.findings.length;
+  if (injectionSeverity === 'high') {
+    stageTimingsMs.injectionSeverity = 1;
+  } else if (injectionSeverity === 'medium') {
+    stageTimingsMs.injectionSeverity = 0.5;
+  } else if (injectionSeverity === 'low') {
+    stageTimingsMs.injectionSeverity = 0.1;
+  }
+
   try {
     const runtimeBootstrapStartedAt = Date.now();
     const runtimeBootstrap = userId
@@ -3665,6 +3684,23 @@ export async function generateAIResponse(
 
     const analysis = postResponseResult.analysis;
     const shadowBenchmark: ShadowBenchmarkOutcome = postResponseResult.shadowBenchmark;
+    // T1.6 output-side scan — detects system-prompt leaks + raw-key echoes
+    // before the response leaves Aria. Advisory-only at beta scale; findings
+    // surface via stageTimingsMs and Crashlytics/Langfuse.
+    const outputScan = scanModelOutput(aiContent);
+    if (outputScan.findings.length > 0) {
+      stageTimingsMs.outputScanFindings = outputScan.findings.length;
+      const outSev = maxSeverity(outputScan.findings);
+      stageTimingsMs.outputScanSeverity =
+        outSev === 'high' ? 1 : outSev === 'medium' ? 0.5 : 0.1;
+      functions.logger.warn('llmService: output scan flagged response', {
+        userId,
+        patterns: outputScan.findings.map((f) => f.pattern),
+        severity: outSev,
+      });
+    }
+
+
 
     return finalizeAIResponse({
       userId,

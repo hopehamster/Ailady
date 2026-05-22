@@ -92,17 +92,27 @@ class UserService {
   /// changes so we know which version each user agreed to. Stored on the
   /// user profile alongside the timestamp.
   static const int ageAttestationVersion = 1;
+  /// T1.M — disclaimer wording version. Increment when the disclaimer text
+  /// or the crisis-resource set changes.
+  static const int disclaimerVersion = 1;
 
   Future<void> completeOnboarding(
     String userId,
     String displayName, {
     required bool ageAttested18Plus,
+    bool disclaimerAcknowledged = false,
   }) async {
     if (!ageAttested18Plus) {
       // Defensive: the UI should already block this, but the service refuses
       // outright so a future caller can't bypass.
       throw StateError(
         'Cannot complete onboarding without 18+ age attestation.',
+      );
+    }
+    if (!disclaimerAcknowledged) {
+      throw StateError(
+        'Cannot complete onboarding without AI-companion disclaimer '
+        'acknowledgement.',
       );
     }
     try {
@@ -123,6 +133,10 @@ class UserService {
         'ageAttested18Plus': true,
         'ageAttested18PlusAt': FieldValue.serverTimestamp(),
         'ageAttestationVersion': ageAttestationVersion,
+        // T1.M — disclaimer acknowledgement (versioned, timestamped).
+        'disclaimerAcknowledged': true,
+        'disclaimerAcknowledgedAt': FieldValue.serverTimestamp(),
+        'disclaimerVersion': disclaimerVersion,
       }, SetOptions(merge: true));
 
       debugPrint('✅ UserService.completeOnboarding: Success for userId: $userId');

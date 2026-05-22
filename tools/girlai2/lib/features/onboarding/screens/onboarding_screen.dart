@@ -21,6 +21,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   // Age-gate self-attestation. Stored to Firestore on submit alongside a
   // server timestamp so we have audit evidence the user agreed at signup.
   bool _ageConfirmed = false;
+  // T1.M — disclaimer acknowledgement. Persisted at signup so we have audit
+  // evidence the user saw the AI-disclaimer + crisis-resource card before
+  // any conversation began. Required by Washington state consumer-AI law +
+  // sound legal posture post-Garcia v. Character.AI.
+  bool _disclaimerAcknowledged = false;
 
   @override
   void dispose() {
@@ -49,6 +54,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _showSnack('Please confirm you are 18 or older to continue');
       return;
     }
+    if (!_disclaimerAcknowledged) {
+      _showSnack('Please acknowledge the AI-companion disclaimer to continue');
+      return;
+    }
 
     setState(() => _isLoading = true);
     HapticFeedback.mediumImpact();
@@ -64,6 +73,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         userId,
         displayName,
         ageAttested18Plus: _ageConfirmed,
+        disclaimerAcknowledged: _disclaimerAcknowledged,
       );
 
       DebugLogger.log(
@@ -148,6 +158,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 _buildNameField(),
                 const SizedBox(height: 20),
                 _buildAgeAttestation(),
+                const SizedBox(height: 20),
+                _buildDisclaimerCard(),
                 const SizedBox(height: 24),
                 _buildContinueButton(),
                 const SizedBox(height: 20),
@@ -285,8 +297,87 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
+  Widget _buildDisclaimerCard() {
+    // T1.M — disclaimer + crisis-resource card. User must check the box
+    // before continuing. The acknowledgement is persisted server-side for
+    // legal audit trail.
+    return InkWell(
+      onTap: _isLoading
+          ? null
+          : () => setState(
+              () => _disclaimerAcknowledged = !_disclaimerAcknowledged),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withValues(alpha: 0.04),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Before we begin',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Aria is an AI companion. Her responses are AI-generated and are '
+              'not professional medical, legal, mental-health, or financial '
+              'advice. If you are in crisis, please call or text 988 '
+              '(Suicide & Crisis Lifeline) or text HOME to 741741 (Crisis '
+              'Text Line). For emergencies, call 911.',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 12,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: Checkbox(
+                    value: _disclaimerAcknowledged,
+                    onChanged: _isLoading
+                        ? null
+                        : (v) => setState(
+                            () => _disclaimerAcknowledged = v ?? false),
+                    activeColor: AppTheme.primaryColor,
+                    checkColor: Colors.white,
+                    side: const BorderSide(color: Colors.white54, width: 1.5),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'I understand and want to continue.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.82),
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildContinueButton() {
-    final canSubmit = !_isLoading && _ageConfirmed;
+    final canSubmit = !_isLoading && _ageConfirmed && _disclaimerAcknowledged;
     return SizedBox(
       width: double.infinity,
       child: DecoratedBox(

@@ -37,6 +37,11 @@ class ChatService extends ChangeNotifier {
   // Callback for avatar system to listen to emotion changes
   EmotionTriggerCallback? onEmotionTrigger;
 
+  // T1.E — callback fires when backend detects a crisis input + returns a
+  // resource card payload. Chat screen swaps normal message rendering for
+  // the crisis-resource-card surface.
+  void Function(Map<String, dynamic> crisisPayload)? onCrisis;
+
   ChatService(this._firebaseService, this._userId) {
     // Defer subscription to avoid accessing Firebase during construction
     if (_userId != null) {
@@ -188,6 +193,20 @@ class ChatService extends ChangeNotifier {
           userContext: userContext,
           locationAwarenessEnabled: locationAwarenessEnabled,
         );
+
+        // T1.E — crisis short-circuit. If the backend detected a crisis
+        // pattern in the user input, it returns a `crisis` payload INSTEAD
+        // of a normal LLM reply. Surface to UI + skip emotion handling.
+        final crisisPayload = response['crisis'];
+        if (crisisPayload is Map) {
+          if (onCrisis != null) {
+            onCrisis!(Map<String, dynamic>.from(crisisPayload));
+          }
+          _messages.removeWhere((msg) => msg.id == optimisticMessage.id);
+          _isTyping = false;
+          notifyListeners();
+          return;
+        }
 
         // Update emotion state from AI response for avatar animations
         if (response['emotionTrigger'] != null) {

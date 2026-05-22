@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:just_audio/just_audio.dart';
 import '../chat_service.dart';
+import '../../safety/crisis_resource_card.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/voice_input_button.dart';
 import '../widgets/milestone_celebration.dart';
@@ -97,6 +98,36 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _audioPlayer = AudioPlayer(useProxyForRequestHeaders: false);
     _setupAudioListeners();
     unawaited(ContextService.instance.primeContext());
+
+    // T1.E — wire the crisis callback after the first frame, when the
+    // ChatService is reachable via Provider. Show the resource card as a
+    // modal bottom sheet so it interrupts normal chat flow.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<ChatService>().onCrisis = _handleCrisisPayload;
+    });
+  }
+
+  void _handleCrisisPayload(Map<String, dynamic> payload) {
+    if (!mounted) return;
+    HapticFeedback.heavyImpact();
+    final crisis = CrisisPayload.fromMap(payload);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      isDismissible: crisis.severity != 'imminent',
+      enableDrag: crisis.severity != 'imminent',
+      builder: (sheetCtx) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 12,
+        ),
+        child: CrisisResourceCard(
+          payload: crisis,
+          onDismiss: () => Navigator.of(sheetCtx).maybePop(),
+        ),
+      ),
+    );
   }
 
   @override
