@@ -6,6 +6,7 @@ import {
   type IntelligentMemory,
 } from './memoryService';
 import type { CompanionRuntimeSelfModel } from './truthKernelService';
+import type { TraceHandle } from '../observability/langfuse';
 
 export interface ProviderCandidateScores {
   engagement: number;
@@ -44,6 +45,7 @@ interface ExecuteOpenAICompletionArgs {
     memory: IntelligentMemory | null,
     useModelScoring: boolean,
   ) => Promise<ProviderRankedCandidate>;
+  trace?: TraceHandle;
 }
 
 interface ExecuteAnthropicCompletionArgs {
@@ -66,6 +68,7 @@ interface ExecuteAnthropicCompletionArgs {
     memory: IntelligentMemory | null,
     useModelScoring: boolean,
   ) => Promise<ProviderRankedCandidate>;
+  trace?: TraceHandle;
 }
 
 interface ExecuteGeminiFallbackArgs {
@@ -76,6 +79,7 @@ interface ExecuteGeminiFallbackArgs {
   runtimeSelfModel: CompanionRuntimeSelfModel;
   partnerName: string;
   logInfo?: (message: string, metadata: Record<string, unknown>) => void;
+  trace?: TraceHandle;
 }
 
 export async function executeOpenAICompletion({
@@ -90,21 +94,50 @@ export async function executeOpenAICompletion({
   memory,
   useModelScoring,
   rerankCandidates,
+  trace,
 }: ExecuteOpenAICompletionArgs): Promise<ProviderRankedCandidate> {
-  const completion = await openai.chat.completions.create({
-    model: modelName,
-    messages,
-    temperature: 0.72,
-    max_tokens: generationTokens,
-    presence_penalty: 0.2,
-    frequency_penalty: 0.15,
-    n: completionCandidates,
-  }, {
-    timeout: timeoutMs,
-  });
+  const start = Date.now();
+  let completion: OpenAI.Chat.Completions.ChatCompletion;
+  try {
+    completion = await openai.chat.completions.create({
+      model: modelName,
+      messages,
+      temperature: 0.72,
+      max_tokens: generationTokens,
+      presence_penalty: 0.2,
+      frequency_penalty: 0.15,
+      n: completionCandidates,
+    }, {
+      timeout: timeoutMs,
+    });
+  } catch (err: any) {
+    trace?.recordLLMSpan({
+      name: 'openai.chat',
+      model: modelName,
+      input: messages,
+      latencyMs: Date.now() - start,
+      error: err?.message ?? String(err),
+      metadata: { provider: 'openai', timeoutMs },
+    });
+    throw err;
+  }
   const candidates = completion.choices
     .map((choice) => choice.message?.content?.trim() || '')
     .filter((value) => value.length > 0);
+  trace?.recordLLMSpan({
+    name: 'openai.chat',
+    model: modelName,
+    input: messages,
+    output: candidates,
+    tokensIn: completion.usage?.prompt_tokens,
+    tokensOut: completion.usage?.completion_tokens,
+    latencyMs: Date.now() - start,
+    metadata: {
+      provider: 'openai',
+      candidates: completionCandidates,
+      timeoutMs,
+    },
+  });
   return rerankCandidates(
     userMessage,
     candidates,
@@ -125,17 +158,46 @@ export async function executeAnthropicCompletion({
   memory,
   useModelScoring,
   rerankCandidates,
+  trace,
 }: ExecuteAnthropicCompletionArgs): Promise<ProviderRankedCandidate> {
-  const claudeResponse = await anthropic.messages.create({
-    model: modelName,
-    max_tokens: generationTokens,
-    system: effectiveSystemPrompt,
-    messages: anthropicMessages,
-  });
+  const start = Date.now();
+  let claudeResponse: Awaited<ReturnType<typeof anthropic.messages.create>>;
+  try {
+    claudeResponse = await anthropic.messages.create({
+      model: modelName,
+      max_tokens: generationTokens,
+      system: effectiveSystemPrompt,
+      messages: anthropicMessages,
+    });
+  } catch (err: any) {
+    trace?.recordLLMSpan({
+      name: 'anthropic.message',
+      model: modelName,
+      input: anthropicMessages,
+      latencyMs: Date.now() - start,
+      error: err?.message ?? String(err),
+      metadata: { provider: 'anthropic' },
+    });
+    throw err;
+  }
+  // Type narrow — non-streaming response.
+  if (!('content' in claudeResponse)) {
+    throw new Error('anthropic: unexpected streaming response');
+  }
   const textBlock = claudeResponse.content.find((block) => block.type === 'text');
   const claudeText = textBlock?.type === 'text'
     ? textBlock.text
     : "I'm here with you. What's on your mind?";
+  trace?.recordLLMSpan({
+    name: 'anthropic.message',
+    model: modelName,
+    input: anthropicMessages,
+    output: claudeText,
+    tokensIn: (claudeResponse as any).usage?.input_tokens,
+    tokensOut: (claudeResponse as any).usage?.output_tokens,
+    latencyMs: Date.now() - start,
+    metadata: { provider: 'anthropic' },
+  });
   return rerankCandidates(
     userMessage,
     [claudeText],
@@ -153,6 +215,7 @@ export async function executeGeminiFallback({
   runtimeSelfModel,
   partnerName,
   logInfo,
+  trace,
 }: ExecuteGeminiFallbackArgs): Promise<string> {
   const fallbackMemory = normalizeMemoryForProfileDisplayName(
     memory,
@@ -182,16 +245,30 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
     systemPromptLength: geminiSystemPrompt.length,
   });
 
-  const result = await googleGenAI.models.generateContent({
-    model: geminiModel,
-    config: {
-      systemInstruction: geminiSystemPrompt,
-      temperature: 0.78,
-      maxOutputTokens: 1024,
-      thinkingConfig: { thinkingBudget: 0 },
-    },
-    contents: [{ role: 'user', parts: [{ text: userMessage }] }],
-  });
+  const start = Date.now();
+  let result: Awaited<ReturnType<typeof googleGenAI.models.generateContent>>;
+  try {
+    result = await googleGenAI.models.generateContent({
+      model: geminiModel,
+      config: {
+        systemInstruction: geminiSystemPrompt,
+        temperature: 0.78,
+        maxOutputTokens: 1024,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+    });
+  } catch (err: any) {
+    trace?.recordLLMSpan({
+      name: 'gemini.fallback',
+      model: geminiModel,
+      input: userMessage,
+      latencyMs: Date.now() - start,
+      error: err?.message ?? String(err),
+      metadata: { provider: 'gemini', fallback: true },
+    });
+    throw err;
+  }
   const text = result.text;
   const candidate = (result as any).candidates?.[0];
   logInfo?.('Gemini response details', {
@@ -199,6 +276,20 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
     textPreview: text?.substring(0, 200) ?? 'null',
     finishReason: candidate?.finishReason ?? 'unknown',
     safetyRatings: candidate?.safetyRatings ?? [],
+  });
+  trace?.recordLLMSpan({
+    name: 'gemini.fallback',
+    model: geminiModel,
+    input: userMessage,
+    output: text ?? '',
+    tokensIn: (result as any).usageMetadata?.promptTokenCount,
+    tokensOut: (result as any).usageMetadata?.candidatesTokenCount,
+    latencyMs: Date.now() - start,
+    metadata: {
+      provider: 'gemini',
+      fallback: true,
+      finishReason: candidate?.finishReason ?? 'unknown',
+    },
   });
   if (!text) {
     throw new Error('Empty Gemini response');

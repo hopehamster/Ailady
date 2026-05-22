@@ -62,6 +62,9 @@ import { estimateInitialHistoryFetchLimit } from './services/promptCostService';
 import { writeAuditLog } from './auditLog';
 import { checkRateLimit, recordUsage } from './rateLimit';
 import { persistTurnTrace, newTurnId } from './turnTrace';
+import { startTrace, flushLangfuse } from './observability/langfuse';
+import { classifyIntent } from './services/intentClassifierService';
+import { recordRoute, deriveRouteLabel } from './services/routeMetricsService';
 import {
   detectCrisis,
   CRISIS_RESOURCES,
@@ -230,6 +233,17 @@ export const generateResponse = functions
     // T1.3 — cost-cap gate. Cheap pre-flight check before any LLM token spend.
     await checkRateLimit({ uid: userId, kind: 'llmCalls' });
 
+    // Phase 1 — start Langfuse trace for this turn. No-ops if LANGFUSE_*
+    // env vars are unset. Same turnId used downstream by persistTurnTrace
+    // so Langfuse + Firestore traces join cleanly.
+    const turnId = newTurnId();
+    const trace = startTrace({
+      turnId,
+      uid: userId,
+      name: 'generateResponse',
+      tags: ['callable', 'chat'],
+    });
+
     const userMessage = data.message as string;
     const temporalContext = normalizeTemporalContext(data.clientTime);
     // Optional environment context forwarded from opted-in Flutter client
@@ -242,6 +256,15 @@ export const generateResponse = functions
     const chatMode = (data.chatMode === 'story' || data.chatMode === 'journal')
       ? (data.chatMode as ChatMode)
       : undefined;
+
+    // Phase 1 — intent classifier (zero-cost, sub-ms). Result flows into the
+    // Langfuse trace + per-turn trace for future tiered-routing.
+    const intent = classifyIntent(typeof userMessage === 'string' ? userMessage : '');
+    trace.recordEvent('intent.classified', {
+      intent: intent.intent,
+      tier: intent.recommendedTier,
+      confidence: intent.confidence,
+    });
 
     // T1.E — crisis detection HARD GATE. Runs before any LLM work so the model
     // never sees flagged content + we don't burn tokens on a turn we're going
@@ -268,12 +291,19 @@ export const generateResponse = functions
       // trace stream. Skips LLM path entirely so model never sees the input.
       void persistTurnTrace({
         uid: userId,
-        turnId: newTurnId(),
+        turnId,
         modelUsed: 'crisis-redirect',
         route: 'crisis',
         flags: { crisis: true },
         retain: true,
       });
+      trace.recordEvent('crisis.redirect', {
+        category: crisis.category,
+        severity: crisis.severity,
+      });
+      trace.finish({ outcome: 'crisis-redirect', route: 'crisis' });
+      void recordRoute('crisis.redirect');
+      void flushLangfuse();
       return {
         success: true,
         crisis: {
@@ -438,9 +468,30 @@ export const generateResponse = functions
       // T1.D — persist per-turn trace. Fire-and-forget; never blocks reply.
       const stageTimings = aiResponse.qualityMeta?.stageTimingsMs ?? {};
       const injectionSeverity = (stageTimings as any).injectionSeverity ?? 0;
+      // Mirror summary into Langfuse trace, then flush.
+      trace.finish({
+        modelUsed: aiResponse.modelUsed,
+        route: aiResponse.qualityMeta?.route ?? null,
+        escalated: aiResponse.qualityMeta?.escalated ?? null,
+        intent: intent.intent,
+        intentTier: intent.recommendedTier,
+        injectionSeverity,
+        outputScanFindings: (stageTimings as any).outputScanFindings ?? 0,
+        tokensApprox,
+      });
+      // Route metric — daily counter for cheap/premium/fallback distribution.
+      const usedGemini = /gemini/i.test(aiResponse.modelUsed ?? '');
+      const usedAnthropic = /claude|anthropic/i.test(aiResponse.modelUsed ?? '');
+      const routeLabel = deriveRouteLabel({
+        intent: intent.intent,
+        tier: intent.recommendedTier,
+        fallback: usedGemini ? 'gemini' : usedAnthropic ? null : null,
+      });
+      void recordRoute(routeLabel);
+      void flushLangfuse();
       void persistTurnTrace({
         uid: userId,
-        turnId: newTurnId(),
+        turnId,
         modelUsed: aiResponse.modelUsed,
         route: aiResponse.qualityMeta?.route ?? null,
         escalated: aiResponse.qualityMeta?.escalated ?? null,
