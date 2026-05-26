@@ -103,3 +103,29 @@ export function tagError(
 export function isRetryable(failureClass: FailureClass): boolean {
   return failureClass === 'infrastructure';
 }
+
+/**
+ * Lightweight connection-error detector. Used by provider fallback paths
+ * that want to decide "switch providers" vs "this was the LLM saying no"
+ * without going through the full classifyError ladder.
+ *
+ * Returns true for: 'connection error', 'fetch failed', 'network',
+ * 'econn', 'timed out', 'timeout'. Otherwise false.
+ */
+export function isProviderConnectionError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('connection error') ||
+    normalized.includes('fetch failed') ||
+    normalized.includes('network') ||
+    normalized.includes('econn') ||
+    normalized.includes('timed out') ||
+    normalized.includes('timeout')
+  );
+}

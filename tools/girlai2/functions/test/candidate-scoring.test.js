@@ -5,6 +5,7 @@ const {
   scoreCandidateHeuristics,
   blendScores,
   weightedObjectiveScore,
+  deriveObjectiveWeights,
 } = require('../lib/services/candidateScoring.js');
 
 const recent = [
@@ -69,4 +70,42 @@ test('weightedObjectiveScore = dot product of scores and weights', () => {
     0.7 * 0.3 + 0.6 * 0.2 + 0.5 * 0.1 + 0.8 * 0.2 + 0.9 * 0.2;
   const got = weightedObjectiveScore(scores, weights);
   assert.ok(Math.abs(got - expected) < 0.001);
+});
+
+test('deriveObjectiveWeights: defaults when memory empty', () => {
+  const w = deriveObjectiveWeights({
+    personaConsistencyRollingScore: null,
+    preferredDepth: null,
+    brevityPreference: null,
+    preferredPlayfulness: null,
+  });
+  assert.equal(w.safety, 0.30);
+  assert.equal(w.empathy, 0.24);
+  assert.equal(w.engagement, 0.20);
+  assert.equal(w.novelty, 0.10);
+  assert.ok(w.persona >= 0.10);
+});
+test('deriveObjectiveWeights: low persona consistency boosts safety weight', () => {
+  const w = deriveObjectiveWeights({
+    personaConsistencyRollingScore: 0.5, // below 0.74 threshold
+    preferredDepth: null,
+    brevityPreference: null,
+    preferredPlayfulness: null,
+  });
+  assert.equal(w.safety, 0.36);
+});
+test('deriveObjectiveWeights: brevity preference inversely shifts engagement', () => {
+  const brief = deriveObjectiveWeights({
+    personaConsistencyRollingScore: null,
+    preferredDepth: null,
+    brevityPreference: 1.0, // max brevity → min engagement boost
+    preferredPlayfulness: null,
+  });
+  const verbose = deriveObjectiveWeights({
+    personaConsistencyRollingScore: null,
+    preferredDepth: null,
+    brevityPreference: 0.0, // no brevity → max engagement boost
+    preferredPlayfulness: null,
+  });
+  assert.ok(verbose.engagement > brief.engagement);
 });

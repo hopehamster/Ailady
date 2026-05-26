@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { classifyError, isRetryable } = require('../lib/failureClass.js');
+const { classifyError, isRetryable, isProviderConnectionError } = require('../lib/failureClass.js');
 
 test('HTTP 400 -> invocation', () => {
   assert.equal(classifyError({ status: 400, message: 'bad request' }), 'invocation');
@@ -33,4 +33,17 @@ test('isRetryable: only infrastructure', () => {
   assert.equal(isRetryable('invocation'), false);
   assert.equal(isRetryable('grounding'), false);
   assert.equal(isRetryable('planning'), false);
+});
+test('isProviderConnectionError: connection / network / econn / timeout fire', () => {
+  assert.equal(isProviderConnectionError(new Error('connection error')), true);
+  assert.equal(isProviderConnectionError(new Error('network unreachable')), true);
+  assert.equal(isProviderConnectionError(new Error('ECONNREFUSED')), true);
+  assert.equal(isProviderConnectionError(new Error('request timed out')), true);
+  assert.equal(isProviderConnectionError(new Error('timeout after 30s')), true);
+  assert.equal(isProviderConnectionError('fetch failed'), true);
+});
+test('isProviderConnectionError: unrelated errors do not fire', () => {
+  assert.equal(isProviderConnectionError(new Error('bad request')), false);
+  assert.equal(isProviderConnectionError(null), false);
+  assert.equal(isProviderConnectionError(undefined), false);
 });

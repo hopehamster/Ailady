@@ -73,7 +73,7 @@ import { runPostResponseOrchestration } from './postResponseOrchestrationService
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
-import { tagError } from '../failureClass';
+import { tagError, isProviderConnectionError } from '../failureClass';
 import {
   detectCrisisSensitiveIntent,
   detectDeepAnalysisIntent,
@@ -102,6 +102,7 @@ import {
   scoreCandidateHeuristics,
   blendScores,
   weightedObjectiveScore,
+  deriveObjectiveWeights,
   type CandidateObjectiveScores as ExtractedCandidateObjectiveScores,
 } from './candidateScoring';
 import {
@@ -283,23 +284,7 @@ function canUseOpenAIPrimary(): boolean {
   return Date.now() >= openAITemporarilyDisabledUntil;
 }
 
-function isProviderConnectionError(error: unknown): boolean {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : '';
-  const normalized = message.toLowerCase();
-  return (
-    normalized.includes('connection error') ||
-    normalized.includes('fetch failed') ||
-    normalized.includes('network') ||
-    normalized.includes('econn') ||
-    normalized.includes('timed out') ||
-    normalized.includes('timeout')
-  );
-}
+// isProviderConnectionError extracted to ../failureClass.ts and imported above.
 
 // Initialize Google AI Gemini (uses googleapis.com endpoint, works from Spark/restricted CF)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
@@ -1120,23 +1105,17 @@ Return strict JSON:
   }
 }
 
+// Thin adapter that wires Aria's memory-derived persona/style state to
+// the pure deriveObjectiveWeights helper in ./candidateScoring.ts.
 function getObjectiveWeights(memory: IntelligentMemory | null): CandidateObjectiveScores {
   const persona = memory ? getPersonaConsistencyState(memory) : null;
   const style = memory ? getStyleProfile(memory) : null;
-
-  const safetyBoost = persona && persona.rollingScore < 0.74 ? 0.36 : 0.30;
-  const empathyWeight = 0.24 + (style ? (style.preferredDepth * 0.05) : 0);
-  const engagementWeight = 0.20 + (style ? ((1 - style.brevityPreference) * 0.04) : 0);
-  const noveltyWeight = 0.10 + (style ? (style.preferredPlayfulness * 0.04) : 0);
-  const personaWeight = 1 - (safetyBoost + empathyWeight + engagementWeight + noveltyWeight);
-
-  return {
-    safety: safetyBoost,
-    empathy: empathyWeight,
-    engagement: engagementWeight,
-    novelty: noveltyWeight,
-    persona: Math.max(0.10, personaWeight),
-  };
+  return deriveObjectiveWeights({
+    personaConsistencyRollingScore: persona?.rollingScore ?? null,
+    preferredDepth: style?.preferredDepth ?? null,
+    brevityPreference: style?.brevityPreference ?? null,
+    preferredPlayfulness: style?.preferredPlayfulness ?? null,
+  });
 }
 
 async function rerankCandidates(

@@ -118,3 +118,43 @@ export function weightedObjectiveScore(
     scores.persona * weights.persona
   );
 }
+
+/**
+ * Per-user weight profile for the candidate reranker. Memory's persona and
+ * style state shift the relative importance of safety, empathy, engagement,
+ * novelty, and persona consistency.
+ *
+ * Signature stays narrow (just the two memory derivers) so callers can pass
+ * any object that exposes those two functions — keeps the module
+ * test-friendly without dragging in the full IntelligentMemory type.
+ */
+export interface ObjectiveWeightsInputs {
+  personaConsistencyRollingScore: number | null;
+  preferredDepth: number | null;
+  brevityPreference: number | null;
+  preferredPlayfulness: number | null;
+}
+
+export function deriveObjectiveWeights(
+  inputs: ObjectiveWeightsInputs,
+): CandidateObjectiveScores {
+  const safetyBoost =
+    inputs.personaConsistencyRollingScore !== null &&
+    inputs.personaConsistencyRollingScore < 0.74
+      ? 0.36
+      : 0.30;
+  const empathyWeight = 0.24 + (inputs.preferredDepth !== null ? inputs.preferredDepth * 0.05 : 0);
+  const engagementWeight =
+    0.20 + (inputs.brevityPreference !== null ? (1 - inputs.brevityPreference) * 0.04 : 0);
+  const noveltyWeight =
+    0.10 + (inputs.preferredPlayfulness !== null ? inputs.preferredPlayfulness * 0.04 : 0);
+  const personaWeight = 1 - (safetyBoost + empathyWeight + engagementWeight + noveltyWeight);
+
+  return {
+    safety: safetyBoost,
+    empathy: empathyWeight,
+    engagement: engagementWeight,
+    novelty: noveltyWeight,
+    persona: Math.max(0.10, personaWeight),
+  };
+}
