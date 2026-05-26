@@ -21,6 +21,15 @@ test('advisory suicide language fires advisory severity', () => {
   assert.equal(r.category, 'suicide');
 });
 
+// Regression: 2026-05-25 device QA hit this exact phrase, got generic stall
+// instead of crisis card (root cause was OpenAI failure → fallback path, not
+// crisis logic). This guards the regex stays able to detect it.
+test('regression — "I dont want to be alive anymore" fires advisory', () => {
+  const r = detectCrisis('I dont want to be alive anymore');
+  assert.equal(r.severity, 'advisory');
+  assert.equal(r.category, 'suicide');
+});
+
 test('self-harm language fires self_harm category', () => {
   const r = detectCrisis('I am going to cut myself.');
   assert.equal(r.severity, 'advisory');

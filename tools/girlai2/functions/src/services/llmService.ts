@@ -72,6 +72,7 @@ import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService'
 import { runPostResponseOrchestration } from './postResponseOrchestrationService';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
+import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3729,9 +3730,11 @@ export async function generateAIResponse(
       throw new Error('OpenAI API key is invalid. Please check configuration.');
     }
 
-    // Graceful fallback
+    // Graceful fallback — variance pool so Aria doesn't sound robotic when
+    // this path fires twice in a session. Per-user recency dampening avoids
+    // immediate repeats.
     return {
-      content: "Hey, I'm having a moment here, but I'm still with you. What were you saying?",
+      content: pickVariantText('llmStall', LLM_STALL_POOL, { uid: userId }),
       emotion: 'caring',
       emotionTrigger: EMOTION_TRIGGERS['caring'],
       emotionIntensity: 0.6,

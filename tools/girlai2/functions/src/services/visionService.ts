@@ -1,6 +1,11 @@
 import * as functions from 'firebase-functions';
 import OpenAI from 'openai';
 import { getIntelligentMemory, buildMemoryContext } from './memoryService';
+import {
+  pickVariantText,
+  VISION_STILL_POOL,
+  VISION_LIVE_POOL,
+} from './responseVariancePool';
 
 const openaiApiKey = process.env.OPENAI_API_KEY || '';
 const openai = new OpenAI({ apiKey: openaiApiKey });
@@ -215,10 +220,10 @@ Keep your response conversational (2–4 sentences). Never break character as Ar
   } catch (error: any) {
     functions.logger.error('Vision analysis error', { userId, error: error.message });
     
-    // Graceful fallback
+    // Graceful fallback — variance pool avoids robotic repeat on consecutive failures
     return {
       description: 'An image was shared',
-      response: "I see you shared something with me! Sometimes my vision gets a bit fuzzy, but I love that you're sharing with me. 💕 What are you showing me?",
+      response: pickVariantText('visionStill', VISION_STILL_POOL, { uid: userId }),
       emotion: 'curious',
       emotionTrigger: EMOTION_TRIGGERS['curious'],
       emotionIntensity: 0.6,
@@ -420,8 +425,7 @@ Return strict JSON:
     return {
       shouldRespond: true,
       description: 'A live camera frame was shared',
-      response:
-        "I'm still with you. My vision glitched for a second, but keep showing me what you see. 💕",
+      response: pickVariantText('visionLive', VISION_LIVE_POOL, { uid: userId }),
       changeSummary: 'fallback_response',
       emotion: 'curious',
       emotionTrigger: EMOTION_TRIGGERS.curious,
