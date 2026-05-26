@@ -117,6 +117,15 @@ import {
   detectNameIntent,
   detectChronologyIntent,
 } from './userIntentClassifiers';
+import {
+  type UserTemporalContext as ExtractedUserTemporalContext,
+  type EffectiveTemporalContext,
+  resolveEffectiveTemporalContext as resolveEffectiveTemporalContextPure,
+  formatAbsoluteDateForContext,
+  detectRelativeTimeReference,
+  containsAbsoluteDate,
+  correctWeekdayDateMismatches,
+} from './temporalContext';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -176,11 +185,9 @@ export interface ProactiveCompanionResponse {
   minutesUntilNext?: number;
 }
 
-export interface UserTemporalContext {
-  timeZoneOffsetMinutes?: number;
-  timeZoneName?: string;
-  clientEpochMs?: number;
-}
+// UserTemporalContext moved to ./temporalContext.ts; re-export for callers
+// (e.g. index.ts) that import the type from llmService.
+export type UserTemporalContext = ExtractedUserTemporalContext;
 
 export interface SubmitResponseFeedbackResult {
   success: boolean;
@@ -1533,149 +1540,23 @@ Return strict JSON:
   }
 }
 
-interface EffectiveTemporalContext {
-  now: Date;
-  timeZoneOffsetMinutes: number;
-  timeZoneName?: string;
-  source: 'client' | 'profile' | 'server';
-}
+// EffectiveTemporalContext + WEEKDAY_NAMES + MONTH_NAMES moved to
+// ./temporalContext.ts; imported above.
 
-const WEEKDAY_NAMES = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-] as const;
-
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-] as const;
-
-function normalizeTimeZoneOffsetMinutes(rawValue: unknown): number {
-  if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
-    return 0;
-  }
-  const rounded = Math.round(rawValue);
-  return Math.max(-840, Math.min(840, rounded));
-}
-
-function toOffsetShiftedDate(date: Date, offsetMinutes: number): Date {
-  return new Date(date.getTime() + offsetMinutes * 60 * 1000);
-}
-
+// normalizeTimeZoneOffsetMinutes, toOffsetShiftedDate, formatAbsoluteDateForContext,
+// detectRelativeTimeReference, containsAbsoluteDate, correctWeekdayDateMismatches
+// all moved to ./temporalContext.ts (Phase 2 Session-β batch 6).
+//
+// resolveEffectiveTemporalContext: thin adapter that maps the heavier
+// CompanionRuntimeSelfModel down to the narrow TemporalRuntimeInputs the
+// pure helper consumes.
 function resolveEffectiveTemporalContext(
   requestContext: UserTemporalContext | undefined,
   runtime: CompanionRuntimeSelfModel,
 ): EffectiveTemporalContext {
-  const clientOffset = normalizeTimeZoneOffsetMinutes(requestContext?.timeZoneOffsetMinutes);
-  const profileOffset = normalizeTimeZoneOffsetMinutes(runtime.userTimeZoneOffsetMinutes);
-  const offset =
-    requestContext?.timeZoneOffsetMinutes != null ? clientOffset : profileOffset;
-  const now =
-    typeof requestContext?.clientEpochMs === 'number' &&
-    Number.isFinite(requestContext.clientEpochMs)
-      ? new Date(requestContext.clientEpochMs)
-      : new Date();
-  const hasProfileTemporal =
-    Boolean(runtime.userTimeZoneName && runtime.userTimeZoneName.trim()) ||
-    runtime.userTimeZoneOffsetMinutes !== 0;
-  const source: EffectiveTemporalContext['source'] =
-    requestContext?.timeZoneOffsetMinutes != null
-      ? 'client'
-      : hasProfileTemporal
-          ? 'profile'
-          : 'server';
-  const timeZoneName =
-    requestContext?.timeZoneName?.trim() ||
-    runtime.userTimeZoneName?.trim() ||
-    undefined;
-
-  return {
-    now,
-    timeZoneOffsetMinutes: offset,
-    timeZoneName,
-    source,
-  };
-}
-
-function formatAbsoluteDateForContext(
-  date: Date,
-  offsetMinutes: number,
-): string {
-  const shifted = toOffsetShiftedDate(date, offsetMinutes);
-  const weekday = WEEKDAY_NAMES[shifted.getUTCDay()];
-  const month = MONTH_NAMES[shifted.getUTCMonth()];
-  const day = shifted.getUTCDate();
-  const year = shifted.getUTCFullYear();
-  return `${weekday}, ${month} ${day}, ${year}`;
-}
-
-function detectRelativeTimeReference(text: string): boolean {
-  return /\b(today|tomorrow|day after tomorrow|yesterday|next week|last week|this week|next month|this month|last month|next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)|this\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)|last\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b/i.test(
-    text,
-  );
-}
-
-function containsAbsoluteDate(text: string): boolean {
-  return /\b(20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?|january|february|march|april|may|june|july|august|september|october|november|december)\b/i.test(
-    text,
-  );
-}
-
-// resolveRelativeAnchorDate was removed — it was only used to append
-// "For clarity, that maps to..." date clarifiers in enforceChronologyConsistency,
-// which was itself removed in Fix 1 (date injection kill).
-
-function correctWeekdayDateMismatches(
-  content: string,
-  temporal: EffectiveTemporalContext,
-): string {
-  const weekdayPattern =
-    /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)(?:,\s*|\s+)(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,\s*(\d{4}))?\b/gi;
-  const shiftedNow = toOffsetShiftedDate(temporal.now, temporal.timeZoneOffsetMinutes);
-
-  return content.replace(weekdayPattern, (match, weekday, monthName, dayText, yearText) => {
-    const monthIndex = MONTH_NAMES.findIndex(
-      (month) => month.toLowerCase() === String(monthName).toLowerCase(),
-    );
-    if (monthIndex < 0) {
-      return match;
-    }
-    const parsedDay = Number(dayText);
-    if (!Number.isFinite(parsedDay)) {
-      return match;
-    }
-    const parsedYear = yearText ? Number(yearText) : shiftedNow.getUTCFullYear();
-    if (!Number.isFinite(parsedYear)) {
-      return match;
-    }
-    const candidate = new Date(Date.UTC(parsedYear, monthIndex, parsedDay));
-    if (
-      candidate.getUTCFullYear() !== parsedYear ||
-      candidate.getUTCMonth() !== monthIndex ||
-      candidate.getUTCDate() !== parsedDay
-    ) {
-      return match;
-    }
-    const correctWeekday = WEEKDAY_NAMES[candidate.getUTCDay()];
-    if (!correctWeekday || correctWeekday.toLowerCase() === String(weekday).toLowerCase()) {
-      return match;
-    }
-    return match.replace(String(weekday), correctWeekday);
+  return resolveEffectiveTemporalContextPure(requestContext, {
+    userTimeZoneOffsetMinutes: runtime.userTimeZoneOffsetMinutes,
+    userTimeZoneName: runtime.userTimeZoneName,
   });
 }
 
