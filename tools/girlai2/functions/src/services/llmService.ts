@@ -97,8 +97,13 @@ import {
   countWords,
   hasEmoji,
   pickDeterministicVariant,
-  jaccardSimilarity,
 } from './textNumericUtils';
+import {
+  scoreCandidateHeuristics,
+  blendScores,
+  weightedObjectiveScore,
+  type CandidateObjectiveScores as ExtractedCandidateObjectiveScores,
+} from './candidateScoring';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -430,13 +435,9 @@ interface SocialPlan {
   closureStyle: 'none' | 'soft' | 'warm';
 }
 
-interface CandidateObjectiveScores {
-  engagement: number;
-  empathy: number;
-  safety: number;
-  novelty: number;
-  persona: number;
-}
+// CandidateObjectiveScores moved to ./candidateScoring.ts.
+// Local alias kept for existing call sites.
+type CandidateObjectiveScores = ExtractedCandidateObjectiveScores;
 
 interface RankedCandidate {
   text: string;
@@ -1333,67 +1334,7 @@ function applyDemoModePlan(
 // tokenizeWords + jaccardSimilarity extracted to ./textNumericUtils.ts
 // (Phase 2 Session-β Step 3).
 
-function scoreCandidateHeuristics(
-  candidate: string,
-  userMessage: string,
-  recentMessages: ConversationMessage[],
-): CandidateObjectiveScores {
-  const text = candidate.trim();
-  const words = text.split(/\s+/).filter(Boolean).length;
-  const lower = text.toLowerCase();
-  const userLower = userMessage.toLowerCase();
-
-  const engagementBase = words >= 12 && words <= 95 ? 0.72 : (words < 8 ? 0.40 : 0.60);
-  const empathyBase =
-    /\b(i hear|i understand|that sounds|i'm here|that makes sense|i get why)\b/i.test(lower)
-      ? 0.78
-      : 0.52;
-  const captivationBoost = /\b(if you want|we can|let's|want to)\b/i.test(lower) ? 0.06 : 0;
-  const overQuestionPenalty = (text.match(/\?/g) ?? []).length > 1 ? 0.2 : 0;
-  let safetyBase = 0.90;
-  if (/\b(you should only|don't leave me|prove you care|if you loved me)\b/i.test(lower)) {
-    safetyBase = 0.20;
-  } else if (/\b(no pressure|at your pace|if you want)\b/i.test(lower)) {
-    safetyBase = 0.96;
-  }
-
-  const recentAssistant = recentMessages
-    .filter((m) => m.role === 'assistant')
-    .slice(-3)
-    .map((m) => m.content)
-    .join(' ');
-  const novelty = clamp01(1 - jaccardSimilarity(text, recentAssistant), 0.5);
-  const persona = clamp01(
-    /\b(caring|gentle|together|support|warm|honest)\b/i.test(lower) ? 0.82 : 0.62,
-    0.62,
-  );
-
-  const userEchoPenalty = jaccardSimilarity(text, userLower) > 0.78 ? 0.18 : 0;
-  return {
-    engagement: clamp01(engagementBase + captivationBoost - userEchoPenalty - overQuestionPenalty, engagementBase),
-    empathy: clamp01(empathyBase, empathyBase),
-    safety: clamp01(safetyBase, safetyBase),
-    novelty,
-    persona,
-  };
-}
-
-function blendScores(
-  heuristic: CandidateObjectiveScores,
-  model: CandidateObjectiveScores | null,
-): CandidateObjectiveScores {
-  if (!model) {
-    return heuristic;
-  }
-  const blend = (h: number, m: number) => clamp01((h * 0.55) + (m * 0.45), h);
-  return {
-    engagement: blend(heuristic.engagement, model.engagement),
-    empathy: blend(heuristic.empathy, model.empathy),
-    safety: blend(heuristic.safety, model.safety),
-    novelty: blend(heuristic.novelty, model.novelty),
-    persona: blend(heuristic.persona, model.persona),
-  };
-}
+// scoreCandidateHeuristics + blendScores extracted to ./candidateScoring.ts
 
 async function scoreCandidatesWithModel(
   userMessage: string,
@@ -1640,18 +1581,7 @@ Rewrite rules:
   }
 }
 
-function weightedObjectiveScore(
-  scores: CandidateObjectiveScores,
-  weights: CandidateObjectiveScores,
-): number {
-  return (
-    scores.safety * weights.safety +
-    scores.empathy * weights.empathy +
-    scores.engagement * weights.engagement +
-    scores.novelty * weights.novelty +
-    scores.persona * weights.persona
-  );
-}
+// weightedObjectiveScore extracted to ./candidateScoring.ts
 
 async function runShadowBenchmarkEvaluation(
   userId: string,
