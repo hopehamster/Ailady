@@ -7,6 +7,7 @@ import {
   VISION_LIVE_POOL,
 } from './responseVariancePool';
 import { tagError } from '../failureClass';
+import { EMOTION_TRIGGERS } from './emotionUtils';
 
 const openaiApiKey = process.env.OPENAI_API_KEY || '';
 const openai = new OpenAI({ apiKey: openaiApiKey });
@@ -16,24 +17,8 @@ const VISION_MODEL = 'gpt-5.2-fast';
 const FALLBACK_VISION_MODEL = 'gpt-4o'; // Fallback if 5.2-fast unavailable
 const EMOTION_MODEL = 'gpt-5.2-extra-high-fast'; // Fast 5.2 variant for emotion detection
 
-// Emotion triggers for avatar (shared with llmService)
-const EMOTION_TRIGGERS: { [key: string]: string } = {
-  'happy': 'Happy_Smile',
-  'excited': 'Excited_Jump',
-  'loving': 'Loving_Heart_Eyes',
-  'flirty': 'Flirty_Wink',
-  'playful': 'Playful_Giggle',
-  'caring': 'Caring_Head_Tilt',
-  'sad': 'Sad_Frown',
-  'concerned': 'Concerned_Worry',
-  'surprised': 'Surprised_Gasp',
-  'thoughtful': 'Thoughtful_Chin_Touch',
-  'shy': 'Shy_Blush',
-  'proud': 'Proud_Chest_Puff',
-  'comforting': 'Comforting_Hug_Ready',
-  'curious': 'Curious_Head_Tilt',
-  'neutral': 'Idle_Gentle_Sway',
-};
+// Emotion triggers imported from emotionUtils (single source of truth per
+// Phase 2 Session-β Step 2; previously this file maintained a duplicate copy).
 
 export interface VisionResult {
   description: string;  // What Aria sees in the image
@@ -465,7 +450,9 @@ Respond with JSON:
     
     return {
       emotion,
-      emotionTrigger: EMOTION_TRIGGERS[emotion] || EMOTION_TRIGGERS['neutral'],
+      emotionTrigger:
+        (EMOTION_TRIGGERS as Record<string, string>)[emotion] ||
+        EMOTION_TRIGGERS['neutral'],
       emotionIntensity: result.emotionIntensity || 0.6,
     };
   } catch (error) {

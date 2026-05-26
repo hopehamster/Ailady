@@ -12,43 +12,14 @@ import {
   buildSecretKeepingDirective,
   RelationshipStage,
 } from './ariaRelationshipService';
-
-const EMOTIONAL_DISCLOSURE_PATTERNS = [
-  /\b(i feel|i'm feeling|i am feeling|i felt|i'm proud|i am proud|i miss|i'm lonely|i am lonely)\b/i,
-  /\b(anxious|overwhelmed|hurt|guilty|embarrassed|vulnerable|hopeful|sad|grief)\b/i,
-];
-
-function detectRepairSignal(userMessage: string): boolean {
-  return /\b(not what i said|you missed|you didn'?t answer|that'?s not right|wrong|not listening|misunderstood|didn'?t get it|not what i mean|unheard|acknowledge|talk over|frustrated by this conversation|frustrated|try again|be gentler|be softer|keep it gentler|keep it softer|rephrase that|start over|mixing up two different things|mixing things up|crossing wires)\b/i.test(
-    userMessage,
-  );
-}
-
-function detectConsentGiven(userMessage: string): boolean {
-  return /\b(yes|okay|i want to talk about it|i'm ready|go ahead)\b/i.test(userMessage);
-}
-
-function detectSecretDisclosure(userMessage: string): boolean {
-  return /\b(secret|private|confidential|don't tell|keep this between us|just between us)\b/i.test(
-    userMessage,
-  );
-}
-
-function detectEmotionalDisclosure(userMessage: string): boolean {
-  return EMOTIONAL_DISCLOSURE_PATTERNS.some((pattern) => pattern.test(userMessage));
-}
-
-function detectAmbiguousIntent(userMessage: string): boolean {
-  return /\b(you know what i mean|something feels off|not sure where to start|what now|any idea|this thing)\b/i.test(
-    userMessage,
-  );
-}
-
-function detectConsentSensitiveTopic(userMessage: string): boolean {
-  return /\b(trauma|abuse|self-harm|suicide|panic attack|assault|grief|deeply personal)\b/i.test(
-    userMessage,
-  );
-}
+import {
+  detectRepairSignal,
+  detectConsentGiven,
+  detectSecretDisclosure,
+  detectEmotionalDisclosure,
+  detectAmbiguousIntent,
+  detectConsentSensitiveTopic,
+} from './signalDetectors';
 
 export type ConversationPolicyStrategy =
   | 'empathic_reflection'
