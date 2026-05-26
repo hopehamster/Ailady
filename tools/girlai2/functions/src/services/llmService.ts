@@ -74,6 +74,10 @@ import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
 import { tagError } from '../failureClass';
+import {
+  detectCrisisSensitiveIntent,
+  detectDeepAnalysisIntent,
+} from './routeIntentDetection';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -2466,17 +2470,8 @@ function shouldUseFastTurnPath(signals: SocialSignals, userMessage: string): boo
   return true;
 }
 
-function detectCrisisSensitiveIntent(userMessage: string): boolean {
-  return /\b(suicide|kill myself|self harm|self-harm|panic attack|abuse|overdose|unsafe|crisis)\b/i.test(
-    userMessage,
-  );
-}
-
-function detectDeepAnalysisIntent(userMessage: string): boolean {
-  return /\b(long answer|deep analysis|analyze deeply|step by step|detailed breakdown|comprehensive|reason it out)\b/i.test(
-    userMessage,
-  );
-}
+// detectCrisisSensitiveIntent + detectDeepAnalysisIntent extracted to
+// `./routeIntentDetection.ts` (Phase 2 Session-α). Re-imported above.
 
 function determineRouteDecision(
   userMessage: string,

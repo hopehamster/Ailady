@@ -644,6 +644,14 @@ export const onUserCreate = functions
  */
 export const processLiveModeInput = functions
   .region('us-central1')
+  .runWith({
+    // Phase 3 P6 — pre-warm LLM-bearing callable. Per round_11.md Pattern C #5,
+    // cold starts on Node Cloud Functions with all Aria service deps loaded
+    // are 800ms-1.5s — bigger than the LLM call itself.
+    minInstances: 1,
+    memory: '1GB',
+    timeoutSeconds: 60,
+  })
   .https.onCall(async (data, context) => {
     // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
     const userId = context.auth?.uid;
@@ -842,6 +850,14 @@ export const processLiveModeInput = functions
  */
 export const createRealtimeSession = functions
   .region('us-central1')
+  .runWith({
+    // Phase 3 P6 — pre-warm Realtime session creator. First-byte latency on
+    // Live Mode is user-perceived as "wait to start talking" — cold start
+    // here directly hurts that experience.
+    minInstances: 1,
+    memory: '512MB',
+    timeoutSeconds: 30,
+  })
   .https.onCall(async (data, context) => {
     const userId = context.auth?.uid;
     if (!userId) {
@@ -906,6 +922,13 @@ export const createRealtimeSession = functions
  */
 export const analyzeImage = functions
   .region('us-central1')
+  .runWith({
+    // Phase 3 P6 — pre-warm vision callable. Vision cold-starts are heavier
+    // because OpenAI SDK init + image-pipeline deps load on first call.
+    minInstances: 1,
+    memory: '1GB',
+    timeoutSeconds: 60,
+  })
   .https.onCall(async (data, context) => {
     // Auth-only: no data.userId fallback. Removed in Phase 0 (spoofing vector).
     const userId = context.auth?.uid;
