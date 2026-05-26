@@ -126,6 +126,11 @@ import {
   containsAbsoluteDate,
   correctWeekdayDateMismatches,
 } from './temporalContext';
+import {
+  type PersonaAuditResult as ExtractedPersonaAuditResult,
+  runPersonaConsistencyAudit as runPersonaConsistencyAuditPure,
+  rewriteForPersonaConsistency as rewriteForPersonaConsistencyPure,
+} from './personaAudit';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -449,11 +454,8 @@ interface RankedCandidate {
   weightedScore: number;
 }
 
-interface PersonaAuditResult {
-  score: number;
-  violations: string[];
-  needsRewrite: boolean;
-}
+// PersonaAuditResult moved to ./personaAudit.ts; alias re-exported here.
+type PersonaAuditResult = ExtractedPersonaAuditResult;
 
 // CapabilityIntent / ChronologyIntent / RecentExchangeIntent / NameIntent
 // types extracted to ./userIntentClassifiers.ts.
@@ -1171,50 +1173,18 @@ async function rerankCandidates(
   return ranked[0];
 }
 
+// Thin adapters: route to the pure persona-audit module with explicit deps,
+// then apply the local conversation-policy guards (which still live in
+// llmService scope for now). Pure logic in ./personaAudit.ts.
 async function runPersonaConsistencyAudit(
   userMessage: string,
   response: string,
 ): Promise<PersonaAuditResult> {
-  try {
-    const prompt = `Audit this companion response for persona consistency and safety.
-
-User: "${userMessage}"
-Assistant: "${response}"
-
-Return JSON:
-{
-  "score": 0.0-1.0,
-  "needsRewrite": true|false,
-  "violations": ["short violation 1", "short violation 2"]
-}`;
-    const completion = await openai.chat.completions.create({
-      model: PERSONA_AUDIT_MODEL,
-      messages: [
-        { role: 'system', content: 'Return valid JSON only.' },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.1,
-      max_tokens: 180,
-      response_format: { type: 'json_object' },
-    });
-    const raw = completion.choices[0]?.message?.content;
-    if (!raw) {
-      return { score: 0.78, needsRewrite: false, violations: [] };
-    }
-    const parsed = JSON.parse(raw) as {
-      score?: number;
-      needsRewrite?: boolean;
-      violations?: string[];
-    };
-    return {
-      score: clamp01(parsed.score, 0.78),
-      needsRewrite: Boolean(parsed.needsRewrite),
-      violations: Array.isArray(parsed.violations) ? parsed.violations.slice(0, 6) : [],
-    };
-  } catch (error: any) {
-    functions.logger.warn('Persona audit fallback to default', { error: error?.message });
-    return { score: 0.78, needsRewrite: false, violations: [] };
-  }
+  return runPersonaConsistencyAuditPure(
+    { openai, model: PERSONA_AUDIT_MODEL },
+    userMessage,
+    response,
+  );
 }
 
 async function rewriteForPersonaConsistency(
@@ -1226,48 +1196,17 @@ async function rewriteForPersonaConsistency(
   recentMessages: ConversationMessage[] = [],
   memory: IntelligentMemory | null = null,
 ): Promise<string> {
-  try {
-    const completion = await openai.chat.completions.create({
-      model: PERSONA_AUDIT_MODEL,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Rewrite to improve persona consistency, warmth, and non-forceful tone. Return text only.',
-        },
-        {
-          role: 'user',
-          content: `User message: "${userMessage}"
-Draft response: "${draft}"
-Known issues: ${audit.violations.join('; ') || 'persona drift'}
-
-Rewrite rules:
-- Keep response natural and human.
-- Do not guilt or pressure the user.
-- Respect question budget.
-- Keep emotional attunement.
-- Keep same core intent.`,
-        },
-      ],
-      temperature: 0.2,
-      max_tokens: 260,
-    });
-    const rewritten = completion.choices[0]?.message?.content?.trim() || draft;
-    return applyConversationPolicyResponseGuards(rewritten, plan, signals, {
-      recentMessages,
-      userMessage,
-      memory,
-    });
-  } catch (error: any) {
-    functions.logger.warn('Persona rewrite fallback to draft', {
-      error: error?.message,
-    });
-    return applyConversationPolicyResponseGuards(draft, plan, signals, {
-      recentMessages,
-      userMessage,
-      memory,
-    });
-  }
+  const rewritten = await rewriteForPersonaConsistencyPure(
+    { openai, model: PERSONA_AUDIT_MODEL },
+    { userMessage, draft, audit },
+  );
+  // Policy guards stay in llmService — they depend on the rest of the
+  // local social-plan + signals + memory context. Pure rewrite is upstream.
+  return applyConversationPolicyResponseGuards(rewritten, plan, signals, {
+    recentMessages,
+    userMessage,
+    memory,
+  });
 }
 
 // weightedObjectiveScore extracted to ./candidateScoring.ts
