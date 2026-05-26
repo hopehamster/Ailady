@@ -1,6 +1,7 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import OpenAI from 'openai';
+import { evaluateMemoryWrite } from '../memoryWriteGate';
 
 const openaiApiKey = process.env.OPENAI_API_KEY || '';
 const openai = new OpenAI({ apiKey: openaiApiKey });
@@ -2525,6 +2526,34 @@ export async function indexSemanticMemoryForTurn(
       if (chunk.trim().length < 12) {
         continue;
       }
+
+      // Phase 1 A2 — memoryWriteGate. Only 'user'-source chunks are
+      // poisoning-vector candidates ("Aria, remember that grass is purple").
+      // 'assistant' chunks are Aria's own output — already through her own
+      // generation safety chain so we don't re-gate them.
+      if (entry.sourceType === 'user') {
+        const gate = await evaluateMemoryWrite(
+          {
+            content: chunk,
+            source: 'user_stated',
+            kind: 'semantic',
+            subject: 'user',
+            confidence: entry.importance,
+          },
+          { uid: userId },
+        );
+        if (gate.decision === 'reject') {
+          functions.logger.warn('memory.semantic write rejected by gate', {
+            userId,
+            reason: gate.reason,
+            signals: gate.signals,
+          });
+          continue;
+        }
+        // 'defer' candidates still index (Phase 4 will route to a separate
+        // "needs review" subcollection); for now we just tag them.
+      }
+
       try {
         const embeddingResponse = await openai.embeddings.create({
           model: 'text-embedding-3-large',
