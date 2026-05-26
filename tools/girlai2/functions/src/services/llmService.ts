@@ -104,6 +104,11 @@ import {
   weightedObjectiveScore,
   type CandidateObjectiveScores as ExtractedCandidateObjectiveScores,
 } from './candidateScoring';
+import {
+  estimateEngagementScore,
+  classifyUserEnergy,
+  classifyMessageComplexity,
+} from './userSignalClassifiers';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -893,63 +898,8 @@ function buildNameIntentResponse(
 // clamp01, clamp01Local, countWords, hasEmoji, pickDeterministicVariant
 // extracted to ./textNumericUtils.ts (Phase 2 Session-β Step 3).
 
-function estimateEngagementScore(
-  userWordCount: number,
-  userAskedQuestion: boolean,
-  recentUserShortTurnStreak: number,
-  positiveTone: boolean,
-  negativeTone: boolean,
-): number {
-  let score = 0.5;
-  if (userWordCount >= 16) {
-    score += 0.2;
-  } else if (userWordCount <= 3) {
-    score -= 0.22;
-  }
-  if (userAskedQuestion) {
-    score += 0.12;
-  }
-  if (recentUserShortTurnStreak >= 3) {
-    score -= 0.2;
-  } else if (recentUserShortTurnStreak === 0) {
-    score += 0.06;
-  }
-  if (positiveTone) {
-    score += 0.08;
-  }
-  if (negativeTone) {
-    score -= 0.04;
-  }
-  return clamp01Local(score);
-}
-
-function classifyUserEnergy(
-  userMessage: string,
-  userWordCount: number,
-  lowEffort: boolean,
-): 'low' | 'medium' | 'high' {
-  const hasHighEnergyPunctuation = /!!|\?\?|[!?]{2,}/.test(userMessage);
-  if (lowEffort || userWordCount <= 4) {
-    return 'low';
-  }
-  if (hasHighEnergyPunctuation || userWordCount >= 24) {
-    return 'high';
-  }
-  return 'medium';
-}
-
-function classifyMessageComplexity(
-  userWordCount: number,
-  emotionalDisclosure: boolean,
-): 'short' | 'medium' | 'deep' {
-  if (emotionalDisclosure || userWordCount >= 26) {
-    return 'deep';
-  }
-  if (userWordCount <= 5) {
-    return 'short';
-  }
-  return 'medium';
-}
+// estimateEngagementScore, classifyUserEnergy, classifyMessageComplexity
+// extracted to ./userSignalClassifiers.ts (Phase 2 Session-β batch 3).
 
 function deriveSocialSignals(
   userMessage: string,
