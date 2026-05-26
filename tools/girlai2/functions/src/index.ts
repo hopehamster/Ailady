@@ -71,8 +71,10 @@ import {
   CRISIS_RESOURCES,
   ARIA_CRISIS_REPLY,
 } from './services/crisisDetectionService';
+import { auditRegionsOnce } from './regionAudit';
 
 admin.initializeApp();
+auditRegionsOnce();
 
 // Set OpenAI API key from environment
 const openaiApiKey = process.env.OPENAI_API_KEY;

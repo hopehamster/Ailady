@@ -7,6 +7,7 @@ import {
 } from './memoryService';
 import type { CompanionRuntimeSelfModel } from './truthKernelService';
 import type { TraceHandle } from '../observability/langfuse';
+import { estimateChatInputTokens, auditTokenDrift } from './tokenObservability';
 
 export interface ProviderCandidateScores {
   engagement: number;
@@ -97,11 +98,21 @@ export async function executeOpenAICompletion({
   trace,
 }: ExecuteOpenAICompletionArgs): Promise<ProviderRankedCandidate> {
   const start = Date.now();
+  // Phase 0 P2 — strip cache-boundary sentinel before sending. OpenAI handles
+  // prefix caching automatically by longest-common-prefix; the sentinel is
+  // only meaningful for Anthropic's cache_control marker.
+  const CACHE_BOUNDARY = '<!--PROMPT_CACHE_BOUNDARY-->';
+  const cleanedMessages = messages.map((m) => {
+    if (typeof m.content === 'string' && m.content.includes(CACHE_BOUNDARY)) {
+      return { ...m, content: m.content.split(CACHE_BOUNDARY).join('') };
+    }
+    return m;
+  });
   let completion: OpenAI.Chat.Completions.ChatCompletion;
   try {
     completion = await openai.chat.completions.create({
       model: modelName,
-      messages,
+      messages: cleanedMessages,
       temperature: 0.72,
       max_tokens: generationTokens,
       presence_penalty: 0.2,
@@ -127,7 +138,7 @@ export async function executeOpenAICompletion({
   trace?.recordLLMSpan({
     name: 'openai.chat',
     model: modelName,
-    input: messages,
+    input: cleanedMessages,
     output: candidates,
     tokensIn: completion.usage?.prompt_tokens,
     tokensOut: completion.usage?.completion_tokens,
@@ -137,6 +148,17 @@ export async function executeOpenAICompletion({
       candidates: completionCandidates,
       timeoutMs,
     },
+  });
+  auditTokenDrift({
+    provider: 'openai',
+    model: modelName,
+    estimated: estimateChatInputTokens({
+      messages: messages.map((m) => ({
+        role: String(m.role),
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+      })),
+    }),
+    observed: completion.usage?.prompt_tokens ?? 0,
   });
   return rerankCandidates(
     userMessage,
@@ -161,12 +183,29 @@ export async function executeAnthropicCompletion({
   trace,
 }: ExecuteAnthropicCompletionArgs): Promise<ProviderRankedCandidate> {
   const start = Date.now();
+  // Phase 0 P2 — split at PROMPT_CACHE_BOUNDARY sentinel so Anthropic caches
+  // the stable prefix. Falls back to whole-string send if sentinel absent.
+  // Per oreilly_ai_perf.md Finding #1 + Anthropic prompt-caching docs.
+  const CACHE_BOUNDARY = '<!--PROMPT_CACHE_BOUNDARY-->';
+  const systemForAnthropic = effectiveSystemPrompt.includes(CACHE_BOUNDARY)
+    ? (() => {
+        const [stable, volatile] = effectiveSystemPrompt.split(CACHE_BOUNDARY);
+        return [
+          {
+            type: 'text' as const,
+            text: stable.trimEnd(),
+            cache_control: { type: 'ephemeral' as const },
+          },
+          { type: 'text' as const, text: volatile.trimStart() },
+        ];
+      })()
+    : effectiveSystemPrompt;
   let claudeResponse: Awaited<ReturnType<typeof anthropic.messages.create>>;
   try {
     claudeResponse = await anthropic.messages.create({
       model: modelName,
       max_tokens: generationTokens,
-      system: effectiveSystemPrompt,
+      system: systemForAnthropic as any,
       messages: anthropicMessages,
     });
   } catch (err: any) {
@@ -197,6 +236,18 @@ export async function executeAnthropicCompletion({
     tokensOut: (claudeResponse as any).usage?.output_tokens,
     latencyMs: Date.now() - start,
     metadata: { provider: 'anthropic' },
+  });
+  auditTokenDrift({
+    provider: 'anthropic',
+    model: modelName,
+    estimated: estimateChatInputTokens({
+      systemPrompt: effectiveSystemPrompt,
+      messages: anthropicMessages.map((m: any) => ({
+        role: String(m.role),
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+      })),
+    }),
+    observed: (claudeResponse as any).usage?.input_tokens ?? 0,
   });
   return rerankCandidates(
     userMessage,
@@ -290,6 +341,15 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
       fallback: true,
       finishReason: candidate?.finishReason ?? 'unknown',
     },
+  });
+  auditTokenDrift({
+    provider: 'gemini',
+    model: geminiModel,
+    estimated: estimateChatInputTokens({
+      systemPrompt: geminiSystemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    }),
+    observed: (result as any).usageMetadata?.promptTokenCount ?? 0,
   });
   if (!text) {
     throw new Error('Empty Gemini response');

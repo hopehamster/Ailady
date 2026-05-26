@@ -73,6 +73,7 @@ import { runPostResponseOrchestration } from './postResponseOrchestrationService
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
+import { tagError } from '../failureClass';
 
 export interface ConversationMessage {
   role: 'user' | 'assistant';
@@ -3719,11 +3720,11 @@ export async function generateAIResponse(
       logInfo: (message, metadata) => functions.logger.info(message, metadata),
     });
   } catch (error: any) {
-    functions.logger.error('OpenAI API error', {
-      error: error.message,
-      type: error.type,
-      code: error.code,
-      status: error.status,
+    // Phase 0 A7 — classify failure for systemic pattern detection.
+    tagError(error, {
+      site: 'llmService.generateAIResponse',
+      provider: 'openai',
+      userId,
     });
 
     if (error.code === 'invalid_api_key' || error.status === 401) {

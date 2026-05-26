@@ -6,6 +6,7 @@ import {
   VISION_STILL_POOL,
   VISION_LIVE_POOL,
 } from './responseVariancePool';
+import { tagError } from '../failureClass';
 
 const openaiApiKey = process.env.OPENAI_API_KEY || '';
 const openai = new OpenAI({ apiKey: openaiApiKey });
@@ -218,8 +219,8 @@ Keep your response conversational (2–4 sentences). Never break character as Ar
       emotionIntensity: emotionAnalysis.emotionIntensity,
     };
   } catch (error: any) {
-    functions.logger.error('Vision analysis error', { userId, error: error.message });
-    
+    tagError(error, { site: 'visionService.analyze', userId });
+
     // Graceful fallback — variance pool avoids robotic repeat on consecutive failures
     return {
       description: 'An image was shared',
@@ -417,10 +418,7 @@ Return strict JSON:
       emotionIntensity,
     };
   } catch (error: any) {
-    functions.logger.error('Live vision analysis error', {
-      userId,
-      error: error?.message,
-    });
+    tagError(error, { site: 'visionService.analyzeLive', userId });
 
     return {
       shouldRespond: true,
