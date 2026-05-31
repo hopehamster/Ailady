@@ -7,16 +7,32 @@
  *  - Named pools (`llmStall`, `visionStill`, `visionLive`, etc.)
  *  - Each variant has optional weight (default 1) + optional tags
  *  - Picker biases away from the last K used IN THIS PROCESS for the same
- *    user (warm-instance recency dampening; cold starts pick fresh which is
- *    acceptable — users don't notice cold-start non-dampening)
+ *    user. Warm-path: in-process cache. Cold start: state is lazy-loaded
+ *    from Firestore via the shared RecencyTracker (L6) so recency now
+ *    SURVIVES cold starts and unifies across channels.
  *  - Per-user recency window is bounded (LRU 200 users × 8 per-pool history)
  *    so memory pressure stays predictable in long-running instances
+ *
+ * L6 changes:
+ *  - `pickVariant` is still SYNC (callers depend on the sync API). It reads
+ *    recency from the in-process cache only — if the cache is empty (cold
+ *    start), it picks as if there's no recency. That's intentional: blocking
+ *    on a Firestore read every pick would 2-3× latency on common fallbacks.
+ *  - After picking, `notifyPicked` fires `tracker.save(...)` async so the
+ *    pick lands in Firestore for the next cold start.
+ *  - New: `primeRecency(uid, poolNames)` lets callers `await` a warm-up
+ *    BEFORE picking. Useful when latency budget allows it (e.g. a turn
+ *    starts and we have 50ms before the response composition fires).
  *
  * NOT for routine LLM responses — those should come from the model itself,
  * which has its own natural variance. This module is for the CANNED FALLBACK
  * paths (error fallbacks, structured-template responses, system prompts) that
  * would otherwise repeat verbatim.
  */
+
+import * as functions from 'firebase-functions';
+
+import { getRecencyTracker, RecencyState } from './recencyTracker';
 
 export interface VariantOption {
   text: string;
@@ -41,6 +57,10 @@ interface RecencyEntry {
 }
 
 // Bounded LRU: 200 users × pools. Per-user map holds recency per pool.
+// This is the WARM-PATH CACHE in the L6 design — it's a write-through cache
+// over the Firestore-backed RecencyTracker. Cold-start reads here return
+// empty; Firestore catches up asynchronously via primeRecency() or via the
+// next save() that overwrites the cold entry.
 const MAX_USERS = 200;
 const userRecency = new Map<string, Map<string, RecencyEntry>>();
 
@@ -62,8 +82,46 @@ function touchUser(uid: string): Map<string, RecencyEntry> {
 }
 
 /**
+ * Internal: stamp a freshly-chosen variant into the warm cache AND fire a
+ * background save to the Firestore-backed tracker. The save is intentionally
+ * NOT awaited — variance picks must never block on persistence. The tracker
+ * itself swallows errors and logs them.
+ */
+function notifyPicked(uid: string, poolName: string, recent: number[]): void {
+  const userMap = touchUser(uid);
+  // Defensive clone so the cached entry can't be mutated by the caller's
+  // subsequent pick on the same array.
+  userMap.set(poolName, { recent: recent.slice() });
+  const tracker = getRecencyTracker();
+  // Fire-and-forget. Tracker swallows errors. Catch defensively in case the
+  // tracker implementation throws synchronously before returning a Promise.
+  try {
+    void tracker
+      .save(uid, poolName, { recent: recent.slice() })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        functions.logger.warn(
+          '[responseVariancePool] tracker.save rejected — recency cache only',
+          { uid, poolName, error: message },
+        );
+      });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    functions.logger.warn(
+      '[responseVariancePool] tracker.save threw — recency cache only',
+      { uid, poolName, error: message },
+    );
+  }
+}
+
+/**
  * Pick a variant from the pool. Variants picked recently for the same uid
  * get zero weight (avoided); remaining are weighted-random selected.
+ *
+ * SYNC by design — callers across the codebase depend on the sync signature.
+ * Recency reads come from the in-process cache only. Use `primeRecency` to
+ * warm the cache from Firestore before the first pick on a fresh instance
+ * if you need cross-cold-start anti-repeat guarantees.
  */
 export function pickVariant(
   poolName: string,
@@ -115,10 +173,11 @@ export function pickVariant(
     if (r < c.cum) { chosenIdx = c.idx; break; }
   }
 
-  // Update recency: push chosenIdx to front, trim
-  entry.recent = [chosenIdx, ...entry.recent.filter((i) => i !== chosenIdx)]
+  // Update recency: push chosenIdx to front, trim. Then write-through to
+  // the shared tracker (sync cache update + async Firestore save).
+  const newRecent = [chosenIdx, ...entry.recent.filter((i) => i !== chosenIdx)]
     .slice(0, 16);
-  userMap.set(poolName, entry);
+  notifyPicked(uid, poolName, newRecent);
 
   return pool[chosenIdx];
 }
@@ -130,6 +189,44 @@ export function pickVariantText(
   options: PickOptions = {},
 ): string {
   return pickVariant(poolName, pool, options).text;
+}
+
+/**
+ * Warm the in-process recency cache from Firestore for a uid across the
+ * given pool names. Await this once at the top of a turn to enable
+ * cross-cold-start anti-repeat; or skip and accept that the first pick
+ * after a cold start may collide with the very-most-recent prior pick.
+ *
+ * Errors are swallowed inside the tracker, so this never throws.
+ */
+export async function primeRecency(
+  uid: string,
+  poolNames: string[],
+): Promise<void> {
+  if (!uid || poolNames.length === 0) return;
+  const tracker = getRecencyTracker();
+  const userMap = touchUser(uid);
+  await Promise.all(
+    poolNames.map(async (poolName) => {
+      // Skip if already warm to avoid a needless Firestore read.
+      if (userMap.has(poolName)) return;
+      const state: RecencyState = await tracker.load(uid, poolName);
+      // Re-fetch the map after the await — LRU eviction may have rotated it.
+      const map = touchUser(uid);
+      // Don't clobber a fresh pick that landed during the load.
+      if (!map.has(poolName)) {
+        map.set(poolName, { recent: state.recent.slice() });
+      }
+    }),
+  );
+}
+
+/**
+ * Test helper: dump the in-process recency cache. Real callers should never
+ * use this — it's the equivalent of clearing all anti-repeat memory.
+ */
+export function resetRecencyForTesting(): void {
+  userRecency.clear();
 }
 
 // Tiny seeded PRNG for deterministic tests. Mulberry32.

@@ -50,6 +50,10 @@
  *    than throwing, so callers never get undefined
  */
 
+import * as functions from 'firebase-functions';
+
+import { getRecencyTracker, RecencyState } from './recencyTracker';
+
 export interface VoiceJitterOption {
   /** Pitch delta as a FRACTION (Azure SSML will use this × 100 as percent).
    *  Range +/- 0.01 (±1%). Azure path only — ElevenLabs ignores. */
@@ -90,8 +94,21 @@ interface RecencyEntry {
 }
 
 // Bounded LRU: 200 users × profile pools. Per-user map holds recency per pool.
+// L6 — this is the WARM-PATH CACHE over the Firestore-backed RecencyTracker.
+// Doc names use the `voice:` prefix to keep the voice ledger from colliding
+// with the response-pool ledger (which uses `llmStall`, `visionStill`, etc.).
 const MAX_USERS = 200;
 const userRecency = new Map<string, Map<string, RecencyEntry>>();
+
+/** Pool-name prefix used when keying into the shared RecencyTracker
+ *  Firestore ledger. The voice pool uses this so the document IDs in
+ *  `users/{uid}/recencyLedger/{poolName}` don't clash with the response
+ *  pool's `llmStall`, `visionStill`, `visionLive` doc IDs. */
+const TRACKER_POOL_PREFIX = 'voice:';
+
+function trackerPoolName(profileName: string): string {
+  return `${TRACKER_POOL_PREFIX}${profileName}`;
+}
 
 function touchUser(uid: string): Map<string, RecencyEntry> {
   let map = userRecency.get(uid);
@@ -107,6 +124,34 @@ function touchUser(uid: string): Map<string, RecencyEntry> {
   map = new Map();
   userRecency.set(uid, map);
   return map;
+}
+
+/**
+ * Internal: stamp a freshly-chosen jitter into the warm cache AND fire a
+ * background save to the Firestore-backed tracker. The save is intentionally
+ * NOT awaited — variance picks must never block on persistence.
+ */
+function notifyJitterPicked(uid: string, profileName: string, recent: number[]): void {
+  const userMap = touchUser(uid);
+  userMap.set(profileName, { recent: recent.slice() });
+  const tracker = getRecencyTracker();
+  try {
+    void tracker
+      .save(uid, trackerPoolName(profileName), { recent: recent.slice() })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        functions.logger.warn(
+          '[voiceVariancePool] tracker.save rejected — recency cache only',
+          { uid, profileName, error: message },
+        );
+      });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    functions.logger.warn(
+      '[voiceVariancePool] tracker.save threw — recency cache only',
+      { uid, profileName, error: message },
+    );
+  }
 }
 
 /** Neutral baseline — zero deltas across the board. Returned when the
@@ -176,12 +221,49 @@ export function pickVoiceJitter(
     if (r < c.cum) { chosenIdx = c.idx; break; }
   }
 
-  // Update recency: push chosenIdx to front, trim
-  entry.recent = [chosenIdx, ...entry.recent.filter((i) => i !== chosenIdx)]
+  // Update recency: push chosenIdx to front, trim. Then write-through to
+  // the shared tracker (sync cache update + async Firestore save).
+  const newRecent = [chosenIdx, ...entry.recent.filter((i) => i !== chosenIdx)]
     .slice(0, 16);
-  userMap.set(profileName, entry);
+  notifyJitterPicked(uid, profileName, newRecent);
 
   return pool[chosenIdx];
+}
+
+/**
+ * Warm the in-process recency cache from Firestore for a uid across the
+ * given profile names. Same shape + intent as responseVariancePool's
+ * primeRecency — the voice channel benefits from this on cold start so the
+ * first pick after instance churn doesn't repeat the most-recent prior
+ * jitter for that user.
+ *
+ * Errors are swallowed inside the tracker, so this never throws.
+ */
+export async function primeJitterRecency(
+  uid: string,
+  profileNames: string[],
+): Promise<void> {
+  if (!uid || profileNames.length === 0) return;
+  const tracker = getRecencyTracker();
+  const userMap = touchUser(uid);
+  await Promise.all(
+    profileNames.map(async (profileName) => {
+      if (userMap.has(profileName)) return;
+      const state: RecencyState = await tracker.load(uid, trackerPoolName(profileName));
+      const map = touchUser(uid);
+      if (!map.has(profileName)) {
+        map.set(profileName, { recent: state.recent.slice() });
+      }
+    }),
+  );
+}
+
+/**
+ * Test helper: dump the in-process recency cache. Real callers should never
+ * use this — it's the equivalent of clearing all anti-repeat memory.
+ */
+export function resetJitterRecencyForTesting(): void {
+  userRecency.clear();
 }
 
 /**
