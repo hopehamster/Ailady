@@ -198,9 +198,29 @@ class ChatService extends ChangeNotifier {
         // pattern in the user input, it returns a `crisis` payload INSTEAD
         // of a normal LLM reply. Surface to UI + skip emotion handling.
         final crisisPayload = response['crisis'];
+        // DIAG (crisis-card root-cause workflow 2026-05-26): log presence
+        // + type BEFORE the is Map guard so we can tell wire-absent vs
+        // type-mismatch vs successful-entry apart.
+        DebugLogger.log('ChatService.sendMessage', 'crisis-check', data: {
+          'crisisPresent': crisisPayload != null,
+          'crisisRuntimeType': crisisPayload?.runtimeType.toString(),
+          'isMap': crisisPayload is Map,
+        });
         if (crisisPayload is Map) {
+          // DIAG: log whether the callback is null at the exact moment we
+          // attempt to invoke it (rules in/out the post-frame race theory).
+          DebugLogger.log('ChatService.sendMessage', 'crisis-branch-entered', data: {
+            'onCrisisIsNull': onCrisis == null,
+            'crisisKeys': crisisPayload.keys.map((k) => k.toString()).toList(),
+          });
           if (onCrisis != null) {
+            DebugLogger.log('ChatService.sendMessage', 'invoking-onCrisis', data: {
+              'severity': crisisPayload['severity']?.toString(),
+            });
             onCrisis!(Map<String, dynamic>.from(crisisPayload));
+            DebugLogger.log('ChatService.sendMessage', 'onCrisis-returned');
+          } else {
+            DebugLogger.log('ChatService.sendMessage', 'CRISIS-DROPPED-onCrisis-null');
           }
           _messages.removeWhere((msg) => msg.id == optimisticMessage.id);
           _isTyping = false;

@@ -193,6 +193,18 @@ class FirebaseService {
 
       final duration = DateTime.now().difference(startTime);
       final responseData = Map<String, dynamic>.from(result.data);
+      // DIAG (crisis-card root-cause workflow 2026-05-26): log wire-level
+      // shape so we can confirm the 'crisis' key actually arrives and in
+      // what runtime type (esp. iOS Map<Object?,Object?>).
+      DebugLogger.log('FirebaseService.generateResponse', 'wire-shape', data: {
+        'topLevelKeys': responseData.keys.toList(),
+        'hasCrisis': responseData.containsKey('crisis'),
+        'crisisRuntimeType': responseData['crisis']?.runtimeType.toString(),
+        'durationMs': duration.inMilliseconds,
+      });
+      if (kDebugMode && responseData['crisis'] != null) {
+        debugPrint('🚨 DIAG crisis key present, runtimeType=${responseData['crisis'].runtimeType}');
+      }
       final qualityMeta = responseData['qualityMeta'] is Map
           ? Map<String, dynamic>.from(responseData['qualityMeta'] as Map)
           : null;

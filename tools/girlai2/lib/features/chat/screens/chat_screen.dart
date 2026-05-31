@@ -19,6 +19,7 @@ import '../../../core/utils/chat_error_handler.dart';
 import '../../../core/exceptions/chat_exception.dart';
 import '../../../core/services/context_service.dart';
 import '../../../core/services/firebase_service.dart';
+import '../../../core/utils/debug_logger.dart';
 import '../../../models/message.dart';
 import '../../avatar/room/room_background_widget.dart';
 import '../../avatar/widgets/avatar_reaction_overlay.dart';
@@ -109,25 +110,65 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _handleCrisisPayload(Map<String, dynamic> payload) {
-    if (!mounted) return;
-    HapticFeedback.heavyImpact();
-    final crisis = CrisisPayload.fromMap(payload);
+    // DIAG (crisis-card root-cause workflow 2026-05-26): log entry so we
+    // can confirm the callback is reaching this method end-to-end.
+    DebugLogger.log('ChatScreen._handleCrisisPayload', 'entry', data: {
+      'mounted': mounted,
+      'payloadKeys': payload.keys.toList(),
+      'severity': payload['severity']?.toString(),
+    });
+    if (!mounted) {
+      DebugLogger.log('ChatScreen._handleCrisisPayload', 'ABORTED-not-mounted');
+      return;
+    }
+    // DIAG: haptic in a try/catch — on emulators / devices without a motor
+    // this can throw synchronously and silently kill the sheet show.
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (e, st) {
+      DebugLogger.log('ChatScreen._handleCrisisPayload', 'haptic-threw', data: {
+        'error': e.toString(),
+        'stack': st.toString().split('\n').take(3).join(' | '),
+      });
+    }
+    late final CrisisPayload crisis;
+    try {
+      crisis = CrisisPayload.fromMap(payload);
+      DebugLogger.log('ChatScreen._handleCrisisPayload', 'fromMap-ok', data: {
+        'category': crisis.category.toString(),
+        'severity': crisis.severity.toString(),
+        'resourceCount': crisis.resources.length,
+      });
+    } catch (e, st) {
+      DebugLogger.log('ChatScreen._handleCrisisPayload', 'fromMap-threw', data: {
+        'error': e.toString(),
+        'stack': st.toString().split('\n').take(3).join(' | '),
+      });
+      return;
+    }
+    DebugLogger.log('ChatScreen._handleCrisisPayload', 'before-showModalBottomSheet');
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       isDismissible: crisis.severity != 'imminent',
       enableDrag: crisis.severity != 'imminent',
-      builder: (sheetCtx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 12,
-        ),
-        child: CrisisResourceCard(
-          payload: crisis,
-          onDismiss: () => Navigator.of(sheetCtx).maybePop(),
-        ),
-      ),
-    );
+      builder: (sheetCtx) {
+        DebugLogger.log('ChatScreen._handleCrisisPayload', 'sheet-builder-called');
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 12,
+          ),
+          child: CrisisResourceCard(
+            payload: crisis,
+            onDismiss: () => Navigator.of(sheetCtx).maybePop(),
+          ),
+        );
+      },
+    ).then((_) {
+      DebugLogger.log('ChatScreen._handleCrisisPayload', 'sheet-dismissed');
+    });
+    DebugLogger.log('ChatScreen._handleCrisisPayload', 'after-showModalBottomSheet-call');
   }
 
   @override
