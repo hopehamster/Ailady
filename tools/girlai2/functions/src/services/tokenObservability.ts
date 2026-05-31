@@ -82,3 +82,92 @@ export function auditTokenDrift(sample: TokenDriftSample): void {
     });
   }
 }
+
+/**
+ * L11.3 quick-win: split a single observed LLM call duration into
+ * estimated prefill (TTFT contributor — proportional to input tokens)
+ * and decode (TPOT contributor — proportional to output tokens). NOT
+ * real streaming TTFT/TPOT (which requires P1/L5 streaming wired); this
+ * is the non-streaming approximation per the plan's P3 phase-a.
+ *
+ * Per-provider decode rates are rough empirical defaults — refine over
+ * time once Langfuse shows actual prefill/decode-bound rate per provider.
+ *
+ * Returns { prefillEstMs, decodeEstMs } where the two sum to roughly the
+ * observed total. Caller logs both to Firestore/Langfuse instead of the
+ * single `aiResponseMs` blob.
+ */
+export interface AiCallTimingInputs {
+  provider: 'openai' | 'anthropic' | 'gemini' | string;
+  observedTotalMs: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface AiCallTimingEstimate {
+  prefillEstMs: number;
+  decodeEstMs: number;
+  decodeTokPerSecEffective: number;
+  prefillTokPerSecEffective: number;
+}
+
+// Rough decode rates per provider (tokens/sec). Refine as Langfuse data
+// accumulates. These are intentionally on the conservative side so the
+// estimator doesn't over-attribute time to prefill on slow networks.
+const DECODE_RATE_TOK_PER_SEC: Record<string, number> = {
+  openai: 120,
+  anthropic: 80,
+  gemini: 200,
+};
+
+// Approximate prefill rates (provider does prefill faster than decode).
+const PREFILL_RATE_TOK_PER_SEC: Record<string, number> = {
+  openai: 6000,
+  anthropic: 4500,
+  gemini: 8000,
+};
+
+export function estimateAiCallTiming(
+  inputs: AiCallTimingInputs,
+): AiCallTimingEstimate {
+  const decodeRate =
+    DECODE_RATE_TOK_PER_SEC[inputs.provider.toLowerCase()] ??
+    DECODE_RATE_TOK_PER_SEC.openai;
+  const prefillRate =
+    PREFILL_RATE_TOK_PER_SEC[inputs.provider.toLowerCase()] ??
+    PREFILL_RATE_TOK_PER_SEC.openai;
+
+  // Pure model-bound time (excludes network + overhead).
+  const modelPrefillMs = (inputs.inputTokens / prefillRate) * 1000;
+  const modelDecodeMs = (inputs.outputTokens / decodeRate) * 1000;
+  const modelTotalMs = modelPrefillMs + modelDecodeMs;
+
+  if (modelTotalMs <= 0 || inputs.observedTotalMs <= 0) {
+    return {
+      prefillEstMs: 0,
+      decodeEstMs: inputs.observedTotalMs,
+      decodeTokPerSecEffective: 0,
+      prefillTokPerSecEffective: 0,
+    };
+  }
+
+  // Scale model-bound times up to the observed total so the split sums
+  // to observed. The ratio is the "absorbing factor" for network +
+  // overhead — applied equally to both halves.
+  const scale = inputs.observedTotalMs / modelTotalMs;
+  const prefillEstMs = Math.round(modelPrefillMs * scale);
+  const decodeEstMs = Math.round(modelDecodeMs * scale);
+
+  return {
+    prefillEstMs,
+    decodeEstMs,
+    decodeTokPerSecEffective:
+      inputs.outputTokens > 0 && decodeEstMs > 0
+        ? Math.round((inputs.outputTokens / decodeEstMs) * 1000)
+        : 0,
+    prefillTokPerSecEffective:
+      inputs.inputTokens > 0 && prefillEstMs > 0
+        ? Math.round((inputs.inputTokens / prefillEstMs) * 1000)
+        : 0,
+  };
+}

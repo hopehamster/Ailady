@@ -67,6 +67,12 @@ import { startTrace, flushLangfuse } from './observability/langfuse';
 import { classifyIntent } from './services/intentClassifierService';
 import { recordRoute, deriveRouteLabel } from './services/routeMetricsService';
 import {
+  getDatesContextCached,
+  setDatesContextCached,
+  invalidateDatesContextCache,
+} from './services/datesContextCache';
+import { estimateAiCallTiming } from './services/tokenObservability';
+import {
   detectCrisis,
   CRISIS_RESOURCES,
   ARIA_CRISIS_REPLY,
@@ -392,6 +398,14 @@ export const generateResponse = functions
         .limit(recentHistoryFetchLimit)
         .get();
       const datesContextPromise = (async (): Promise<string> => {
+        // L11.8 — TTL cache. Hit: skip ~170ms of Firestore reads.
+        // Invalidated on every mutation path (save/delete important date,
+        // start/end virtual date).
+        const cached = getDatesContextCached(userId);
+        if (cached !== null) {
+          datesContextMs = 0;
+          return cached;
+        }
         const startedAt = Date.now();
         const [datesContextBlockRaw, virtualDateBlock] = await Promise.all([
           buildDatesContextBlock(userId, {
@@ -405,9 +419,11 @@ export const generateResponse = functions
           getVirtualDateOverlayBlock(userId).catch(() => ''),
         ]);
         datesContextMs = Date.now() - startedAt;
-        return [datesContextBlockRaw, virtualDateBlock]
+        const merged = [datesContextBlockRaw, virtualDateBlock]
           .filter((s) => s.trim().length > 0)
           .join('\n\n');
+        setDatesContextCached(userId, merged);
+        return merged;
       })();
 
       // Fire-and-forget milestone check (non-blocking — never delays the response)
@@ -461,6 +477,7 @@ export const generateResponse = functions
         datesContextBlock,
         userEnvCtx,
         featureSettings,
+        turnId,
       );
       aiResponseMs = Date.now() - aiResponseStartedAt;
 
@@ -534,11 +551,30 @@ export const generateResponse = functions
       ]);
       postPersistMs = Date.now() - persistenceStartedAt;
 
+      // L11.3 — split aiResponseMs into prefill/decode estimates using
+      // observed token counts. Non-streaming approximation (real TTFT/TPOT
+      // requires P1/L5 streaming wired). Gives us prefill-vs-decode
+      // visibility in traces today.
+      const inferredProvider: 'openai' | 'anthropic' | 'gemini' =
+        usedGemini ? 'gemini' : usedAnthropic ? 'anthropic' : 'openai';
+      const responseChars = (aiResponse.content ?? '').length;
+      const promptChars = trimmedMessage.length;
+      const aiTimingSplit = estimateAiCallTiming({
+        provider: inferredProvider,
+        observedTotalMs: aiResponseMs,
+        inputTokens: Math.ceil(promptChars / 4),
+        outputTokens: Math.ceil(responseChars / 4),
+      });
+
       const mergedStageTimingsMs = {
         ...(aiResponse.qualityMeta?.stageTimingsMs ?? {}),
         historyFetchMs,
         datesContextMs,
         aiResponseMs,
+        aiResponsePrefillEstMs: aiTimingSplit.prefillEstMs,
+        aiResponseDecodeEstMs: aiTimingSplit.decodeEstMs,
+        decodeTokPerSecEffective: aiTimingSplit.decodeTokPerSecEffective,
+        prefillTokPerSecEffective: aiTimingSplit.prefillTokPerSecEffective,
         postPersistMs,
         totalCallableMs: Date.now() - callableStartedAt,
       };
@@ -1888,6 +1924,7 @@ export const saveUserImportantDate = functions
 
     try {
       const dateId = await saveImportantDate(userId, { label, date, category, recurs: !!recurs, id });
+      invalidateDatesContextCache(userId); // L11.8 — keep cache fresh
       return { success: true, id: dateId };
     } catch (error: any) {
       functions.logger.error('saveUserImportantDate error', { userId, error: error?.message });
@@ -1911,6 +1948,7 @@ export const deleteUserImportantDate = functions
 
     try {
       await deleteImportantDate(userId, id);
+      invalidateDatesContextCache(userId); // L11.8 — keep cache fresh
       return { success: true };
     } catch (error: any) {
       functions.logger.error('deleteUserImportantDate error', { userId, error: error?.message });
@@ -2198,6 +2236,7 @@ export const startVirtualDate = functions
       throw new functions.https.HttpsError('invalid-argument', 'Invalid activityType');
     }
     const result = await startVirtualDateSession(userId, activityType);
+    invalidateDatesContextCache(userId); // L11.8 — virtual date affects datesContextBlock
     return result;
   });
 
@@ -2208,6 +2247,7 @@ export const endVirtualDate = functions
       throw new functions.https.HttpsError('unauthenticated', 'Must be authenticated');
     }
     await endVirtualDateSession(context.auth.uid);
+    invalidateDatesContextCache(context.auth.uid); // L11.8 — virtual date end affects datesContextBlock
     return { success: true };
   });
 

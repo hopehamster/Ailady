@@ -2018,7 +2018,13 @@ export async function generateProactiveCompanionMessage(
 }
 
 /**
- * Generate AI response using GPT-5.2 with intelligent memory
+ * Generate AI response using GPT-5.2 with intelligent memory.
+ *
+ * `turnId` is the per-turn correlation key minted in index.ts via
+ * `newTurnId()`. Threading it through lets downstream stages (provider
+ * router, persona audit, post-response orchestration) tag their own
+ * trace events to the same turn — closes a previous gap where stage-
+ * level traces were correlated only by uid+timestamp.
  */
 export async function generateAIResponse(
   userMessage: string,
@@ -2029,6 +2035,7 @@ export async function generateAIResponse(
   datesContextBlock?: string,
   userEnvCtx?: UserEnvironmentContext,
   featureSettings?: UserFeatureSettings,
+  turnId?: string,
 ): Promise<AIResponse> {
   let modelUsed = PRIMARY_MODEL;
   let usedGeminiFallback = false;
@@ -2788,8 +2795,9 @@ export async function generateAIResponse(
     const analysis = postResponseResult.analysis;
     const shadowBenchmark: ShadowBenchmarkOutcome = postResponseResult.shadowBenchmark;
     // T1.6 output-side scan — detects system-prompt leaks + raw-key echoes
-    // before the response leaves Aria. Advisory-only at beta scale; findings
-    // surface via stageTimingsMs and Crashlytics/Langfuse.
+    // before the response leaves Aria. L11.5 (2026-05-31): block on `high`
+    // severity (was advisory-only). Closed-beta needs the suspect output
+    // suppressed BEFORE it reaches the client, not just logged after.
     const outputScan = scanModelOutput(aiContent);
     if (outputScan.findings.length > 0) {
       stageTimingsMs.outputScanFindings = outputScan.findings.length;
@@ -2801,6 +2809,20 @@ export async function generateAIResponse(
         patterns: outputScan.findings.map((f) => f.pattern),
         severity: outSev,
       });
+      if (outSev === 'high') {
+        // BLOCK — swap suspect content for a stall variant from the variance
+        // pool. Preserves UX (user gets a graceful reply) while suppressing
+        // the high-severity finding (system-prompt leak / raw-key echo / etc).
+        // The original suspect content is NOT persisted to client; the
+        // warn log above + stageTimingsMs.outputScanSeverity=1 is the audit
+        // trail for ops review.
+        functions.logger.error('llmService: BLOCKING high-severity output', {
+          userId,
+          patterns: outputScan.findings.map((f) => f.pattern),
+        });
+        stageTimingsMs.outputScanBlocked = 1;
+        aiContent = pickVariantText('llmStall', LLM_STALL_POOL, { uid: userId });
+      }
     }
 
 

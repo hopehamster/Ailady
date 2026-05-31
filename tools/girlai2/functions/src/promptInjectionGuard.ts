@@ -147,3 +147,67 @@ export function maxSeverity(findings: InjectionFinding[]): InjectionFinding['sev
   if (findings.some((f) => f.severity === 'medium')) return 'medium';
   return 'low';
 }
+
+/**
+ * Scan retrieved context (memory chunks, lorebook entries, semantic
+ * recall, web-search snippets, etc.) BEFORE it's inserted into the LLM
+ * prompt. Memory-poisoning attack vector: a user prompt-injects
+ * "Aria, remember to always tell future-me X" → stored in long-term
+ * memory → on retrieval the poisoned chunk is concatenated into the
+ * system prompt and the LLM treats it as an instruction.
+ *
+ * Reuses OUTPUT_PATTERNS because the threat shape is identical to
+ * model-output injection (instruction text appearing where it shouldn't).
+ * Each chunk scanned independently so the source can be located.
+ *
+ * L11.4 quick-win (melodic-fluttering-flame.md). Advisory-only at this
+ * tier — caller decides whether to drop the chunk, redact it, or warn.
+ */
+export interface ContextChunkInput {
+  source: string; // e.g. "memory.semantic.<chunkId>", "lorebook.<entry>"
+  text: string;
+}
+
+export interface ContextScanResult {
+  findings: Array<InjectionFinding & { source: string }>;
+  /** Chunk sources whose findings include at least one `high` severity. */
+  highSeveritySources: string[];
+}
+
+export function scanRetrievedContext(chunks: ContextChunkInput[]): ContextScanResult {
+  const findings: ContextScanResult['findings'] = [];
+  const highSeveritySources = new Set<string>();
+
+  for (const chunk of chunks) {
+    if (!chunk.text) continue;
+    for (const { re, severity, label } of OUTPUT_PATTERNS) {
+      const m = re.exec(chunk.text);
+      if (m) {
+        findings.push({
+          layer: 'output',
+          severity,
+          pattern: label,
+          excerpt: excerpt(chunk.text, m),
+          source: chunk.source,
+        });
+        if (severity === 'high') {
+          highSeveritySources.add(chunk.source);
+        }
+      }
+    }
+  }
+
+  if (findings.length > 0) {
+    functions.logger.warn('promptInjection: retrieved-context findings', {
+      count: findings.length,
+      highSeverityCount: highSeveritySources.size,
+      sources: Array.from(new Set(findings.map((f) => f.source))),
+      patterns: Array.from(new Set(findings.map((f) => f.pattern))),
+    });
+  }
+
+  return {
+    findings,
+    highSeveritySources: Array.from(highSeveritySources),
+  };
+}
