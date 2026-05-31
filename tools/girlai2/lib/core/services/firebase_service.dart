@@ -9,6 +9,7 @@ import '../utils/chat_error_handler.dart';
 import '../utils/debug_logger.dart';
 import '../utils/emulator_config.dart';
 import 'firebase_api_types.dart';
+import 'important_dates_api_service.dart';
 import 'voice_error_mapping.dart' as voice_err;
 // L10 phase 1: data classes extracted to firebase_api_types.dart.
 // Re-exported here so existing consumers
@@ -527,6 +528,10 @@ class FirebaseService {
   // extracted to ./voice_error_mapping.dart as L10 phase 1.
 
   // ── Important Dates ──────────────────────────────────────────────────────
+  // L10 phase 2: extracted to ./important_dates_api_service.dart.
+  // FirebaseService keeps the same public API; method bodies delegate to the
+  // ImportantDatesApiService singleton so the 16 consumer files
+  // (FirebaseService().saveUserImportantDate(...) etc.) keep working unchanged.
 
   /// Save (create or update) an important date for the current user.
   /// Returns the document ID of the saved date.
@@ -536,30 +541,18 @@ class FirebaseService {
     required String category,
     required bool recurs,
     String? id,
-  }) async {
-    final user = _auth.currentUser;
-    if (user == null) throw ChatException('Please sign in to continue.');
-
-    final callable = _functions.httpsCallable('saveUserImportantDate');
-    final result = await callable.call(<String, dynamic>{
-      'label': label,
-      'date': date,
-      'category': category,
-      'recurs': recurs,
-      if (id != null) 'id': id,
-    });
-    final data = result.data as Map<String, dynamic>?;
-    return data?['id'] as String? ?? '';
-  }
+  }) =>
+      ImportantDatesApiService.instance().saveUserImportantDate(
+        label: label,
+        date: date,
+        category: category,
+        recurs: recurs,
+        id: id,
+      );
 
   /// Delete an important date by ID for the current user.
-  Future<void> deleteUserImportantDate(String dateId) async {
-    final user = _auth.currentUser;
-    if (user == null) throw ChatException('Please sign in to continue.');
-
-    final callable = _functions.httpsCallable('deleteUserImportantDate');
-    await callable.call(<String, dynamic>{'id': dateId});
-  }
+  Future<void> deleteUserImportantDate(String dateId) =>
+      ImportantDatesApiService.instance().deleteUserImportantDate(dateId);
 
   /// Fetch important dates for the current user.
   ///
@@ -570,22 +563,11 @@ class FirebaseService {
   Future<List<Map<String, dynamic>>> getUserImportantDates({
     bool upcomingOnly = false,
     int daysAhead = 7,
-  }) async {
-    final user = _auth.currentUser;
-    if (user == null) throw ChatException('Please sign in to continue.');
-
-    final callable = _functions.httpsCallable('getUserImportantDates');
-    final result = await callable.call(<String, dynamic>{
-      if (upcomingOnly) 'upcomingOnly': true,
-      if (upcomingOnly) 'daysAhead': daysAhead,
-    });
-    final data = result.data as Map<String, dynamic>?;
-    final dates = data?['dates'] as List<dynamic>? ?? [];
-    return dates
-        .whereType<Map>()
-        .map((d) => Map<String, dynamic>.from(d))
-        .toList();
-  }
+  }) =>
+      ImportantDatesApiService.instance().getUserImportantDates(
+        upcomingOnly: upcomingOnly,
+        daysAhead: daysAhead,
+      );
 
   // ── FCM Token ────────────────────────────────────────────────────────────
 
