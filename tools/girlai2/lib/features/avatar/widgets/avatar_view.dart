@@ -14,9 +14,10 @@ import '../motion/avatar_motion_controller.dart';
 import '../live2d/live2d_bridge.dart';
 import 'avatar_blend_data.dart';
 import 'avatar_emotion_mapping.dart' as emo;
+import 'avatar_gesture_burst.dart';
 import 'avatar_motion_tuning.dart' as tune;
 import 'avatar_view_types.dart';
-import 'avatar_viseme_parser.dart' as visemes;
+import 'avatar_viseme_controller.dart';
 
 /// AvatarView renders the native Live2D character and applies emotion/lip-sync.
 class AvatarView extends StatefulWidget {
@@ -51,7 +52,8 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   static const double _bustUpOffsetX = 0.04;
   static const double _bustUpOffsetY = -0.70;
   static const Duration _animationFrameInterval = Duration(milliseconds: 16);
-  static const Duration _fallbackLipSyncInterval = Duration(milliseconds: 66);
+  // _fallbackLipSyncInterval moved into avatar_viseme_controller.dart
+  // along with the loop that uses it (L9 phase 2).
   // Idle + speaking pose ranges extracted to ./avatar_blend_data.dart as
   // L11.6 quick-win (melodic-fluttering-flame.md). Use kAvatarIdlePoseRange
   // and kAvatarSpeakingPoseRange below.
@@ -66,7 +68,17 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     baseOffsetY: _bustUpOffsetY,
     baseScale: _bustUpScale,
   );
-  final List<Timer> _visemeTimers = <Timer>[];
+  // Viseme / lip-sync / blend playback extracted to
+  // ./avatar_viseme_controller.dart as L9 phase 2. The controller owns
+  // _visemeTimers, _mouthBlendTimer, _fallbackLipSyncTimer,
+  // _blendPlaybackTimer, _lastBlendFrame, _queuedVisemeTimelineJson,
+  // and all the discrete + smoothed mouth-target state.
+  late final AvatarVisemeController _visemeController;
+  // Speaking gesture-burst envelope extracted to
+  // ./avatar_gesture_burst.dart as L9 phase 2. Owns the 4 fields that
+  // track burst window/cooldown/peak.
+  final AvatarGestureBurstController _gestureBurst =
+      AvatarGestureBurstController();
 
   bool _platformViewReady = false;
   bool _modelLoaded = false;
@@ -80,31 +92,10 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   String _activeExpression = 'Neutral';
   String _activeExpressionStyle = 'neutral';
   double _activeEmotionIntensity = 0.5;
-  String? _queuedVisemeTimelineJson;
-  double _lastMouthOpen = 0.0;
-  double _targetMouthOpen = 0.0;
-  double _targetMouthForm = 0.0;
-  double _targetMouthPucker = 0.0;
-  double _targetMouthFunnel = 0.0;
-  double _targetMouthX = 0.0;
-  double _speechEnergyTarget = 0.0;
-  double _speechEnergyCurrent = 0.0;
-  double _currentMouthForm = 0.0;
-  double _currentMouthPucker = 0.0;
-  double _currentMouthFunnel = 0.0;
-  double _currentMouthX = 0.0;
-  Timer? _mouthBlendTimer;
-  Timer? _fallbackLipSyncTimer;
-  Timer? _blendPlaybackTimer;
-  int _lastBlendFrame = -1;
   Timer? _idleBehaviorTimer;
   Timer? _blinkScheduleTimer;
   Timer? _healthCheckTimer;
   Timer? _modelRetryTimer;
-  int _gestureBurstStartMs = 0;
-  int _gestureBurstEndMs = 0;
-  int _gestureBurstCooldownUntilMs = 0;
-  double _gestureBurstPeak = 0.0;
   final List<Timer> _blinkStepTimers = <Timer>[];
   final math.Random _random = math.Random();
   double _idleMotionPhase = 0.0;
@@ -134,6 +125,26 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _visemeController = AvatarVisemeController(
+      bridge: _bridge,
+      isSpeaking: () => _wasSpeaking,
+      isModelLoaded: () => _modelLoaded,
+      onGestureBurst: ({double baseStrength = 0.52}) =>
+          _triggerSpeakingGestureBurst(baseStrength: baseStrength),
+      onSettled: () =>
+          _applyEmotionIntensity(_activeExpressionStyle, _activeEmotionIntensity),
+    );
+    _refreshVisemeInputs();
+  }
+
+  void _refreshVisemeInputs() {
+    _visemeController.updateInputs(
+      AvatarVisemePlaybackInputs(
+        visemeTimelineJson: widget.visemeTimelineJson,
+        blendTimeline: widget.blendTimeline,
+        audioPlayer: widget.audioPlayer,
+      ),
+    );
   }
 
   @override
@@ -145,6 +156,8 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant AvatarView oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    _refreshVisemeInputs();
 
     if (widget.isSpeaking != oldWidget.isSpeaking) {
       if (widget.isSpeaking) {
@@ -160,16 +173,16 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
         (widget.visemeTimelineJson != oldWidget.visemeTimelineJson ||
             !identical(widget.blendTimeline, oldWidget.blendTimeline))) {
       if (_modelLoaded) {
-        _stopBlendPlayback();
-        _cancelVisemeTimers();
+        _visemeController.stopBlendPlayback();
+        _visemeController.cancelVisemeTimers();
         if (widget.blendTimeline.isNotEmpty && widget.audioPlayer != null) {
-          _stopFallbackLipSync();
-          _startBlendPlayback();
+          _visemeController.stopFallbackLipSync();
+          _visemeController.startBlendPlayback();
         } else {
-          _scheduleVisemeEvents();
+          _visemeController.scheduleVisemeEvents();
         }
       } else {
-        _queuedVisemeTimelineJson = widget.visemeTimelineJson;
+        _visemeController.queueTimelineForReplay(widget.visemeTimelineJson);
       }
     }
   }
@@ -223,10 +236,8 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _cancelVisemeTimers();
-    _stopBlendPlayback();
-    _stopFallbackLipSync();
-    _stopMouthBlendLoop();
+    _visemeController.dispose();
+    _gestureBurst.clear();
     _stopSpeakingMicroMotion();
     _stopIdleBehavior(reset: true);
     _stopViewWander(reset: true);
@@ -537,14 +548,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
         return;
       }
 
-      _targetMouthOpen = 0.0;
-      _targetMouthForm = 0.0;
-      _targetMouthPucker = 0.0;
-      _targetMouthFunnel = 0.0;
-      _lastMouthOpen = 0.0;
-      _currentMouthForm = 0.0;
-      _currentMouthPucker = 0.0;
-      _currentMouthFunnel = 0.0;
+      _visemeController.resetState();
       _needsResumeRecovery = false;
       _healthMissStreak = 0;
       _stalledFrameStreak = 0;
@@ -626,258 +630,49 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
 
   void _startSpeaking() {
     if (!_modelLoaded) {
-      _queuedVisemeTimelineJson = widget.visemeTimelineJson;
+      _visemeController.queueTimelineForReplay(widget.visemeTimelineJson);
       return;
     }
     _wasSpeaking = true;
     _syncMotionState(interaction: true);
     _triggerSpeakingGestureBurst(baseStrength: 0.66);
-    _ensureMouthBlendLoop();
+    _visemeController.ensureMouthBlendLoop();
     _startSpeakingMicroMotion();
     // FacialExpression blendshapes (premium): use audio-clock polling.
     // Fall back to wall-clock viseme timers when blendTimeline is empty.
     if (widget.blendTimeline.isNotEmpty && widget.audioPlayer != null) {
-      _stopFallbackLipSync();
-      _startBlendPlayback();
+      _visemeController.stopFallbackLipSync();
+      _visemeController.startBlendPlayback();
     } else {
-      _scheduleVisemeEvents();
+      _visemeController.scheduleVisemeEvents();
     }
   }
 
   void _stopSpeaking() {
-    _queuedVisemeTimelineJson = null;
+    _visemeController.clearQueuedTimeline();
     if (!_wasSpeaking) return;
     _wasSpeaking = false;
     _syncMotionState(interaction: true);
-    _stopBlendPlayback();
-    _stopFallbackLipSync();
+    _visemeController.stopBlendPlayback();
+    _visemeController.stopFallbackLipSync();
     _stopSpeakingMicroMotion();
     _clearGestureBurst();
-    _cancelVisemeTimers();
-    _setMouthTargets(const <String, double>{
+    _visemeController.cancelVisemeTimers();
+    _visemeController.setMouthTargets(const <String, double>{
       'ParamMouthOpenY': 0.0,
       'ParamMouthForm': 0.0,
       'MouthPucker': 0.0,
       'MouthFunnel': 0.0,
     });
-    _speechEnergyTarget = 0.0;
-    _ensureMouthBlendLoop();
+    _visemeController.zeroSpeechEnergyTarget();
+    _visemeController.ensureMouthBlendLoop();
   }
 
-  void _scheduleVisemeEvents() {
-    if (!_modelLoaded) {
-      _queuedVisemeTimelineJson = widget.visemeTimelineJson;
-      return;
-    }
-
-    _cancelVisemeTimers();
-
-    final timelineJson = _queuedVisemeTimelineJson ?? widget.visemeTimelineJson;
-    _queuedVisemeTimelineJson = null;
-
-    final timeline = _parseTimeline(timelineJson);
-    if (timeline.events.isEmpty) {
-      _startFallbackLipSync();
-      return;
-    }
-
-    _stopFallbackLipSync();
-    _ensureMouthBlendLoop();
-
-    for (final event in timeline.events) {
-      final timer = Timer(
-        Duration(milliseconds: event.audioOffsetMs.round()),
-        () {
-          if (!_wasSpeaking) return;
-          final params = _mapVisemeToMouthParams(event.visemeId);
-          final targetOpen = (params['ParamMouthOpenY'] ?? 0.0).toDouble();
-          if (targetOpen >= 0.72) {
-            _triggerSpeakingGestureBurst(baseStrength: 0.54);
-          }
-          _setMouthTargets(params);
-        },
-      );
-      _visemeTimers.add(timer);
-    }
-
-    if (timeline.durationMs > 0) {
-      final endTimer = Timer(
-        Duration(milliseconds: timeline.durationMs.round() + 60),
-        () {
-          if (!_wasSpeaking) return;
-          _setMouthTargets(const <String, double>{
-            'ParamMouthOpenY': 0.05,
-            'ParamMouthForm': 0.0,
-            'MouthPucker': 0.0,
-            'MouthFunnel': 0.0,
-          });
-        },
-      );
-      _visemeTimers.add(endTimer);
-    }
-  }
-
-  // _parseTimeline + _mapVisemeToMouthParams extracted to
-  // ./avatar_viseme_parser.dart (L9 phase 1). Delegates keep the
-  // original method names so call sites don't change.
-  VisemeTimeline _parseTimeline(String jsonValue) =>
-      visemes.parseVisemeTimeline(jsonValue);
-
-  Map<String, double> _mapVisemeToMouthParams(int visemeId) =>
-      visemes.mapVisemeToMouthParams(visemeId);
-
-  void _setMouthTargets(Map<String, double> params) {
-    _targetMouthOpen = (params['ParamMouthOpenY'] ?? _targetMouthOpen)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    _targetMouthForm = (params['ParamMouthForm'] ?? _targetMouthForm)
-        .clamp(-1.0, 1.0)
-        .toDouble();
-    _targetMouthPucker = (params['MouthPucker'] ?? _targetMouthPucker)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    _targetMouthFunnel = (params['MouthFunnel'] ?? _targetMouthFunnel)
-        .clamp(0.0, 1.0)
-        .toDouble();
-    _targetMouthX =
-        (params['MouthX'] ?? _targetMouthX).clamp(-1.0, 1.0).toDouble();
-    _speechEnergyTarget = (_targetMouthOpen * 0.82 +
-            (_targetMouthForm.abs() * 0.12) +
-            (((_targetMouthPucker + _targetMouthFunnel) * 0.5) * 0.06))
-        .clamp(0.0, 1.0)
-        .toDouble();
-
-    if (_wasSpeaking && _speechEnergyTarget >= 0.68) {
-      _triggerSpeakingGestureBurst(
-        baseStrength: 0.40 + (_speechEnergyTarget * 0.18),
-      );
-    }
-  }
-
-  void _ensureMouthBlendLoop() {
-    if (_mouthBlendTimer != null) {
-      return;
-    }
-
-    _mouthBlendTimer = Timer.periodic(_animationFrameInterval, (_) {
-      // In FacialExpression blend mode the targets are already smooth 60fps data,
-      // so use a higher alpha to track closely. Viseme-ID mode uses a softer alpha
-      // since targets jump discretely every 100ms+.
-      final bool isBlendMode = _wasSpeaking && widget.blendTimeline.isNotEmpty;
-      final alpha = isBlendMode ? 0.78 : (_wasSpeaking ? 0.58 : 0.32);
-
-      _lastMouthOpen += (_targetMouthOpen - _lastMouthOpen) * alpha;
-      _currentMouthForm += (_targetMouthForm - _currentMouthForm) * alpha;
-      _currentMouthPucker += (_targetMouthPucker - _currentMouthPucker) * alpha;
-      _currentMouthFunnel += (_targetMouthFunnel - _currentMouthFunnel) * alpha;
-      _currentMouthX += (_targetMouthX - _currentMouthX) * alpha;
-      final speechAlpha = _wasSpeaking ? 0.52 : 0.20;
-      _speechEnergyCurrent +=
-          (_speechEnergyTarget - _speechEnergyCurrent) * speechAlpha;
-
-      _bridge.setParameters(<String, double>{
-        'ParamMouthOpenY': _lastMouthOpen.clamp(0.0, 1.0),
-        'ParamMouthForm': _currentMouthForm.clamp(-1.0, 1.0),
-        'MouthPucker': _currentMouthPucker.clamp(0.0, 1.0),
-        'MouthFunnel': _currentMouthFunnel.clamp(0.0, 1.0),
-        'MouthX': _currentMouthX.clamp(-1.0, 1.0),
-      });
-
-      if (!_wasSpeaking) {
-        _speechEnergyTarget = 0.0;
-        final settled = (_lastMouthOpen - _targetMouthOpen).abs() < 0.01 &&
-            (_currentMouthForm - _targetMouthForm).abs() < 0.01 &&
-            (_currentMouthPucker - _targetMouthPucker).abs() < 0.01 &&
-            (_currentMouthFunnel - _targetMouthFunnel).abs() < 0.01 &&
-            (_currentMouthX - _targetMouthX).abs() < 0.01;
-
-        if (settled && _targetMouthOpen <= 0.01) {
-          _stopMouthBlendLoop();
-          _applyEmotionIntensity(
-              _activeExpressionStyle, _activeEmotionIntensity);
-        }
-      }
-    });
-  }
-
-  void _stopMouthBlendLoop() {
-    _mouthBlendTimer?.cancel();
-    _mouthBlendTimer = null;
-  }
-
-  void _startFallbackLipSync() {
-    _stopFallbackLipSync();
-    if (!_wasSpeaking || !_modelLoaded) {
-      return;
-    }
-
-    var phase = 0.0;
-    _ensureMouthBlendLoop();
-    _fallbackLipSyncTimer =
-        Timer.periodic(_fallbackLipSyncInterval, (_) {
-      if (!_wasSpeaking) {
-        return;
-      }
-
-      phase += 0.55;
-      final pulse = 0.35 + (math.sin(phase) * 0.22);
-      _setMouthTargets(<String, double>{
-        'ParamMouthOpenY': pulse.clamp(0.08, 0.72),
-        'ParamMouthForm': math.sin(phase * 0.6) * 0.12,
-        'MouthPucker': 0.0,
-        'MouthFunnel': 0.0,
-      });
-      _ensureMouthBlendLoop();
-    });
-  }
-
-  void _stopFallbackLipSync() {
-    _fallbackLipSyncTimer?.cancel();
-    _fallbackLipSyncTimer = null;
-  }
-
-  /// Audio-clock driven blendshape playback (premium FacialExpression mode).
-  /// Polls every 16ms; uses audioPlayer.position as master clock to compute
-  /// the 60fps frame index, then maps the 5-float compact frame to mouth params.
-  void _startBlendPlayback() {
-    _stopBlendPlayback();
-    _lastBlendFrame = -1;
-    _blendPlaybackTimer = Timer.periodic(const Duration(milliseconds: 16), (_) {
-      if (!_wasSpeaking) return;
-      final audioMs = widget.audioPlayer?.position.inMilliseconds ?? 0;
-      // 60fps frame index from audio clock (integer division avoids float drift)
-      final frameIdx = (audioMs * 60 ~/ 1000);
-      if (frameIdx == _lastBlendFrame) return; // no new frame yet
-      _lastBlendFrame = frameIdx;
-
-      // Look up the exact frame; walk back up to 4 frames to hold-last on gaps
-      List<double>? frame;
-      for (int i = frameIdx; i >= math.max(0, frameIdx - 4); i--) {
-        frame = widget.blendTimeline[i];
-        if (frame != null) break;
-      }
-      if (frame == null || frame.length < 5) return;
-
-      // frame = [openY, funnel, pucker, mouthX, form]
-      _setMouthTargets(<String, double>{
-        'ParamMouthOpenY': frame[0],
-        'MouthFunnel': frame[1],
-        'MouthPucker': frame[2],
-        'MouthX': frame[3],
-        'ParamMouthForm': frame[4],
-      });
-      // Trigger a subtle gesture burst on strong syllables
-      if (frame[0] >= 0.72) {
-        _triggerSpeakingGestureBurst(baseStrength: 0.50);
-      }
-    });
-  }
-
-  void _stopBlendPlayback() {
-    _blendPlaybackTimer?.cancel();
-    _blendPlaybackTimer = null;
-    _lastBlendFrame = -1;
-  }
+  // _parseTimeline + _mapVisemeToMouthParams previously lived here as
+  // delegates after L9 phase 1. L9 phase 2 moved every call site into
+  // avatar_viseme_controller.dart, so the delegates are dropped — call
+  // visemes.parseVisemeTimeline / visemes.mapVisemeToMouthParams
+  // directly if you need them outside the controller.
 
   void _startSpeakingMicroMotion() {
     // Speaking micro-motion is now driven inside the idle behavior loop.
@@ -1025,45 +820,22 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   MotionTuning _resolveMotionTuning() =>
       tune.resolveMotionTuning(_activeExpressionStyle);
 
+  // Gesture-burst envelope extracted to ./avatar_gesture_burst.dart
+  // (L9 phase 2). These wrappers preserve the original method names so
+  // call sites inside _AvatarViewState don't change.
   void _triggerSpeakingGestureBurst({double baseStrength = 0.52}) {
-    if (!_wasSpeaking) {
-      return;
-    }
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (nowMs < _gestureBurstCooldownUntilMs) {
-      return;
-    }
-
-    final scaled = (baseStrength + (_activeEmotionIntensity * 0.20))
-        .clamp(0.22, 1.0)
-        .toDouble();
-    final durationMs = (240 + (220 * _activeEmotionIntensity)).round();
-
-    _gestureBurstStartMs = nowMs;
-    _gestureBurstEndMs = nowMs + durationMs;
-    _gestureBurstCooldownUntilMs = nowMs + 520;
-    _gestureBurstPeak = scaled;
+    _gestureBurst.trigger(
+      isSpeaking: _wasSpeaking,
+      intensity: _activeEmotionIntensity,
+      nowMs: DateTime.now().millisecondsSinceEpoch,
+      baseStrength: baseStrength,
+    );
   }
 
-  double _readGestureBurstEnvelope(int nowMs) {
-    if (_gestureBurstEndMs <= _gestureBurstStartMs ||
-        nowMs >= _gestureBurstEndMs) {
-      _gestureBurstPeak = 0.0;
-      return 0.0;
-    }
-    final progress = ((nowMs - _gestureBurstStartMs) /
-            (_gestureBurstEndMs - _gestureBurstStartMs))
-        .clamp(0.0, 1.0);
-    final envelope = math.sin(progress * math.pi) * _gestureBurstPeak;
-    return envelope.clamp(0.0, 1.0).toDouble();
-  }
+  double _readGestureBurstEnvelope(int nowMs) =>
+      _gestureBurst.readEnvelope(nowMs);
 
-  void _clearGestureBurst() {
-    _gestureBurstStartMs = 0;
-    _gestureBurstEndMs = 0;
-    _gestureBurstCooldownUntilMs = 0;
-    _gestureBurstPeak = 0.0;
-  }
+  void _clearGestureBurst() => _gestureBurst.clear();
 
   void _startIdleBehavior() {
     if (!_modelLoaded) {
@@ -1096,7 +868,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
       if (_wasSpeaking) {
         final preset = _resolveTalkPreset();
         final motion = _resolveMotionTuning();
-        final speechEnergy = (_speechEnergyCurrent *
+        final speechEnergy = (_visemeController.speechEnergyCurrent *
                 (0.84 + (motion.energy * 0.18)))
             .clamp(0.0, 1.0)
             .toDouble();
@@ -1401,7 +1173,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     final nowSec =
         DateTime.now().microsecondsSinceEpoch / Duration.microsecondsPerSecond;
     final intensity = _activeEmotionIntensity.clamp(0.0, 1.0).toDouble();
-    final speechEnergy = _speechEnergyCurrent.clamp(0.0, 1.0).toDouble();
+    final speechEnergy = _visemeController.speechEnergyCurrent.clamp(0.0, 1.0).toDouble();
     final styleGain = switch (_activeExpressionStyle) {
       'excited' => 1.22,
       'angry' => 1.12,
@@ -1633,12 +1405,10 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     return (_random.nextDouble() * 2.0 - 1.0) * range;
   }
 
-  void _cancelVisemeTimers() {
-    for (final timer in _visemeTimers) {
-      timer.cancel();
-    }
-    _visemeTimers.clear();
-  }
+  // _cancelVisemeTimers + _visemeTimers extracted to
+  // ./avatar_viseme_controller.dart (L9 phase 2). Use
+  // _visemeController.cancelVisemeTimers() if you need to clear them
+  // from inside _AvatarViewState.
 
   @override
   Widget build(BuildContext context) {
