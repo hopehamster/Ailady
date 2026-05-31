@@ -6,7 +6,7 @@ const { composePrompt, COMPONENT_PRIORITY, CACHE_BOUNDARY_MARKER } =
 
 const persona = { name: 'persona_core', text: 'You are Aria.', stable: true };
 const safety = { name: 'safety_policy', text: 'Be supportive.', stable: true };
-const semKV = { name: 'user_semantic_kv', text: 'User likes tea.', stable: false };
+const semKV = { name: 'user_semantic_kv', text: 'User likes tea.', stable: true };
 const recall = { name: 'recent_recall', text: 'Earlier they said hi.', stable: false };
 const win = { name: 'working_window', text: 'turn 1 -> turn 2 -> turn 3', stable: false };
 
@@ -20,7 +20,7 @@ test('basic compose puts stable before volatile with cache boundary', () => {
   const boundIdx = out.text.indexOf(CACHE_BOUNDARY_MARKER);
   assert.ok(persIdx < boundIdx);
   assert.ok(safIdx < boundIdx);
-  assert.ok(boundIdx < semIdx);
+  assert.ok(semIdx < boundIdx, 'user_semantic_kv is stable, should be before boundary');
   assert.ok(boundIdx < recIdx);
 });
 

@@ -6,8 +6,9 @@ import {
   type ConversationPolicyPromptContext,
   type ConversationPolicySignalSource,
 } from './conversationPolicyService';
-import { type PromptAugmentShape, compactPromptAugmentsForRoute, composeSystemPromptSections } from './promptCostService';
+import { type PromptAugmentShape, compactPromptAugmentsForRoute } from './promptCostService';
 import { buildChatModeOverlayBlock, type ChatMode } from './chatModeService';
+import { composePrompt, type PromptComponent } from './promptComposer';
 
 export interface ResponseAssemblyMessage {
   role: 'user' | 'assistant';
@@ -63,8 +64,30 @@ export function buildResponseAssembly({
 
   const chatModeBlock = buildChatModeOverlayBlock(chatMode);
 
-  const effectiveSystemPrompt = composeSystemPromptSections([
-    systemPrompt,
+  const policyDirectivesBlock = buildConversationPolicyDirectives(
+    policyPlan,
+    policySignals,
+    policyContext,
+  );
+  const policyEnhancersBlock = buildConversationPolicyEnhancers(
+    userMessage,
+    policyPlan,
+    policySignals,
+    policyContext,
+  );
+
+  // Priority-based assembly via composePrompt:
+  //   persona_core (100) + user_semantic_kv (80) form the stable prefix
+  //   (cache hit zone for Anthropic prompt caching). recent_recall (60) +
+  //   working_window (40) form the volatile tail. The cache boundary marker
+  //   sits between.
+  // Policy directives + enhancers stay in working_window (end of prompt) to
+  // preserve their attention recency advantage from the previous linear
+  // assembly — they shape Aria's tone, length, and question discipline, and
+  // moving them up the prompt would shift voice. safety_policy slot left
+  // unused for now (reserved for future hard-boundary content that benefits
+  // from the cache prefix without altering conversational voice).
+  const userSemanticKv = [
     compactedPromptAugments.personalityBlock,
     compactedPromptAugments.personaVoiceBlock,
     compactedPromptAugments.innerLifeBlock,
@@ -72,22 +95,34 @@ export function buildResponseAssembly({
     compactedPromptAugments.emotionalMemoryBlock,
     compactedPromptAugments.moodBlock,
     compactedPromptAugments.loreBlock,
+    datesContextBlock ?? '',
+  ]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .join('\n\n');
+
+  const recentRecall = [
     compactedPromptAugments.semanticRecallBlock,
     recentExchangePriorityBlock,
-    datesContextBlock ?? '',
-    chatModeBlock,
-    buildConversationPolicyDirectives(
-      policyPlan,
-      policySignals,
-      policyContext,
-    ),
-    buildConversationPolicyEnhancers(
-      userMessage,
-      policyPlan,
-      policySignals,
-      policyContext,
-    ),
-  ]);
+  ]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .join('\n\n');
+
+  const workingWindow = [chatModeBlock, policyDirectivesBlock, policyEnhancersBlock]
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0)
+    .join('\n\n');
+
+  const components: PromptComponent[] = [
+    { name: 'persona_core', text: systemPrompt, stable: true },
+    { name: 'user_semantic_kv', text: userSemanticKv, stable: true },
+    { name: 'recent_recall', text: recentRecall, stable: false },
+    { name: 'working_window', text: workingWindow, stable: false },
+  ];
+
+  const composed = composePrompt(components);
+  const effectiveSystemPrompt = composed.text;
 
   const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
     {
