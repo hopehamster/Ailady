@@ -14,6 +14,38 @@ import 'package:flutter/foundation.dart';
 class EmulatorConfig {
   static bool _isConfigured = false;
 
+  // Compile-time fallbacks for physical Android devices. The shell `export`
+  // pattern from the README only reaches the Dart VM via Platform.environment
+  // on desktop / iOS Simulator — on a physical Android device the process env
+  // is the Android runtime env, not the laptop's. Pass these via
+  // `flutter run --dart-define=FIRESTORE_EMULATOR_HOST=192.168.1.237:8080`
+  // and the const String.fromEnvironment captures them at build time.
+  static const String _firestoreFromDefine =
+      String.fromEnvironment('FIRESTORE_EMULATOR_HOST');
+  static const String _authFromDefine =
+      String.fromEnvironment('FIREBASE_AUTH_EMULATOR_HOST');
+  static const String _functionsFromDefine =
+      String.fromEnvironment('FIREBASE_FUNCTIONS_EMULATOR_HOST');
+
+  /// Read an emulator host: prefer runtime env (desktop/simulator path),
+  /// fall back to compile-time --dart-define (physical Android path).
+  /// Returns null when neither source has a non-empty value.
+  static String? _readVar(String key, String compileTimeDefault) {
+    final runtime = Platform.environment[key];
+    if (runtime != null && runtime.isNotEmpty) return runtime;
+    if (compileTimeDefault.isNotEmpty) return compileTimeDefault;
+    return null;
+  }
+
+  /// True when EITHER runtime env OR compile-time --dart-define supplies
+  /// the key. Mirrors Platform.environment.containsKey semantics across
+  /// both sources.
+  static bool _hasVar(String key, String compileTimeDefault) {
+    if (Platform.environment.containsKey(key)) return true;
+    if (compileTimeDefault.isNotEmpty) return true;
+    return false;
+  }
+
   /// Check if running on iOS Simulator or Android Emulator
   /// Physical devices cannot connect to localhost emulators
   static bool get _isIOSSimulator {
@@ -31,20 +63,15 @@ class EmulatorConfig {
   /// Physical devices cannot connect to localhost emulators, so we only
   /// enable emulators when explicitly configured via environment variables
   static bool get isEmulatorEnabled {
-    final hasEnvVars = Platform.environment
-            .containsKey('FIRESTORE_EMULATOR_HOST') ||
-        Platform.environment.containsKey('FIREBASE_AUTH_EMULATOR_HOST') ||
-        Platform.environment.containsKey('FIREBASE_FUNCTIONS_EMULATOR_HOST');
-
-    // Only use emulators when explicitly configured
-    // This prevents physical devices from trying to connect to localhost
-    return hasEnvVars;
+    return _hasVar('FIRESTORE_EMULATOR_HOST', _firestoreFromDefine) ||
+        _hasVar('FIREBASE_AUTH_EMULATOR_HOST', _authFromDefine) ||
+        _hasVar('FIREBASE_FUNCTIONS_EMULATOR_HOST', _functionsFromDefine);
   }
 
   /// Get Firestore emulator host from environment
   /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator and Android Emulator compatibility
   static String? get firestoreHost {
-    final host = Platform.environment['FIRESTORE_EMULATOR_HOST'];
+    final host = _readVar('FIRESTORE_EMULATOR_HOST', _firestoreFromDefine);
 
     // Normalize localhost to 127.0.0.1 for iOS Simulator
     String? normalizedHost = host;
@@ -62,7 +89,7 @@ class EmulatorConfig {
   /// Get Auth emulator host from environment
   /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator compatibility
   static String? get authHost {
-    final host = Platform.environment['FIREBASE_AUTH_EMULATOR_HOST'];
+    final host = _readVar('FIREBASE_AUTH_EMULATOR_HOST', _authFromDefine);
 
     // Normalize localhost to 127.0.0.1 for iOS Simulator (localhost may not resolve correctly)
     String? normalizedHost = host;
@@ -81,7 +108,7 @@ class EmulatorConfig {
   /// This can be called before Firebase.initializeApp() to determine if emulator should be configured
   /// Only returns true if explicitly configured via environment variable
   static bool shouldUseAuthEmulator() {
-    return Platform.environment.containsKey('FIREBASE_AUTH_EMULATOR_HOST');
+    return _hasVar('FIREBASE_AUTH_EMULATOR_HOST', _authFromDefine);
   }
 
   /// Get Auth emulator host and port as separate values
@@ -112,7 +139,7 @@ class EmulatorConfig {
   /// Get Functions emulator host from environment
   /// Normalizes 'localhost' to '127.0.0.1' for iOS Simulator and Android Emulator compatibility
   static String? get functionsHost {
-    final host = Platform.environment['FIREBASE_FUNCTIONS_EMULATOR_HOST'];
+    final host = _readVar('FIREBASE_FUNCTIONS_EMULATOR_HOST', _functionsFromDefine);
 
     // Normalize localhost to 127.0.0.1 for iOS Simulator
     String? normalizedHost = host;
@@ -143,11 +170,11 @@ class EmulatorConfig {
     if (kDebugMode) {
       debugPrint('🔍 EmulatorConfig: Checking environment variables...');
       debugPrint(
-          '🔍 EmulatorConfig: FIRESTORE_EMULATOR_HOST = ${Platform.environment['FIRESTORE_EMULATOR_HOST'] ?? "NOT SET"}');
+          '🔍 EmulatorConfig: FIRESTORE_EMULATOR_HOST = ${firestoreHost ?? "NOT SET"}');
       debugPrint(
-          '🔍 EmulatorConfig: FIREBASE_AUTH_EMULATOR_HOST = ${Platform.environment['FIREBASE_AUTH_EMULATOR_HOST'] ?? "NOT SET"}');
+          '🔍 EmulatorConfig: FIREBASE_AUTH_EMULATOR_HOST = ${authHost ?? "NOT SET"}');
       debugPrint(
-          '🔍 EmulatorConfig: FIREBASE_FUNCTIONS_EMULATOR_HOST = ${Platform.environment['FIREBASE_FUNCTIONS_EMULATOR_HOST'] ?? "NOT SET"}');
+          '🔍 EmulatorConfig: FIREBASE_FUNCTIONS_EMULATOR_HOST = ${functionsHost ?? "NOT SET"}');
       debugPrint('🔍 EmulatorConfig: Platform.isIOS = ${Platform.isIOS}');
       debugPrint('🔍 EmulatorConfig: kDebugMode = $kDebugMode');
       debugPrint('🔍 EmulatorConfig: _isIOSSimulator = $_isIOSSimulator');
