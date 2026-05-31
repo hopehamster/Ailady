@@ -74,6 +74,7 @@ import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
 import { tagError, isProviderConnectionError } from '../failureClass';
+import { callWithFallback, type ProviderCall } from './providerRouter';
 import {
   detectCrisisSensitiveIntent,
   detectDeepAnalysisIntent,
@@ -2515,56 +2516,76 @@ export async function generateAIResponse(
     }
 
     if (!aiContent && canUseAnthropicPrimary()) {
-      try {
-        modelUsed = 'claude-opus-4-5';
-        const runResponseStage = createTimedStage(
-          'responseStageMs',
-          latencyBudgets.responseMs,
-          stageTimingsMs,
-          stageContracts,
-          'response-agent',
-          `route=${routeDecision.route},provider=anthropic-first`,
-          (result: RankedCandidate) => `candidateLen=${result.text.length},model=${modelUsed}`,
-        );
-        const ranked = await runResponseStage(() =>
-          executeAnthropicCompletion({
-            anthropic: anthropic!,
-            modelName: FALLBACK_MODEL,
-            generationTokens,
-            effectiveSystemPrompt,
-            anthropicMessages,
-            userMessage,
-            recentMessages,
-            memory,
-            useModelScoring,
-            rerankCandidates,
-          }),
-        );
-        aiContent = ranked.text;
-        selectedScores = ranked.scores;
-      } catch (claudePrimaryError: any) {
-        if (
-          typeof claudePrimaryError?.message === 'string' &&
-          /credit balance is too low|insufficient/i.test(claudePrimaryError.message)
-        ) {
-          anthropicTemporarilyDisabledUntil = Date.now() + (30 * 60 * 1000);
-          functions.logger.warn('Anthropic temporarily disabled due to low credit', {
-            disabledUntil: new Date(anthropicTemporarilyDisabledUntil).toISOString(),
-          });
-        } else if (isProviderConnectionError(claudePrimaryError)) {
-          anthropicTemporarilyDisabledUntil = Date.now() + (10 * 60 * 1000);
-          functions.logger.warn('Anthropic temporarily disabled due to network failure', {
-            disabledUntil: new Date(anthropicTemporarilyDisabledUntil).toISOString(),
-          });
-        }
-        functions.logger.warn('Claude primary failed, trying OpenAI fallback', {
-          error: claudePrimaryError.message,
-        });
-        try {
+      // L8 — provider chain via callWithFallback. Each provider's invoke
+      // preserves the original disablement-bookkeeping side effects in its
+      // own catch path, then rethrows; the router handles classification +
+      // ordering. Behavior is identical to the prior nested try/catch
+      // (Anthropic → OpenAI → Gemini) modulo: (a) the router adds 1 free
+      // retry per provider on retryable errors (429/5xx/timeout), and
+      // (b) errors are classified via failureClass for cleaner traces.
+      const ROUTED_SHAPE = (text: string, scores: CandidateObjectiveScores, model: string, geminiUsed = false) => ({
+        text,
+        scores,
+        model,
+        geminiUsed,
+      });
+
+      const anthropicCall: ProviderCall<ReturnType<typeof ROUTED_SHAPE>> = {
+        name: 'anthropic-primary',
+        invoke: async () => {
+          const runResponseStage = createTimedStage(
+            'responseStageMs',
+            latencyBudgets.responseMs,
+            stageTimingsMs,
+            stageContracts,
+            'response-agent',
+            `route=${routeDecision.route},provider=anthropic-first`,
+            (result: RankedCandidate) =>
+              `candidateLen=${result.text.length},model=claude-opus-4-5`,
+          );
+          try {
+            const ranked = await runResponseStage(() =>
+              executeAnthropicCompletion({
+                anthropic: anthropic!,
+                modelName: FALLBACK_MODEL,
+                generationTokens,
+                effectiveSystemPrompt,
+                anthropicMessages,
+                userMessage,
+                recentMessages,
+                memory,
+                useModelScoring,
+                rerankCandidates,
+              }),
+            );
+            return ROUTED_SHAPE(ranked.text, ranked.scores, 'claude-opus-4-5');
+          } catch (err: any) {
+            // Preserve original disablement-bookkeeping side effects.
+            if (
+              typeof err?.message === 'string' &&
+              /credit balance is too low|insufficient/i.test(err.message)
+            ) {
+              anthropicTemporarilyDisabledUntil = Date.now() + 30 * 60 * 1000;
+              functions.logger.warn('Anthropic temporarily disabled due to low credit', {
+                disabledUntil: new Date(anthropicTemporarilyDisabledUntil).toISOString(),
+              });
+            } else if (isProviderConnectionError(err)) {
+              anthropicTemporarilyDisabledUntil = Date.now() + 10 * 60 * 1000;
+              functions.logger.warn('Anthropic temporarily disabled due to network failure', {
+                disabledUntil: new Date(anthropicTemporarilyDisabledUntil).toISOString(),
+              });
+            }
+            throw err;
+          }
+        },
+      };
+
+      const openaiCall: ProviderCall<ReturnType<typeof ROUTED_SHAPE>> = {
+        name: 'openai-fallback',
+        invoke: async () => {
           if (!canUseOpenAIPrimary()) {
             throw new Error('OpenAI temporarily disabled');
           }
-          modelUsed = primaryResponseModel;
           const runResponseStage = createTimedStage(
             'responseStageMs',
             latencyBudgets.responseMs,
@@ -2572,59 +2593,76 @@ export async function generateAIResponse(
             stageContracts,
             'response-agent',
             `route=${routeDecision.route},provider=openai-fallback`,
-            (result: RankedCandidate) => `candidateLen=${result.text.length},model=${modelUsed}`,
+            (result: RankedCandidate) =>
+              `candidateLen=${result.text.length},model=${primaryResponseModel}`,
           );
-          const ranked = await runResponseStage(() =>
-            executeOpenAICompletion({
-              openai,
-              modelName: primaryResponseModel,
-              messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
-              generationTokens,
-              completionCandidates,
-              timeoutMs: latencyBudgets.responseMs,
-              userMessage,
-              effectiveRecentMessages,
-              memory,
-              useModelScoring,
-              rerankCandidates,
-            }),
-          );
-          aiContent = ranked.text;
-          selectedScores = ranked.scores;
-        } catch (openAIError: any) {
-          if (isProviderConnectionError(openAIError)) {
-            openAITemporarilyDisabledUntil = Date.now() + (10 * 60 * 1000);
-            functions.logger.warn('OpenAI temporarily disabled due to network failure', {
-              disabledUntil: new Date(openAITemporarilyDisabledUntil).toISOString(),
-            });
-          }
-          functions.logger.warn('OpenAI also failed, trying Gemini (Google-internal)', {
-            error: openAIError.message,
-          });
           try {
-            modelUsed = GEMINI_MODEL;
-            usedGeminiFallback = true;
-            const geminiText = await executeGeminiFallback({
-              googleGenAI: googleGenAI!,
-              geminiModel: GEMINI_MODEL,
-              userMessage,
-              memory,
-              runtimeSelfModel,
-              partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
-              logInfo: (message, metadata) => functions.logger.info(message, metadata),
-            });
-            aiContent = geminiText;
-            selectedScores = { engagement: 0.7, empathy: 0.7, safety: 0.9, novelty: 0.6, persona: 0.7 };
-            functions.logger.info('Gemini fallback succeeded (post-processing skipped)');
-          } catch (geminiError: any) {
-            functions.logger.error('ALL providers failed (Claude, OpenAI, Gemini)', {
-              claude: claudePrimaryError.message,
-              openai: openAIError.message,
-              gemini: geminiError.message,
-            });
-            throw geminiError; // Let outer catch handle it
+            const ranked = await runResponseStage(() =>
+              executeOpenAICompletion({
+                openai,
+                modelName: primaryResponseModel,
+                messages: messages as OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+                generationTokens,
+                completionCandidates,
+                timeoutMs: latencyBudgets.responseMs,
+                userMessage,
+                effectiveRecentMessages,
+                memory,
+                useModelScoring,
+                rerankCandidates,
+              }),
+            );
+            return ROUTED_SHAPE(ranked.text, ranked.scores, primaryResponseModel);
+          } catch (err: any) {
+            if (isProviderConnectionError(err)) {
+              openAITemporarilyDisabledUntil = Date.now() + 10 * 60 * 1000;
+              functions.logger.warn('OpenAI temporarily disabled due to network failure', {
+                disabledUntil: new Date(openAITemporarilyDisabledUntil).toISOString(),
+              });
+            }
+            throw err;
           }
-        }
+        },
+      };
+
+      const geminiCall: ProviderCall<ReturnType<typeof ROUTED_SHAPE>> = {
+        name: 'gemini-fallback',
+        invoke: async () => {
+          const geminiText = await executeGeminiFallback({
+            googleGenAI: googleGenAI!,
+            geminiModel: GEMINI_MODEL,
+            userMessage,
+            memory,
+            runtimeSelfModel,
+            partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+            logInfo: (message, metadata) => functions.logger.info(message, metadata),
+          });
+          functions.logger.info('Gemini fallback succeeded (post-processing skipped)');
+          return ROUTED_SHAPE(
+            geminiText,
+            { engagement: 0.7, empathy: 0.7, safety: 0.9, novelty: 0.6, persona: 0.7 },
+            GEMINI_MODEL,
+            true,
+          );
+        },
+      };
+
+      const outcome = await callWithFallback(
+        [anthropicCall, openaiCall, geminiCall],
+        { context: { uid: userId, turnId, path: 'normal-fallback-chain' } },
+      );
+
+      aiContent = outcome.result.text;
+      selectedScores = outcome.result.scores;
+      modelUsed = outcome.result.model;
+      usedGeminiFallback = outcome.result.geminiUsed;
+      if (outcome.fellBackFrom) {
+        functions.logger.info('providerRouter: fell back', {
+          fellBackFrom: outcome.fellBackFrom,
+          finalProvider: outcome.provider,
+          attempts: outcome.attempts,
+          failureClass: outcome.failureClass,
+        });
       }
     } else if (!aiContent) {
       try {
