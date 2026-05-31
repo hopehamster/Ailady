@@ -73,6 +73,7 @@ import { runPostResponseOrchestration } from './postResponseOrchestrationService
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
+import { detectTopicBoundary } from './responseTopicBoundary';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
 import { tagError, isProviderConnectionError } from '../failureClass';
 import { callWithFallback, type ProviderCall } from './providerRouter';
@@ -2050,6 +2051,26 @@ export async function generateAIResponse(
       emotionTrigger: EMOTION_TRIGGERS['neutral'],
       emotionIntensity: 0.42,
       modelUsed: 'scope-guard',
+    };
+  }
+
+  // Aria humanity #5 — character no-go zone detection.
+  // Gated by TOPIC_BOUNDARY_DETECTION_ENABLED env var (default off). When
+  // enabled, fires on identity probes ("are you AI?"), roleplay requests
+  // ("pretend you're a doctor"), physical claims ("where do you live"),
+  // anonymous framing ("are you anonymous"), and memory fabrication
+  // ("remember when we went to Paris"). Returns a per-category deflection
+  // from a variance pool with per-uid recency dampening; skips the LLM
+  // call entirely. Runs AFTER scope guard so task-out-of-scope still
+  // hits its own canned response.
+  const topicBoundary = detectTopicBoundary(userMessage, { uid: userId });
+  if (topicBoundary) {
+    return {
+      content: topicBoundary.response,
+      emotion: 'neutral',
+      emotionTrigger: EMOTION_TRIGGERS['neutral'],
+      emotionIntensity: 0.42,
+      modelUsed: 'topic-boundary',
     };
   }
   
