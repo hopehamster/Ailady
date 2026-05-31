@@ -1189,7 +1189,20 @@ function applyJitterToProfile(
     ).toFixed(2),
     sentencePauseMs: Math.max(50, base.sentencePauseMs + jitter.sentencePauseDeltaMs),
     clausePauseMs: Math.max(20, base.clausePauseMs + jitter.clausePauseDeltaMs),
+    elevenLabs: {
+      ...base.elevenLabs,
+      // ElevenLabs settings clamp to [0, 1] per their API contract.
+      // Floor of 0.05 avoids "voice goes mute" if a tuner pushes deeply negative;
+      // ceiling of 0.95 avoids overshooting into robotic-flat territory.
+      stability: clampUnit(base.elevenLabs.stability + jitter.elevenLabsStabilityDelta),
+      style: clampUnit(base.elevenLabs.style + jitter.elevenLabsStyleDelta),
+    },
   };
+}
+
+function clampUnit(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0.05, Math.min(0.95, value));
 }
 
 function addSsmlPercent(baseString: string, deltaPercent: number): string {

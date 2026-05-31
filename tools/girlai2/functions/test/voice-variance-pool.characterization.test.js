@@ -38,6 +38,11 @@ const RANGES = {
   styleDegreeDelta: 0.03,
   sentencePauseDeltaMs: 15,
   clausePauseDeltaMs: 8,
+  // L1.2 ElevenLabs side — Aria's voice (Natasha) is now ElevenLabs-only by
+  // default, so the SSML-side deltas are dormant on the hot path. These two
+  // deltas drive the actual heard variance.
+  elevenLabsStabilityDelta: 0.04,
+  elevenLabsStyleDelta: 0.04,
 };
 
 const EXPECTED_PROFILE_IDS = [
@@ -94,7 +99,9 @@ test('every pool contains at least one neutral-zero baseline variant', () => {
         v.rateDelta === 0 &&
         v.styleDegreeDelta === 0 &&
         v.sentencePauseDeltaMs === 0 &&
-        v.clausePauseDeltaMs === 0
+        v.clausePauseDeltaMs === 0 &&
+        v.elevenLabsStabilityDelta === 0 &&
+        v.elevenLabsStyleDelta === 0,
     );
     assert.ok(
       baseline,
@@ -157,6 +164,8 @@ test('unknown profile id returns NEUTRAL_VOICE_JITTER', () => {
   assert.equal(chosen.styleDegreeDelta, 0);
   assert.equal(chosen.sentencePauseDeltaMs, 0);
   assert.equal(chosen.clausePauseDeltaMs, 0);
+  assert.equal(chosen.elevenLabsStabilityDelta, 0);
+  assert.equal(chosen.elevenLabsStyleDelta, 0);
 });
 
 test('NEUTRAL_VOICE_JITTER constant is exported and shaped correctly', () => {
@@ -166,6 +175,24 @@ test('NEUTRAL_VOICE_JITTER constant is exported and shaped correctly', () => {
   assert.equal(NEUTRAL_VOICE_JITTER.styleDegreeDelta, 0);
   assert.equal(NEUTRAL_VOICE_JITTER.sentencePauseDeltaMs, 0);
   assert.equal(NEUTRAL_VOICE_JITTER.clausePauseDeltaMs, 0);
+  assert.equal(NEUTRAL_VOICE_JITTER.elevenLabsStabilityDelta, 0);
+  assert.equal(NEUTRAL_VOICE_JITTER.elevenLabsStyleDelta, 0);
+});
+
+test('every pool exercises BOTH ElevenLabs deltas (non-zero outside baseline)', () => {
+  for (const id of EXPECTED_PROFILE_IDS) {
+    const pool = VOICE_JITTER_POOLS[id];
+    const nonZeroStability = pool.filter((v) => v.elevenLabsStabilityDelta !== 0).length;
+    const nonZeroStyle = pool.filter((v) => v.elevenLabsStyleDelta !== 0).length;
+    assert.ok(
+      nonZeroStability >= 3,
+      `pool "${id}" should vary stability in at least 3 of 4 variants, got ${nonZeroStability}`,
+    );
+    assert.ok(
+      nonZeroStyle >= 3,
+      `pool "${id}" should vary style in at least 3 of 4 variants, got ${nonZeroStyle}`,
+    );
+  }
 });
 
 test('recency dampening: 4 consecutive picks for same uid return 4 distinct variants', () => {
