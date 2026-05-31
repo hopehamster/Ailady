@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show Factory;
@@ -14,6 +13,10 @@ import '../../chat/chat_service.dart';
 import '../motion/avatar_motion_controller.dart';
 import '../live2d/live2d_bridge.dart';
 import 'avatar_blend_data.dart';
+import 'avatar_emotion_mapping.dart' as emo;
+import 'avatar_motion_tuning.dart' as tune;
+import 'avatar_view_types.dart';
+import 'avatar_viseme_parser.dart' as visemes;
 
 /// AvatarView renders the native Live2D character and applies emotion/lip-sync.
 class AvatarView extends StatefulWidget {
@@ -54,48 +57,8 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   // and kAvatarSpeakingPoseRange below.
   static const Map<String, double> _idlePoseRange = kAvatarIdlePoseRange;
   static const Map<String, double> _speakingPoseRange = kAvatarSpeakingPoseRange;
-  static const _TalkPreset _talkPresetCalm = _TalkPreset(
-    gestureBase: 0.52,
-    gestureScale: 0.34,
-    headScale: 0.64,
-    bodyScale: 0.72,
-    armScale: 0.58,
-    handScale: 0.52,
-    nodSpeed: 1.05,
-    swaySpeed: 0.86,
-    rollSpeed: 0.70,
-    eyeBase: 0.91,
-    eyePulse: 0.03,
-    eyeMin: 0.80,
-  );
-  static const _TalkPreset _talkPresetEngaged = _TalkPreset(
-    gestureBase: 0.78,
-    gestureScale: 0.55,
-    headScale: 1.0,
-    bodyScale: 1.04,
-    armScale: 1.0,
-    handScale: 0.95,
-    nodSpeed: 1.40,
-    swaySpeed: 0.95,
-    rollSpeed: 0.72,
-    eyeBase: 0.86,
-    eyePulse: 0.06,
-    eyeMin: 0.72,
-  );
-  static const _TalkPreset _talkPresetExcited = _TalkPreset(
-    gestureBase: 1.02,
-    gestureScale: 0.66,
-    headScale: 1.28,
-    bodyScale: 1.18,
-    armScale: 1.42,
-    handScale: 1.30,
-    nodSpeed: 1.75,
-    swaySpeed: 1.20,
-    rollSpeed: 0.90,
-    eyeBase: 0.90,
-    eyePulse: 0.04,
-    eyeMin: 0.82,
-  );
+  // Talk preset constants extracted to ./avatar_motion_tuning.dart as
+  // L9 phase 1 (kTalkPresetCalm / kTalkPresetEngaged / kTalkPresetExcited).
 
   final Live2DBridge _bridge = Live2DBridge.instance;
   final AvatarMotionController _motionController = AvatarMotionController(
@@ -331,29 +294,9 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     return Duration(milliseconds: DateTime.now().millisecondsSinceEpoch);
   }
 
-  AvatarMotionEmotion _mapStyleToMotionEmotion(String style) {
-    switch (style) {
-      case 'excited':
-        return AvatarMotionEmotion.excited;
-      case 'angry':
-        return AvatarMotionEmotion.angry;
-      case 'sad':
-      case 'concerned':
-      case 'comforting':
-        return AvatarMotionEmotion.sad;
-      case 'shy':
-        return AvatarMotionEmotion.shy;
-      case 'happy':
-      case 'loving':
-      case 'flirty':
-      case 'playful':
-      case 'proud':
-      case 'caring':
-        return AvatarMotionEmotion.happy;
-      default:
-        return AvatarMotionEmotion.neutral;
-    }
-  }
+  // Delegates to the pure function in ./avatar_emotion_mapping.dart (L9 phase 1).
+  AvatarMotionEmotion _mapStyleToMotionEmotion(String style) =>
+      emo.mapStyleToMotionEmotion(style);
 
   void _syncMotionState({required bool interaction}) {
     final motionEmotion = _mapStyleToMotionEmotion(_activeExpressionStyle);
@@ -368,183 +311,11 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     }
   }
 
-  _EmotionMapping _resolveEmotionMapping(String emotion, String trigger) {
-    final value = '${emotion.toLowerCase()} ${trigger.toLowerCase()}';
-
-    if (_containsAny(value, const <String>[
-      'angry',
-      'mad',
-      'furious',
-      'rage',
-      'annoyed',
-      'irritated',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Angry', style: 'angry');
-    }
-
-    if (_containsAny(value, const <String>[
-      'excited',
-      'thrilled',
-      'hyped',
-      'energetic',
-      'ecstatic',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Happy', style: 'excited');
-    }
-
-    if (_containsAny(value, const <String>[
-      'loving',
-      'romantic',
-      'adore',
-      'affection',
-      'sweetheart',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Happy', style: 'loving');
-    }
-
-    if (_containsAny(value, const <String>[
-      'flirty',
-      'wink',
-      'tease',
-      'blush',
-      'charm',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Happy', style: 'flirty');
-    }
-
-    if (_containsAny(value, const <String>[
-      'playful',
-      'silly',
-      'giggle',
-      'joke',
-      'joking',
-      'fun',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Happy', style: 'playful');
-    }
-
-    if (_containsAny(value, const <String>[
-      'proud',
-      'confidence',
-      'confident',
-      'accomplished',
-      'achievement',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Happy', style: 'proud');
-    }
-
-    if (_containsAny(value, const <String>[
-      'caring',
-      'warm',
-      'supportive',
-      'gentle',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Neutral', style: 'caring');
-    }
-
-    if (_containsAny(value, const <String>[
-      'happy',
-      'joy',
-      'glad',
-      'delighted',
-      'cheerful',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Happy', style: 'happy');
-    }
-
-    if (_containsAny(value, const <String>[
-      'comforting',
-      'soothe',
-      'reassure',
-      'hug',
-      'there for you',
-    ])) {
-      return const _EmotionMapping(
-          baseExpression: 'Neutral', style: 'comforting');
-    }
-
-    if (_containsAny(value, const <String>[
-      'concern',
-      'worried',
-      'worry',
-      'careful',
-      'are you okay',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Sad', style: 'concerned');
-    }
-
-    if (_containsAny(value, const <String>[
-      'sad',
-      'upset',
-      'hurt',
-      'lonely',
-      'down',
-      'tears',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Sad', style: 'sad');
-    }
-
-    if (_containsAny(value, const <String>[
-      'surprised',
-      'surprise',
-      'shocked',
-      'gasp',
-      'wow',
-    ])) {
-      return const _EmotionMapping(
-          baseExpression: 'Neutral', style: 'surprised');
-    }
-
-    if (_containsAny(value, const <String>[
-      'shy',
-      'bashful',
-      'timid',
-      'embarrassed',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Neutral', style: 'shy');
-    }
-
-    if (_containsAny(value, const <String>[
-      'curious',
-      'wonder',
-      'question',
-      'interested',
-      'intrigued',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Neutral', style: 'curious');
-    }
-
-    if (_containsAny(value, const <String>[
-      'thoughtful',
-      'thinking',
-      'considering',
-      'reflective',
-      'ponder',
-    ])) {
-      return const _EmotionMapping(
-          baseExpression: 'Neutral', style: 'thoughtful');
-    }
-
-    if (_containsAny(value, const <String>[
-      'neutral',
-      'calm',
-      'relaxed',
-      'steady',
-    ])) {
-      return const _EmotionMapping(baseExpression: 'Neutral', style: 'neutral');
-    }
-
-    return const _EmotionMapping(baseExpression: 'Neutral', style: 'neutral');
-  }
-
-  bool _containsAny(String value, List<String> tokens) {
-    for (final token in tokens) {
-      if (value.contains(token)) {
-        return true;
-      }
-    }
-    return false;
-  }
+  // _resolveEmotionMapping + _containsAny extracted to
+  // ./avatar_emotion_mapping.dart (L9 phase 1). Delegate keeps the
+  // original method name so call sites don't change.
+  EmotionMapping _resolveEmotionMapping(String emotion, String trigger) =>
+      emo.resolveEmotionMapping(emotion, trigger);
 
   void _applyEmotionIntensity(String style, double intensity) {
     final clamped = intensity.clamp(0.0, 1.0).toDouble();
@@ -946,64 +717,14 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
     }
   }
 
-  _VisemeTimeline _parseTimeline(String jsonValue) {
-    if (jsonValue.isEmpty || jsonValue == '{}') {
-      return const _VisemeTimeline(events: <_VisemeEvent>[], durationMs: 0);
-    }
+  // _parseTimeline + _mapVisemeToMouthParams extracted to
+  // ./avatar_viseme_parser.dart (L9 phase 1). Delegates keep the
+  // original method names so call sites don't change.
+  VisemeTimeline _parseTimeline(String jsonValue) =>
+      visemes.parseVisemeTimeline(jsonValue);
 
-    try {
-      final dynamic decoded = jsonDecode(jsonValue);
-      if (decoded is! Map<String, dynamic>) {
-        return const _VisemeTimeline(events: <_VisemeEvent>[], durationMs: 0);
-      }
-
-      final rawEvents =
-          decoded['events'] as List<dynamic>? ?? const <dynamic>[];
-      final events = rawEvents.whereType<Map<dynamic, dynamic>>().map((raw) {
-        final visemeId = (raw['visemeId'] as num?)?.toInt() ?? 0;
-        final audioOffsetMs = (raw['audioOffsetMs'] as num?)?.toDouble() ?? 0.0;
-        return _VisemeEvent(visemeId: visemeId, audioOffsetMs: audioOffsetMs);
-      }).toList()
-        ..sort((a, b) => a.audioOffsetMs.compareTo(b.audioOffsetMs));
-
-      final durationMs = (decoded['durationMs'] as num?)?.toDouble() ?? 0.0;
-      return _VisemeTimeline(events: events, durationMs: durationMs);
-    } catch (_) {
-      return const _VisemeTimeline(events: <_VisemeEvent>[], durationMs: 0);
-    }
-  }
-
-  Map<String, double> _mapVisemeToMouthParams(int visemeId) {
-    final id = visemeId < 0 ? 0 : visemeId;
-
-    final targetOpen = switch (id) {
-      0 => 0.0,
-      1 => 0.18,
-      2 => 0.3,
-      3 => 0.44,
-      4 => 0.58,
-      5 => 0.7,
-      6 => 0.82,
-      7 => 0.94,
-      _ => 0.28 + ((id % 6) * 0.1),
-    };
-
-    final rounded = <int>{6, 7, 8, 13, 18}.contains(id);
-    final wide = <int>{3, 4, 11, 12, 19}.contains(id);
-    final form = wide
-        ? 0.4
-        : rounded
-            ? -0.34
-            : 0.0;
-
-    return <String, double>{
-      'ParamMouthOpenY': targetOpen.clamp(0.0, 1.0),
-      'ParamMouthForm': form,
-      'MouthPucker': rounded ? 0.38 : 0.0,
-      'MouthFunnel': rounded ? 0.26 : 0.0,
-      'MouthX': 0.0,
-    };
-  }
+  Map<String, double> _mapVisemeToMouthParams(int visemeId) =>
+      visemes.mapVisemeToMouthParams(visemeId);
 
   void _setMouthTargets(Map<String, double> params) {
     _targetMouthOpen = (params['ParamMouthOpenY'] ?? _targetMouthOpen)
@@ -1294,79 +1015,15 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   }
   // ──────────────────────────────────────────────────────────────────────────
 
-  _TalkPreset _resolveTalkPreset() {
-    var preset = _activeEmotionIntensity < 0.35
-        ? _talkPresetCalm
-        : (_activeEmotionIntensity < 0.72
-            ? _talkPresetEngaged
-            : _talkPresetExcited);
+  // Delegates to the pure function in ./avatar_motion_tuning.dart (L9 phase 1).
+  TalkPreset _resolveTalkPreset() => tune.resolveTalkPreset(
+        activeEmotionIntensity: _activeEmotionIntensity,
+        activeExpression: _activeExpression,
+      );
 
-    // Expression-specific bias keeps gesture style coherent with tone.
-    if (_activeExpression == 'Sad' && preset == _talkPresetExcited) {
-      preset = _talkPresetEngaged;
-    } else if ((_activeExpression == 'Happy' || _activeExpression == 'Angry') &&
-        _activeEmotionIntensity >= 0.58) {
-      preset = _talkPresetExcited;
-    }
-
-    return preset;
-  }
-
-  _MotionTuning _resolveMotionTuning() {
-    final style = _activeExpressionStyle;
-    if (style == 'excited') {
-      return const _MotionTuning(
-        head: 1.20,
-        body: 1.16,
-        arms: 1.55,
-        hands: 1.42,
-        energy: 1.16,
-      );
-    }
-    if (style == 'angry') {
-      return const _MotionTuning(
-        head: 1.10,
-        body: 1.24,
-        arms: 1.34,
-        hands: 1.10,
-        energy: 1.12,
-      );
-    }
-    if (style == 'sad' || style == 'concerned') {
-      return const _MotionTuning(
-        head: 0.76,
-        body: 0.84,
-        arms: 0.78,
-        hands: 0.78,
-        energy: 0.78,
-      );
-    }
-    if (style == 'comforting' || style == 'caring') {
-      return const _MotionTuning(
-        head: 0.86,
-        body: 0.90,
-        arms: 1.02,
-        hands: 0.96,
-        energy: 0.88,
-      );
-    }
-    if (style == 'playful' || style == 'flirty' || style == 'loving') {
-      return const _MotionTuning(
-        head: 1.02,
-        body: 1.00,
-        arms: 1.32,
-        hands: 1.24,
-        energy: 1.03,
-      );
-    }
-    return const _MotionTuning(
-      head: 1.0,
-      body: 1.0,
-      arms: 1.0,
-      hands: 1.0,
-      energy: 1.0,
-    );
-  }
+  // Delegates to the pure function in ./avatar_motion_tuning.dart (L9 phase 1).
+  MotionTuning _resolveMotionTuning() =>
+      tune.resolveMotionTuning(_activeExpressionStyle);
 
   void _triggerSpeakingGestureBurst({double baseStrength = 0.52}) {
     if (!_wasSpeaking) {
@@ -2050,78 +1707,7 @@ class _AvatarViewState extends State<AvatarView> with WidgetsBindingObserver {
   }
 }
 
-class _VisemeEvent {
-  final int visemeId;
-  final double audioOffsetMs;
-
-  const _VisemeEvent({
-    required this.visemeId,
-    required this.audioOffsetMs,
-  });
-}
-
-class _TalkPreset {
-  final double gestureBase;
-  final double gestureScale;
-  final double headScale;
-  final double bodyScale;
-  final double armScale;
-  final double handScale;
-  final double nodSpeed;
-  final double swaySpeed;
-  final double rollSpeed;
-  final double eyeBase;
-  final double eyePulse;
-  final double eyeMin;
-
-  const _TalkPreset({
-    required this.gestureBase,
-    required this.gestureScale,
-    required this.headScale,
-    required this.bodyScale,
-    required this.armScale,
-    required this.handScale,
-    required this.nodSpeed,
-    required this.swaySpeed,
-    required this.rollSpeed,
-    required this.eyeBase,
-    required this.eyePulse,
-    required this.eyeMin,
-  });
-}
-
-class _EmotionMapping {
-  final String baseExpression;
-  final String style;
-
-  const _EmotionMapping({
-    required this.baseExpression,
-    required this.style,
-  });
-}
-
-class _MotionTuning {
-  final double head;
-  final double body;
-  final double arms;
-  final double hands;
-  final double energy;
-
-  const _MotionTuning({
-    required this.head,
-    required this.body,
-    required this.arms,
-    required this.hands,
-    required this.energy,
-  });
-}
-
-class _VisemeTimeline {
-  final List<_VisemeEvent> events;
-  final double durationMs;
-
-  const _VisemeTimeline({
-    required this.events,
-    required this.durationMs,
-  });
-}
+// _VisemeEvent / _TalkPreset / _EmotionMapping / _MotionTuning /
+// _VisemeTimeline extracted to ./avatar_view_types.dart as public types
+// (VisemeEvent / TalkPreset / EmotionMapping / MotionTuning /
+// VisemeTimeline). L9 phase 1 of the avatar_view.dart split.
