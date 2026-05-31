@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import OpenAI from 'openai';
 import { evaluateMemoryWrite } from '../memoryWriteGate';
 
@@ -2789,7 +2790,7 @@ export async function recordResponseFeedback(
       vote: input.vote,
       reason: input.reason ?? null,
       reasonCode: input.reasonCode ?? null,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     return { success: true, styleProfile: memory.styleProfile };
@@ -2824,7 +2825,7 @@ export async function recordShadowEvaluation(
     await db.collection('abShadowEvaluations').add({
       userId,
       ...input,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
   } catch (error) {
     functions.logger.error('Error recording shadow evaluation', {

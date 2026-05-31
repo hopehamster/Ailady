@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 import { createHash } from 'crypto';
 
@@ -26,7 +27,7 @@ interface AuditEntry {
   uid: string;
   action: AuditAction;
   outcome: AuditOutcome;
-  ts: admin.firestore.FieldValue;
+  ts: FieldValue;
   ipHash?: string;
   detail?: Record<string, unknown>;
 }
@@ -55,7 +56,7 @@ export async function writeAuditLog(args: {
     uid: args.uid,
     action: args.action,
     outcome: args.outcome,
-    ts: admin.firestore.FieldValue.serverTimestamp(),
+    ts: FieldValue.serverTimestamp(),
     ipHash: hashIp(args.ip),
     detail: args.detail,
   };

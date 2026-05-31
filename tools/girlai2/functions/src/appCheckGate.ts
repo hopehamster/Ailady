@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 
 /**
@@ -53,10 +54,10 @@ async function recordFailure(action: string, reason: string): Promise<void> {
     await ref.set(
       {
         day: utcDayKey(),
-        total: admin.firestore.FieldValue.increment(1),
-        [`by_action.${action}`]: admin.firestore.FieldValue.increment(1),
-        [`by_reason.${reason}`]: admin.firestore.FieldValue.increment(1),
-        lastTs: admin.firestore.FieldValue.serverTimestamp(),
+        total: FieldValue.increment(1),
+        [`by_action.${action}`]: FieldValue.increment(1),
+        [`by_reason.${reason}`]: FieldValue.increment(1),
+        lastTs: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );

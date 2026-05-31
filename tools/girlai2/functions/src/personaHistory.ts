@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 import { writeAuditLog } from './auditLog';
 
@@ -59,7 +60,7 @@ export async function writePersonaEvent(input: PersonaEventInput): Promise<void>
       after: input.after ?? null,
       reason: input.reason ?? null,
       fieldsChanged: input.fieldsChanged ?? [],
-      ts: admin.firestore.FieldValue.serverTimestamp(),
+      ts: FieldValue.serverTimestamp(),
     });
   } catch (err: any) {
     functions.logger.error('personaHistory: write failed', {

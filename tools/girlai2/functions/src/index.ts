@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { createHash } from 'crypto';
 import { defineString } from 'firebase-functions/params';
 import {
@@ -351,7 +352,7 @@ export const generateResponse = functions
       const authUid = context.auth?.uid ?? '';
       const internalTester = isInternalTester(authUid, userId);
       const db = admin.firestore();
-      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      const timestamp = FieldValue.serverTimestamp();
       const callableStartedAt = Date.now();
       let historyFetchMs = 0;
       let datesContextMs = 0;
@@ -655,8 +656,8 @@ export const onUserCreate = functions
         id: user.uid,
         phoneNumber: user.phoneNumber || null,
         displayName: null,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastLoginAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
+        lastLoginAt: FieldValue.serverTimestamp(),
         isSubscribed: false,
         onboardingCompleted: false,
       });
@@ -798,11 +799,11 @@ export const processLiveModeInput = functions
         lastFrameSignature: frameSignature,
         lastDescription: result.description,
         responseCount,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
         createdAt:
           sessionSnapshot.exists && isSameSession
-            ? sessionSnapshot.get('createdAt') ?? admin.firestore.FieldValue.serverTimestamp()
-            : admin.firestore.FieldValue.serverTimestamp(),
+            ? sessionSnapshot.get('createdAt') ?? FieldValue.serverTimestamp()
+            : FieldValue.serverTimestamp(),
       };
 
       if (shouldRespond) {
@@ -829,7 +830,7 @@ export const processLiveModeInput = functions
           emotionIntensity: result.emotionIntensity,
           modelUsed: 'live_vision',
           timestamp: admin.firestore.Timestamp.fromMillis(nowMs),
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: FieldValue.serverTimestamp(),
         });
       }
 
@@ -1315,7 +1316,7 @@ export const generateProactiveMessage = functions
       }
 
       const db = admin.firestore();
-      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      const timestamp = FieldValue.serverTimestamp();
       await db.collection('conversations').add({
         userId,
         content: result.content,
@@ -1704,7 +1705,7 @@ export const analyzeGalleryPhoto = functions
       );
 
       // Save Aria's reaction as an assistant message in Firestore
-      const timestamp = admin.firestore.FieldValue.serverTimestamp();
+      const timestamp = FieldValue.serverTimestamp();
       await db.collection('conversations').add({
         userId,
         content: result.response,
@@ -2016,7 +2017,7 @@ export const registerFCMToken = functions
         .set({
           token,
           platform: platform || 'unknown',
-          registeredAt: admin.firestore.FieldValue.serverTimestamp(),
+          registeredAt: FieldValue.serverTimestamp(),
           active: true,
         }, { merge: true });
 
@@ -2388,7 +2389,7 @@ Format: Playlist name, then numbered list. Make the song choices feel personal a
       .add({
         giftType,
         content,
-        generatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        generatedAt: FieldValue.serverTimestamp(),
       });
 
     return { id: giftRef.id, giftType, content };
@@ -2489,7 +2490,7 @@ export const handleRevenueCatWebhook = functions
             subscriptionExpiresAt: expirationMs
               ? admin.firestore.Timestamp.fromMillis(expirationMs)
               : null,
-            lastSubscriptionSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastSubscriptionSyncAt: FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
@@ -2498,7 +2499,7 @@ export const handleRevenueCatWebhook = functions
         await userRef.set(
           {
             isSubscribed: false,
-            lastSubscriptionSyncAt: admin.firestore.FieldValue.serverTimestamp(),
+            lastSubscriptionSyncAt: FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
@@ -2811,7 +2812,7 @@ export const harmReport = functions
         conversationId,
         messageId,
         status: 'open',
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
     await writeAuditLog({

@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 
 /**
@@ -91,7 +92,7 @@ export async function persistTurnTrace(input: TurnTraceInput): Promise<void> {
       highInjection: input.flags?.highInjection ?? false,
     },
     retain,
-    ts: admin.firestore.FieldValue.serverTimestamp(),
+    ts: FieldValue.serverTimestamp(),
   };
 
   try {

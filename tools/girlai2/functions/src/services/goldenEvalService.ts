@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 import { generateAIResponse } from './llmService';
 
@@ -635,7 +636,7 @@ export async function runGoldenPromptSuiteEval(options: RunOptions = {}): Promis
     .doc(runId)
     .set({
       ...run,
-      createdAtServer: admin.firestore.FieldValue.serverTimestamp(),
+      createdAtServer: FieldValue.serverTimestamp(),
       runDurationMs: Date.now() - runStartedAt,
     });
 
@@ -693,7 +694,7 @@ export async function setGoldenBaselineRun(
     .doc(GOLDEN_BASELINE_DOC_ID)
     .set({
       ...marker,
-      updatedAtServer: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAtServer: FieldValue.serverTimestamp(),
       runVersion: run.suiteVersion,
       promptVersion: run.promptVersion,
       graderVersion: run.graderVersion,

@@ -27,6 +27,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 
 export type RouteLabel =
@@ -59,9 +60,9 @@ export async function recordRoute(label: RouteLabel): Promise<void> {
     await ref.set(
       {
         day: utcDayKey(),
-        [label]: admin.firestore.FieldValue.increment(1),
-        total: admin.firestore.FieldValue.increment(1),
-        lastTs: admin.firestore.FieldValue.serverTimestamp(),
+        [label]: FieldValue.increment(1),
+        total: FieldValue.increment(1),
+        lastTs: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );

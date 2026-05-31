@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 
 /**
@@ -120,8 +121,8 @@ export async function recordUsage(args: {
       {
         uid: args.uid,
         day: utcDayKey(),
-        [args.kind]: admin.firestore.FieldValue.increment(args.amount),
-        lastTs: admin.firestore.FieldValue.serverTimestamp(),
+        [args.kind]: FieldValue.increment(args.amount),
+        lastTs: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
