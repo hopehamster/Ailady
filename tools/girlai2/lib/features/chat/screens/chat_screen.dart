@@ -30,6 +30,7 @@ import '../../relationship/screens/relationship_screen.dart';
 import '../widgets/upcoming_dates_chip.dart';
 import '../widgets/virtual_date_chip.dart';
 import '../widgets/chrome_visibility_controller.dart';
+import '../utils/typing_pace.dart';
 
 enum _MessageFeedbackVote { up, down }
 
@@ -79,6 +80,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _voiceOnlyMode = false;
   final Map<String, _MessageFeedbackVote> _assistantFeedbackVotes = {};
   final Set<String> _assistantFeedbackPending = <String>{};
+
+  // L3.B (typing-delay) — tracks which assistant message ids have already
+  // played their typing reveal. Hydrated on first build from the initial
+  // chat-history snapshot so re-opens don't replay historical replies; only
+  // freshly-arrived assistant messages animate.
+  final Set<String> _typedAssistantIds = <String>{};
+  bool _typedSetHydrated = false;
   StreamSubscription<PlayerState>? _playerStateSubscription;
   StreamSubscription<PlaybackEvent>? _playbackEventSubscription;
 
@@ -566,6 +574,46 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         );
       }
     }
+  }
+
+  // L3.B helpers — see _typedAssistantIds field for context.
+
+  /// Mark every assistant message in the initial snapshot as "already
+  /// typed" so re-opens + Firestore rehydrations don't replay history.
+  /// Only freshly-arrived assistant messages (after first build) animate.
+  void _ensureTypedSetHydrated(List<Message> messages) {
+    if (_typedSetHydrated) return;
+    _typedSetHydrated = true;
+    for (final m in messages) {
+      if (!m.isFromUser && !m.id.startsWith('temp_')) {
+        _typedAssistantIds.add(m.id);
+      }
+    }
+  }
+
+  /// Returns the [TypingPace] to use for a message, or null if it should
+  /// render instantly (user message, optimistic temp_, historical, or
+  /// already animated this session).
+  TypingPace? _typingPaceForFreshAssistant(
+    Message message,
+    int messageIndex,
+    List<Message> messages,
+  ) {
+    if (message.isFromUser) return null;
+    if (message.id.startsWith('temp_')) return null;
+    if (_typedAssistantIds.contains(message.id)) return null;
+    final priorUser = _findPriorUserMessage(messages, messageIndex);
+    return typingPaceForReply(
+      userMessage: priorUser?.content ?? '',
+      replyText: message.content,
+    );
+  }
+
+  Message? _findPriorUserMessage(List<Message> messages, int currentIndex) {
+    for (var i = currentIndex - 1; i >= 0; i--) {
+      if (messages[i].isFromUser) return messages[i];
+    }
+    return null;
   }
 
   Future<void> _submitAssistantFeedback(
@@ -1107,6 +1155,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                     chatService.messages[messageIndex];
                                 final feedbackVote =
                                     _assistantFeedbackVotes[message.id];
+                                _ensureTypedSetHydrated(chatService.messages);
+                                final pace = _typingPaceForFreshAssistant(
+                                  message,
+                                  messageIndex,
+                                  chatService.messages,
+                                );
                                 return MessageBubble(
                                   message: message,
                                   onFeedback: message.isFromUser ||
@@ -1120,6 +1174,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       : feedbackVote == _MessageFeedbackVote.up,
                                   feedbackPending: _assistantFeedbackPending
                                       .contains(message.id),
+                                  typingPace: pace,
+                                  onTypingCompleted: pace == null
+                                      ? null
+                                      : () => _typedAssistantIds
+                                          .add(message.id),
                                 );
                               },
                             ),

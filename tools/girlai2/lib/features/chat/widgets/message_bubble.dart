@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../models/message.dart';
 import '../../../core/theme/app_theme.dart';
+import '../utils/typing_pace.dart';
+import 'typed_text.dart';
 
 /// Strips the machine-readable [VISUAL_CONTEXT]...[/VISUAL_CONTEXT] block
 /// from Aria's response text before it is shown to the user.
@@ -22,12 +24,24 @@ class MessageBubble extends StatelessWidget {
   final bool? feedbackIsPositive;
   final bool feedbackPending;
 
+  /// When non-null AND this is an assistant message, the text reveals via
+  /// [TypedText] at the given pace. Null (the default) renders instantly —
+  /// historical messages and user messages always render this way.
+  final TypingPace? typingPace;
+
+  /// Optional callback fired when the typing reveal completes. Lets the
+  /// chat screen mark this messageId as "already animated" so subsequent
+  /// rebuilds render the bubble plain.
+  final VoidCallback? onTypingCompleted;
+
   const MessageBubble({
     super.key,
     required this.message,
     this.onFeedback,
     this.feedbackIsPositive,
     this.feedbackPending = false,
+    this.typingPace,
+    this.onTypingCompleted,
   });
 
   @override
@@ -101,14 +115,7 @@ class MessageBubble extends StatelessWidget {
                         ],
                       ),
                     if (message.content.isNotEmpty)
-                      Text(
-                        message.isFromUser
-                            ? message.content
-                            : _stripVisualContext(message.content),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.white,
-                            ),
-                      ),
+                      _buildBubbleText(context),
                     // Feedback buttons live inside the bubble so their
                     // accessibility bounds are always within the message node.
                     if (canShowFeedback)
@@ -161,5 +168,27 @@ class MessageBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildBubbleText(BuildContext context) {
+    final isUser = message.isFromUser;
+    final style = Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Colors.white,
+        );
+    if (isUser) {
+      return Text(message.content, style: style);
+    }
+    final shown = _stripVisualContext(message.content);
+    if (typingPace != null) {
+      return TypedText(
+        text: shown,
+        pace: typingPace!,
+        style: style,
+        onCompleted: onTypingCompleted,
+        animate: true,
+      );
+    }
+    // Historical / rebuilt assistant message — no animation.
+    return Text(shown, style: style);
   }
 }
