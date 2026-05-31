@@ -316,7 +316,7 @@ if (GEMINI_API_KEY) {
 // Model configuration tuned for stable availability in this project.
 const PRIMARY_MODEL = 'gpt-4o';
 const FAST_TURN_MODEL = process.env.FAST_TURN_MODEL || 'gpt-4o-mini';
-const FALLBACK_MODEL = 'claude-opus-4-5-20250101'; // Claude Opus 4.5 as fallback
+const FALLBACK_MODEL = 'claude-opus-4-8'; // Claude Opus 4.8 (stable id; bumped from 4-5-20250101 which 404s in live API)
 // Gemini via Vertex AI is now the final fallback (Google-internal network)
 // const FINAL_FALLBACK_MODEL = 'gpt-4o'; // Replaced by GEMINI_MODEL
 const EMOTION_MODEL = 'gpt-4o';
@@ -2541,7 +2541,7 @@ export async function generateAIResponse(
             'response-agent',
             `route=${routeDecision.route},provider=anthropic-first`,
             (result: RankedCandidate) =>
-              `candidateLen=${result.text.length},model=claude-opus-4-5`,
+              `candidateLen=${result.text.length},model=claude-opus-4-8`,
           );
           try {
             const ranked = await runResponseStage(() =>
@@ -2558,7 +2558,7 @@ export async function generateAIResponse(
                 rerankCandidates,
               }),
             );
-            return ROUTED_SHAPE(ranked.text, ranked.scores, 'claude-opus-4-5');
+            return ROUTED_SHAPE(ranked.text, ranked.scores, 'claude-opus-4-8');
           } catch (err: any) {
             // Preserve original disablement-bookkeeping side effects.
             if (
