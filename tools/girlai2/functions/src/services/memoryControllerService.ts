@@ -1,4 +1,4 @@
-import * as admin from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import {
   ChronologyEvent,
   IntelligentMemory,
@@ -1097,8 +1097,8 @@ function buildSyntheticChronologyEvent(
     relativeDayOffset: cue.relativeDayOffset,
     confidence: cue.confidence,
     status: cue.direction === 'past' ? 'resolved' : 'open',
-    createdAt: admin.firestore.Timestamp.fromDate(eventDate),
-    lastMentionedAt: admin.firestore.Timestamp.fromDate(eventDate),
+    createdAt: Timestamp.fromDate(eventDate),
+    lastMentionedAt: Timestamp.fromDate(eventDate),
   };
 }
 
@@ -1154,8 +1154,8 @@ export function buildChronologyState(
           relativeDayOffset: cue.relativeDayOffset,
           confidence: cue.confidence,
           status: cue.direction === 'past' ? 'resolved' : 'open',
-          createdAt: admin.firestore.Timestamp.fromDate(temporal.now),
-          lastMentionedAt: admin.firestore.Timestamp.fromDate(temporal.now),
+          createdAt: Timestamp.fromDate(temporal.now),
+          lastMentionedAt: Timestamp.fromDate(temporal.now),
         } as ChronologyEvent)
       : null;
 

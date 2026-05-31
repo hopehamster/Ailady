@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { CollectionReference,FieldValue,Query,Timestamp } from 'firebase-admin/firestore';
 import { createHash } from 'crypto';
 import { defineString } from 'firebase-functions/params';
 import {
@@ -829,7 +829,7 @@ export const processLiveModeInput = functions
           emotionTrigger: result.emotionTrigger,
           emotionIntensity: result.emotionIntensity,
           modelUsed: 'live_vision',
-          timestamp: admin.firestore.Timestamp.fromMillis(nowMs),
+          timestamp: Timestamp.fromMillis(nowMs),
           createdAt: FieldValue.serverTimestamp(),
         });
       }
@@ -1026,7 +1026,7 @@ export const analyzeImage = functions
           userId,
           isFromUser: true,
           content: userContent,
-          timestamp: admin.firestore.Timestamp.fromMillis(nowMs),
+          timestamp: Timestamp.fromMillis(nowMs),
         }),
         // Aria's vision response turn (1 second after user, preserves ordering)
         db.collection('conversations').add({
@@ -1035,7 +1035,7 @@ export const analyzeImage = functions
           content: result.response,
           emotion: result.emotion,
           emotionTrigger: result.emotionTrigger,
-          timestamp: admin.firestore.Timestamp.fromMillis(nowMs + 1000),
+          timestamp: Timestamp.fromMillis(nowMs + 1000),
           modelUsed: 'vision',
         }),
       ]);
@@ -1849,7 +1849,7 @@ export const getAriaInnerThought = functions
 
       let relationshipDays = 0;
       if (statsDoc.exists) {
-        const firstAt = (statsDoc.data()?.firstMessageAt as admin.firestore.Timestamp | undefined)?.toDate();
+        const firstAt = (statsDoc.data()?.firstMessageAt as Timestamp | undefined)?.toDate();
         if (firstAt) {
           relationshipDays = Math.floor((Date.now() - firstAt.getTime()) / (1000 * 60 * 60 * 24));
         }
@@ -2280,7 +2280,7 @@ export const getMoodSummary = functions
     const snap = await db.collection('conversations')
       .where('userId', '==', userId)
       .where('isFromUser', '==', false)
-      .where('createdAt', '>=', admin.firestore.Timestamp.fromDate(weekAgo))
+      .where('createdAt', '>=', Timestamp.fromDate(weekAgo))
       .orderBy('createdAt', 'desc')
       .limit(200)
       .get();
@@ -2488,7 +2488,7 @@ export const handleRevenueCatWebhook = functions
           {
             isSubscribed: true,
             subscriptionExpiresAt: expirationMs
-              ? admin.firestore.Timestamp.fromMillis(expirationMs)
+              ? Timestamp.fromMillis(expirationMs)
               : null,
             lastSubscriptionSyncAt: FieldValue.serverTimestamp(),
           },
@@ -2560,10 +2560,10 @@ export const deleteUserData = functions
     const userRef = db.collection('users').doc(uid);
 
     async function deleteCollection(
-      collRef: admin.firestore.CollectionReference | admin.firestore.Query,
+      collRef: CollectionReference | Query,
       batchSize = 100
     ): Promise<void> {
-      const snapshot = await (collRef as admin.firestore.Query).limit(batchSize).get();
+      const snapshot = await (collRef as Query).limit(batchSize).get();
       if (snapshot.empty) return;
       const batch = db.batch();
       snapshot.docs.forEach((doc) => batch.delete(doc.ref));
@@ -2675,7 +2675,7 @@ export const exportUserData = functions
 
     // Helper: dump a Firestore (sub)collection to a plain array of {id, data}.
     async function dumpCollection(
-      collRef: admin.firestore.CollectionReference | admin.firestore.Query
+      collRef: CollectionReference | Query
     ): Promise<Array<{ id: string; data: unknown }>> {
       const snap = await collRef.get();
       return snap.docs.map((d) => ({ id: d.id, data: d.data() }));

@@ -12,6 +12,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -483,7 +484,7 @@ export async function getAriaOpinions(userId: string): Promise<AriaOpinion[]> {
         topic: data.topic || '',
         opinion: data.opinion || '',
         certainty: typeof data.certainty === 'number' ? data.certainty : 0.7,
-        updatedAt: data.updatedAt || admin.firestore.Timestamp.now(),
+        updatedAt: data.updatedAt || Timestamp.now(),
       };
     });
   } catch (error: any) {
@@ -496,7 +497,7 @@ function buildDefaultOpinions(): AriaOpinion[] {
   return DEFAULT_ARIA_OPINIONS.slice(0, 6).map((o, i) => ({
     ...o,
     id: `default_${i}`,
-    updatedAt: admin.firestore.Timestamp.now(),
+    updatedAt: Timestamp.now(),
   }));
 }
 
@@ -522,7 +523,7 @@ export async function updateAriaOpinion(
       topic,
       opinion: newOpinion,
       certainty: Math.max(0.0, Math.min(1.0, certainty)),
-      updatedAt: admin.firestore.Timestamp.now(),
+      updatedAt: Timestamp.now(),
     }, { merge: true });
   } catch (error: any) {
     functions.logger.warn('ariaInnerLifeService: opinion update failed', { error: error?.message });

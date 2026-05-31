@@ -1,4 +1,5 @@
 import * as admin from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 
 export type VirtualDateActivity =
   | 'movie_night'
@@ -116,7 +117,7 @@ export async function startVirtualDateSession(
   const db = admin.firestore();
   const session: VirtualDateSession = {
     activityType,
-    startedAt: admin.firestore.Timestamp.now(),
+    startedAt: Timestamp.now(),
     active: true,
   };
   await db.collection('users').doc(userId).collection('virtualDate').doc('current').set(session);

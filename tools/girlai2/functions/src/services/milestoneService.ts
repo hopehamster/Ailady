@@ -15,6 +15,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 
 // ─── Milestone definitions ────────────────────────────────────────────────────
 
@@ -338,7 +339,7 @@ export async function checkAndAwardMilestones(
     const statsSnap = await tx.get(statsRef);
     const existing = statsSnap.exists ? (statsSnap.data() as UserRelationshipStats) : null;
 
-    const now = admin.firestore.Timestamp.now();
+    const now = Timestamp.now();
     const today = todayIso();
 
     const stats: UserRelationshipStats = {
@@ -541,7 +542,7 @@ export async function ensureRelationshipDashboardState(
   const lastMessage = userMessages[userMessages.length - 1];
   const firstTimestamp =
     extractMessageTimestamp(firstMessage.data()) ??
-    admin.firestore.Timestamp.now();
+    Timestamp.now();
   const lastTimestamp =
     extractMessageTimestamp(lastMessage.data()) ??
     firstTimestamp;
@@ -612,7 +613,7 @@ export async function ensureRelationshipDashboardState(
     empathy,
   }, { merge: true });
 
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   for (const milestoneId of missingMilestoneIds) {
     const def = MILESTONE_MAP.get(milestoneId);
     if (!def) continue;

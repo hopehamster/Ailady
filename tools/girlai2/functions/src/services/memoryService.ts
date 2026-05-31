@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue,Timestamp } from 'firebase-admin/firestore';
 import OpenAI from 'openai';
 import { evaluateMemoryWrite } from '../memoryWriteGate';
 
@@ -462,7 +462,7 @@ function defaultPacingProfile(): RelationalPacingProfile {
     humor: 0.38,
     depth: 0.40,
     autonomyRespect: 0.85,
-    lastAdjustedAt: admin.firestore.Timestamp.now(),
+    lastAdjustedAt: Timestamp.now(),
   };
 }
 
@@ -470,7 +470,7 @@ function defaultSessionArc(): SessionArcState {
   return {
     stage: 'rapport',
     turnCount: 0,
-    lastTransitionAt: admin.firestore.Timestamp.now(),
+    lastTransitionAt: Timestamp.now(),
   };
 }
 
@@ -493,7 +493,7 @@ function defaultStyleProfile(): UserStyleProfile {
     cadenceMirrorPreference: 0.55,
     explicitPositiveCount: 0,
     explicitNegativeCount: 0,
-    lastUpdatedAt: admin.firestore.Timestamp.now(),
+    lastUpdatedAt: Timestamp.now(),
   };
 }
 
@@ -502,7 +502,7 @@ function defaultPersonaConsistency(): PersonaConsistencyState {
     rollingScore: 0.85,
     lastScore: 0.85,
     recentViolations: [],
-    lastEvaluatedAt: admin.firestore.Timestamp.now(),
+    lastEvaluatedAt: Timestamp.now(),
   };
 }
 
@@ -598,7 +598,7 @@ function updatePacingProfile(
     next.autonomyRespect = clamp01(next.autonomyRespect + 0.05);
   }
 
-  next.lastAdjustedAt = admin.firestore.Timestamp.now();
+  next.lastAdjustedAt = Timestamp.now();
   return next;
 }
 
@@ -644,7 +644,7 @@ function updateStyleProfileImplicit(
     next.preferredDepth = clamp01(next.preferredDepth + 0.03);
   }
 
-  next.lastUpdatedAt = admin.firestore.Timestamp.now();
+  next.lastUpdatedAt = Timestamp.now();
   return next;
 }
 
@@ -681,7 +681,7 @@ function updateStyleProfileFromFeedback(
     next.preferredPlayfulness = clamp01(next.preferredPlayfulness + (0.03 * delta));
   }
 
-  next.lastUpdatedAt = admin.firestore.Timestamp.now();
+  next.lastUpdatedAt = Timestamp.now();
   return next;
 }
 
@@ -702,7 +702,7 @@ function updatePersonaConsistencyState(
     rollingScore,
     lastScore,
     recentViolations: merged,
-    lastEvaluatedAt: admin.firestore.Timestamp.now(),
+    lastEvaluatedAt: Timestamp.now(),
   };
 }
 
@@ -814,7 +814,7 @@ function buildWeeklyTuningFallback(
     strengths,
     adjustments,
     metrics,
-    createdAt: admin.firestore.Timestamp.now(),
+    createdAt: Timestamp.now(),
   };
 }
 
@@ -891,7 +891,7 @@ Return strict JSON:
       strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 4) : [],
       adjustments: Array.isArray(parsed.adjustments) ? parsed.adjustments.slice(0, 4) : [],
       metrics,
-      createdAt: admin.firestore.Timestamp.now(),
+      createdAt: Timestamp.now(),
     };
   } catch (error) {
     functions.logger.warn('Weekly tuning model summary fallback', { error });
@@ -919,7 +919,7 @@ function updateShadowBenchmarkStats(
     ties,
     averagePrimaryScore: clamp01(averagePrimaryScore),
     averageShadowScore: clamp01(averageShadowScore),
-    lastRunAt: admin.firestore.Timestamp.now(),
+    lastRunAt: Timestamp.now(),
   };
 }
 
@@ -943,7 +943,7 @@ function updateSessionArcState(current: SessionArcState, userMessage: string): S
 
   if (nextStage !== current.stage) {
     next.stage = nextStage;
-    next.lastTransitionAt = admin.firestore.Timestamp.now();
+    next.lastTransitionAt = Timestamp.now();
   }
 
   return next;
@@ -976,7 +976,7 @@ function extractOpenLoopTopic(text: string): string {
 }
 
 function updateOpenLoops(current: OpenLoop[], userMessage: string): OpenLoop[] {
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   const normalized = userMessage.trim();
   if (!normalized) {
     return current;
@@ -1069,7 +1069,7 @@ function updateOpenLoops(current: OpenLoop[], userMessage: string): OpenLoop[] {
         lastMentionedAt: now,
         refreshCount: 0,
         freshnessScore: computeLoopFreshness(now, now),
-        expiresAt: admin.firestore.Timestamp.fromMillis(
+        expiresAt: Timestamp.fromMillis(
           now.toMillis() + OPEN_LOOP_EXPIRE_DAYS * 24 * 60 * 60 * 1000,
         ),
       });
@@ -1452,7 +1452,7 @@ function updateChronologyState(
   userMessage: string,
   options: ChronologyContextOptions = {},
 ): ChronologyState {
-  const now = admin.firestore.Timestamp.now();
+  const now = Timestamp.now();
   const chronologyNow = options.now instanceof Date ? options.now : now.toDate();
   const resolvedOffsetMinutes = normalizeTimeZoneOffsetMinutes(
     options.timeZoneOffsetMinutes ??
@@ -1708,7 +1708,7 @@ Respond with JSON array (empty if no new facts):
         category: f.category || 'personal',
         fact: f.fact,
         context: f.context,
-        extractedAt: admin.firestore.Timestamp.now(),
+        extractedAt: Timestamp.now(),
         confidence: f.confidence,
       }));
   } catch (error) {
@@ -1819,7 +1819,7 @@ Respond with JSON:
       summary: result.summary || '',
       keyTopics: result.keyTopics || [],
       emotionalTone: result.emotionalTone || 'neutral',
-      createdAt: admin.firestore.Timestamp.now(),
+      createdAt: Timestamp.now(),
     };
   } catch (error) {
     functions.logger.error('Error generating weekly summary', { error });
@@ -1900,7 +1900,7 @@ export async function getIntelligentMemory(userId: string): Promise<IntelligentM
       behaviorCounters: defaultBehaviorCounters(),
       openLoopHealth: defaultOpenLoopHealth(),
       chronology: defaultChronologyState(),
-      lastUpdated: admin.firestore.Timestamp.now(),
+      lastUpdated: Timestamp.now(),
     };
     
     await db.collection('intelligentMemory').doc(userId).set(emptyMemory);
@@ -1925,7 +1925,7 @@ export async function updateIntelligentMemory(
     const memory = await getIntelligentMemory(userId);
     if (!memory) return;
     
-    const now = admin.firestore.Timestamp.now();
+    const now = Timestamp.now();
     const chronologyNow =
       typeof meta?.clientEpochMs === 'number' && Number.isFinite(meta.clientEpochMs)
         ? new Date(meta.clientEpochMs)
@@ -2508,8 +2508,8 @@ export async function indexSemanticMemoryForTurn(
     return;
   }
 
-  const now = admin.firestore.Timestamp.now();
-  const expiresAt = admin.firestore.Timestamp.fromMillis(
+  const now = Timestamp.now();
+  const expiresAt = Timestamp.fromMillis(
     now.toMillis() + 180 * 24 * 60 * 60 * 1000,
   );
   const entries: Array<{
@@ -2655,7 +2655,7 @@ export async function recallSemanticMemories(
           return null;
         }
         const semanticScore = clamp01((cosineSimilarity(queryEmbedding, embedding) + 1) / 2);
-        const createdAt = data.createdAt || admin.firestore.Timestamp.now();
+        const createdAt = data.createdAt || Timestamp.now();
         const recencyScore = recencyDecayScore(createdAt, now);
         const importance = clamp01(typeof data.importance === 'number' ? data.importance : 0.5);
         const weightedScore =
@@ -2777,11 +2777,11 @@ export async function recordResponseFeedback(
         recentViolations: newViolation
           ? [newViolation, ...persona.recentViolations].slice(0, 8)
           : persona.recentViolations,
-        lastEvaluatedAt: admin.firestore.Timestamp.now(),
+        lastEvaluatedAt: Timestamp.now(),
       };
     }
 
-    memory.lastUpdated = admin.firestore.Timestamp.now();
+    memory.lastUpdated = Timestamp.now();
     await db.collection('intelligentMemory').doc(userId).set(memory, { merge: true });
 
     await db.collection('conversationFeedback').add({
@@ -2819,7 +2819,7 @@ export async function recordShadowEvaluation(
       memory.shadowBenchmarkStats || defaultShadowBenchmarkStats(),
       input,
     );
-    memory.lastUpdated = admin.firestore.Timestamp.now();
+    memory.lastUpdated = Timestamp.now();
     await db.collection('intelligentMemory').doc(userId).set(memory, { merge: true });
 
     await db.collection('abShadowEvaluations').add({
@@ -2911,7 +2911,7 @@ export async function updateProactiveConfig(
     };
 
     memory.proactiveConfig = next;
-    memory.lastUpdated = admin.firestore.Timestamp.now();
+    memory.lastUpdated = Timestamp.now();
     await db.collection('intelligentMemory').doc(userId).set(memory, { merge: true });
     return next;
   } catch (error) {
@@ -2927,9 +2927,9 @@ export async function markProactiveSent(userId: string): Promise<void> {
     if (!memory) return;
     memory.proactiveConfig = {
       ...getProactiveConfig(memory),
-      lastProactiveAt: admin.firestore.Timestamp.now(),
+      lastProactiveAt: Timestamp.now(),
     };
-    memory.lastUpdated = admin.firestore.Timestamp.now();
+    memory.lastUpdated = Timestamp.now();
     await db.collection('intelligentMemory').doc(userId).set(memory, { merge: true });
   } catch (error) {
     functions.logger.error('Error marking proactive sent', { userId, error });

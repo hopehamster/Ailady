@@ -17,6 +17,7 @@
  */
 
 import * as admin from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import * as functions from 'firebase-functions';
 
 // ─── Relationship Stage Model ─────────────────────────────────────────────────
@@ -499,7 +500,7 @@ export async function saveUserSecret(
       .add({
         text: secretText.slice(0, 500), // cap at 500 chars
         category,
-        keptSince: admin.firestore.Timestamp.now(),
+        keptSince: Timestamp.now(),
       });
   } catch (error: any) {
     functions.logger.warn('ariaRelationshipService: secret save failed', { error: error?.message });
