@@ -14,6 +14,11 @@ import {
   pickVoiceJitterForProfile,
   type VoiceJitterOption,
 } from './voiceVariancePool';
+import {
+  isCacheable as isVoiceCacheable,
+  lookupVoiceCache,
+  writeVoiceCache,
+} from './voiceCache';
 
 // Types
 export interface VisemeEvent {
@@ -31,6 +36,19 @@ export interface VoiceResult {
   blendTimeline: Record<number, number[]>;
   durationMs: number;
   provider: 'azure' | 'elevenlabs';
+  /** True when the audio came from voice_cache (no provider call). Default: false. */
+  cacheHit?: boolean;
+  /**
+   * Internal: GCS bucket the audio was uploaded to. Present only when
+   * deliveryMode='storage'. Used by the voice cache write path; callers should
+   * not surface this in API responses.
+   */
+  audioBucket?: string;
+  /**
+   * Internal: GCS object name within `audioBucket`. Same caveats as
+   * `audioBucket`.
+   */
+  audioObjectName?: string;
   timingsMs?: {
     synthesisMs?: number;
     providerRequestMs?: number;
@@ -1227,6 +1245,10 @@ function clampStyleDegreeNumber(value: number): number {
  * `uid` lets the variance pool dampen consecutive jitter picks per-user; if
  * omitted, the pool treats the caller as anonymous (acceptable for cold
  * starts / unknown callers).
+ *
+ * `skipCache` bypasses the voice content-hash cache (L4) — safety-flagged
+ * content (e.g. crisis-card replies) should always re-synth so the cache never
+ * serves stale safety text. Default: false.
  */
 export async function generateVoiceWithVisemes(
   text: string,
@@ -1235,6 +1257,7 @@ export async function generateVoiceWithVisemes(
   emotion?: EmotionKey | null,
   emotionIntensity?: number | null,
   uid?: string,
+  skipCache?: boolean,
 ): Promise<VoiceResult> {
   const speechText = prepareSpeechTextForTts(text);
   const baseProfile = (emotion !== null && emotion !== undefined)
@@ -1263,13 +1286,64 @@ export async function generateVoiceWithVisemes(
     });
   }
 
+  // Resolve provider + voice identifiers so the cache key is stable across
+  // calls that omit voiceId (in which case the default voice is used).
+  // Note: jitter is intentionally NOT part of the cache key — the synth output
+  // for a given (provider, voiceId, profileId, text) is treated as cacheable
+  // even though jitter perturbed the prosody. This is the design trade: cache
+  // hits sacrifice some per-turn jitter variance to save the provider call,
+  // which is exactly what we want for the variance fallback pool + greetings.
+  const resolvedProvider: 'azure' | 'elevenlabs' = subscriptionTier === 'ultra' ? 'elevenlabs' : 'azure';
+  const resolvedVoiceId = voiceId ?? (
+    resolvedProvider === 'elevenlabs'
+      ? getElevenLabsConfig().voiceId
+      : getAzureConfig().voiceName
+  );
+  const profileId = baseProfile.id;
+  const cacheCandidate = {
+    provider: resolvedProvider,
+    voiceId: resolvedVoiceId,
+    profileId,
+    speechText: truncatedText,
+  };
+  const cacheEligible = isVoiceCacheable({ speechText: truncatedText, skipCache });
+
+  // L4: cache lookup (sequential — never run lookup + synth concurrently).
+  if (cacheEligible) {
+    const hit = await lookupVoiceCache(cacheCandidate);
+    if (hit) {
+      functions.logger.info('[VoiceCache] HIT', {
+        provider: hit.provider,
+        profileId,
+        uid: uid ?? 'anonymous',
+        textLength: truncatedText.length,
+        hitCount: hit.hitCount,
+      });
+      return {
+        audioUrl: hit.audioUrl,
+        audioContentType: hit.audioContentType,
+        deliveryMode: 'storage',
+        visemeTimeline: hit.visemeTimeline,
+        blendTimeline: hit.blendTimeline,
+        durationMs: hit.durationMs,
+        provider: hit.provider,
+        cacheHit: true,
+        timingsMs: {
+          deliveryProfile: profileId,
+        },
+      };
+    }
+  }
+
+  let synthResult: VoiceResult;
   try {
     if (subscriptionTier === 'ultra') {
-      return await generateWithElevenLabs(truncatedText, deliveryProfile, {
+      synthResult = await generateWithElevenLabs(truncatedText, deliveryProfile, {
         voiceIdOverride: voiceId,
       });
+    } else {
+      synthResult = await generateWithAzure(truncatedText, deliveryProfile, voiceId);
     }
-    return await generateWithAzure(truncatedText, deliveryProfile, voiceId);
   } catch (providerError: unknown) {
     if (providerError instanceof VoiceServiceError) {
       throw providerError;
@@ -1280,6 +1354,40 @@ export async function generateVoiceWithVisemes(
       error: err?.message ?? 'unknown',
     });
   }
+
+  // L4: cache write on miss. Fire-and-forget; never block the response on it,
+  // never let a write failure surface. Skip when inline-delivered (no bucket
+  // object to rehydrate) or when skipCache is on.
+  if (
+    cacheEligible &&
+    synthResult.deliveryMode === 'storage' &&
+    synthResult.audioBucket &&
+    synthResult.audioObjectName
+  ) {
+    functions.logger.info('[VoiceCache] MISS+WRITE', {
+      provider: synthResult.provider,
+      profileId,
+      uid: uid ?? 'anonymous',
+      textLength: truncatedText.length,
+    });
+    void writeVoiceCache({
+      provider: synthResult.provider,
+      voiceId: resolvedVoiceId,
+      profileId,
+      speechText: truncatedText,
+      audioBucket: synthResult.audioBucket,
+      audioObjectName: synthResult.audioObjectName,
+      visemeTimeline: synthResult.visemeTimeline,
+      blendTimeline: synthResult.blendTimeline,
+      durationMs: synthResult.durationMs,
+      audioContentType: synthResult.audioContentType ?? 'audio/mpeg',
+    });
+  }
+
+  return {
+    ...synthResult,
+    cacheHit: false,
+  };
 }
 
 /**
@@ -1557,6 +1665,8 @@ async function generateWithAzureRestFallback(
     blendTimeline: {},
     durationMs,
     provider: 'azure',
+    audioBucket: delivery.audioBucket,
+    audioObjectName: delivery.audioObjectName,
     timingsMs: {
       providerRequestMs: Date.now() - startedAt,
       uploadMs: delivery.uploadMs,
@@ -1670,6 +1780,8 @@ async function runAzureSynthesisAttempt(
           blendTimeline,
           durationMs,
           provider: 'azure',
+          audioBucket: delivery.audioBucket,
+          audioObjectName: delivery.audioObjectName,
           timingsMs: {
             synthesisMs,
             providerRequestMs: synthesisMs,
@@ -1799,6 +1911,8 @@ async function generateWithElevenLabs(
     blendTimeline: {},
     durationMs,
     provider: 'elevenlabs',
+    audioBucket: delivery.audioBucket,
+    audioObjectName: delivery.audioObjectName,
     timingsMs: {
       providerRequestMs,
       uploadMs: delivery.uploadMs,
@@ -1893,14 +2007,24 @@ function buildHeuristicVisemeTimelineFromText(
   return visemes;
 }
 
+/** Result of uploadAudioToStorage — includes bucket + object name so the
+ *  voice cache can persist a re-derivable pointer to the audio. */
+interface AudioUploadResult {
+  audioUrl: string;
+  bucket: string;
+  objectName: string;
+}
+
 /**
- * Uploads audio buffer to Cloud Storage and returns a playable URL.
+ * Uploads audio buffer to Cloud Storage and returns a playable URL plus the
+ * bucket + object name (needed by the voice cache to rehydrate the URL on a
+ * cache hit without re-uploading).
  */
 async function uploadAudioToStorage(
   audioBuffer: Buffer,
   contentType: string,
   provider: string
-): Promise<string> {
+): Promise<AudioUploadResult> {
   if (cachedVoiceBucketName) {
     const cachedBucket = admin.storage().bucket(cachedVoiceBucketName);
     const filename = `voice/${provider}/${uuidv4()}.mp3`;
@@ -1918,7 +2042,11 @@ async function uploadAudioToStorage(
       });
       // girlai2-voice-audio has allUsers:objectViewer so plain public URL works.
       // No signed URL needed (avoids iam.serviceAccounts.signBlob requirement).
-      return `https://storage.googleapis.com/${cachedBucket.name}/${filename}`;
+      return {
+        audioUrl: `https://storage.googleapis.com/${cachedBucket.name}/${filename}`,
+        bucket: cachedBucket.name,
+        objectName: filename,
+      };
     } catch (error) {
       const err = error as { code?: string; message?: string };
       functions.logger.warn('[VoiceService] Cached bucket upload failed, falling back to probe', {
@@ -2011,7 +2139,11 @@ async function uploadAudioToStorage(
 
   // girlai2-voice-audio has allUsers:objectViewer — return plain public URL.
   // Avoids iam.serviceAccounts.signBlob requirement on the Cloud Functions SA.
-  return `https://storage.googleapis.com/${bucket.name}/${filename}`;
+  return {
+    audioUrl: `https://storage.googleapis.com/${bucket.name}/${filename}`,
+    bucket: bucket.name,
+    objectName: filename,
+  };
 }
 
 async function prepareAudioDelivery(
@@ -2028,6 +2160,10 @@ async function prepareAudioDelivery(
   audioContentType?: string;
   deliveryMode: 'inline' | 'storage';
   uploadMs: number;
+  /** GCS bucket name when deliveryMode='storage'; undefined for inline delivery. */
+  audioBucket?: string;
+  /** GCS object name when deliveryMode='storage'; undefined for inline delivery. */
+  audioObjectName?: string;
 }> {
   const preferStreaming =
     options?.deliveryProfileId === 'long_form' &&
@@ -2047,11 +2183,13 @@ async function prepareAudioDelivery(
   }
 
   const uploadStartedAt = Date.now();
-  const audioUrl = await uploadAudioToStorage(audioBuffer, contentType, provider);
+  const upload = await uploadAudioToStorage(audioBuffer, contentType, provider);
   return {
-    audioUrl,
+    audioUrl: upload.audioUrl,
     deliveryMode: 'storage',
     uploadMs: Date.now() - uploadStartedAt,
+    audioBucket: upload.bucket,
+    audioObjectName: upload.objectName,
   };
 }
 

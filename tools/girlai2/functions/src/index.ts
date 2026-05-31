@@ -1154,6 +1154,10 @@ export const generateVoiceMessage = functions
         );
       }
 
+      // L4: callers (e.g. crisis-card replies) can opt out of the cache so the
+      // cache never serves stale safety text.
+      const skipCache = typeof data.skipCache === 'boolean' ? data.skipCache : false;
+
       // Generate voice with visemes
       const result = await generateVoiceWithVisemes(
         text.trim(),
@@ -1162,6 +1166,7 @@ export const generateVoiceMessage = functions
         emotion,
         emotionIntensity,
         userId,
+        skipCache,
       );
 
       const blendFrameCount = Object.keys(result.blendTimeline).length;
@@ -1180,6 +1185,7 @@ export const generateVoiceMessage = functions
         deliveryProfile: result.timingsMs?.deliveryProfile ?? null,
         totalVoicePipelineMs: result.timingsMs?.totalMs ?? null,
         totalCallableMs: Date.now() - callableStartedAt,
+        cacheHit: result.cacheHit ?? false,
       });
 
       return {
