@@ -286,6 +286,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         debugPrint('🔊 Audio URL: ${voiceResult.audioUrl}');
       }
 
+      // L3 — fade out the filler interjection (if any) right before the
+      // real Aria voice begins. Awaits the ramp so the cut is clean.
+      try {
+        await context
+            .read<ChatService>()
+            .fillerAudio
+            .fadeOutAndStop();
+      } catch (_) {
+        // Filler is best-effort. Never let it block the real voice.
+      }
+      if (!mounted) return;
+
       final loadStopwatch = Stopwatch()..start();
       if (voiceResult.audioBase64 != null && voiceResult.audioBase64!.isNotEmpty) {
         final audioBytes = base64Decode(voiceResult.audioBase64!);

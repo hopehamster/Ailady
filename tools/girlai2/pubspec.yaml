@@ -61,6 +61,7 @@ flutter:
     - assets/live2d/
     - assets/live2d/bezzly/
     - assets/live2d/bezzly/bezzly.8192/
+    - assets/audio/fillers/
 
 flutter_launcher_icons:
   android: "launcher_icon"

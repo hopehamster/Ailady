@@ -1,0 +1,42 @@
+{
+  "$schema": "filler-clip-definitions-v1",
+  "description": "25 short interjection clips Aria plays at <300ms while the real LLM+TTS pipeline runs in the background. Categories drive context-sensitive picking. See: lib/features/voice/filler_audio_controller.dart + scripts/generate-filler-audio.js. L3 of melodic-fluttering-flame.md.",
+  "clips": [
+    { "id": "mhm_01",     "text": "Mhm.",            "category": "ack" },
+    { "id": "mhm_02",     "text": "Mm-hm.",          "category": "ack" },
+    { "id": "yeah_01",    "text": "Yeah?",           "category": "ack" },
+    { "id": "okay_01",    "text": "Okay.",           "category": "ack" },
+    { "id": "right_01",   "text": "Right.",          "category": "ack" },
+    { "id": "uhhuh_01",   "text": "Uh-huh.",         "category": "ack" },
+    { "id": "totally_01", "text": "Totally.",        "category": "ack" },
+    { "id": "hmm_01",     "text": "Hmm.",            "category": "ack" },
+
+    { "id": "tellme_01",  "text": "Tell me.",        "category": "engage" },
+    { "id": "goon_01",    "text": "Go on.",          "category": "engage" },
+    { "id": "and_01",     "text": "And?",            "category": "engage" },
+    { "id": "wait_01",    "text": "Wait, really?",   "category": "engage" },
+    { "id": "oh_01",      "text": "Oh!",             "category": "engage" },
+    { "id": "yeahso_01",  "text": "Yeah, so...",     "category": "engage" },
+
+    { "id": "aww_01",     "text": "Aww.",            "category": "warm" },
+    { "id": "haha_01",    "text": "Haha.",           "category": "warm" },
+    { "id": "soft_01",    "text": "Mm.",             "category": "warm" },
+    { "id": "hehe_01",    "text": "Hehe.",           "category": "warm" },
+    { "id": "breath_01",  "text": "Hmm...",          "category": "warm" },
+
+    { "id": "think_01",   "text": "Let me think.",   "category": "think" },
+    { "id": "okso_01",    "text": "Okay, so...",     "category": "think" },
+    { "id": "lemmesee_01","text": "Let me see.",     "category": "think" },
+    { "id": "hmmlet_01",  "text": "Hmm, let me...",  "category": "think" },
+
+    { "id": "holdon_01",  "text": "Hold on.",        "category": "hold" },
+    { "id": "onesec_01",  "text": "Give me a sec.",  "category": "hold" }
+  ],
+  "context_routing": {
+    "comment": "Hints used by FillerAudioController to pick clips per user-message shape.",
+    "short_user_message": "ack",
+    "long_user_message": "think_or_engage",
+    "emotional_disclosure": "warm",
+    "default": "ack_or_engage"
+  }
+}

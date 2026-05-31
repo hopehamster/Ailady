@@ -7,6 +7,7 @@ import '../../core/services/firebase_service.dart';
 import '../../core/utils/debug_logger.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/message.dart';
+import '../voice/filler_audio_controller.dart';
 
 /// Callback type for avatar emotion triggers
 typedef EmotionTriggerCallback = void Function(
@@ -18,6 +19,15 @@ class ChatService extends ChangeNotifier {
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
   List<Message> _messages = [];
   bool _isTyping = false;
+
+  // L3 — short prefetched interjection clip plays at <300ms after send
+  // while the real LLM+TTS pipeline runs. fadeOutAndStop() is called by
+  // chat_screen just before the real Aria voice begins.
+  final FillerAudioController _fillerAudioController;
+
+  /// Exposed so the chat screen can call fadeOutAndStop() right before
+  /// the real voice playback starts.
+  FillerAudioController get fillerAudio => _fillerAudioController;
 
   // Current emotion state for avatar
   String _currentEmotion = 'neutral';
@@ -42,7 +52,15 @@ class ChatService extends ChangeNotifier {
   // the crisis-resource-card surface.
   void Function(Map<String, dynamic> crisisPayload)? onCrisis;
 
-  ChatService(this._firebaseService, this._userId) {
+  ChatService(
+    this._firebaseService,
+    this._userId, {
+    FillerAudioController? fillerAudioController,
+  }) : _fillerAudioController =
+            fillerAudioController ?? FillerAudioController() {
+    // Eager-load filler clip definitions so the first send doesn't pay
+    // the JSON parse cost in the critical <300ms window.
+    unawaited(_fillerAudioController.ensureLoaded());
     // Defer subscription to avoid accessing Firebase during construction
     if (_userId != null) {
       _initializeSubscription();
@@ -167,6 +185,14 @@ class ChatService extends ChangeNotifier {
     _messages.insert(0, optimisticMessage);
     _isTyping = true;
     notifyListeners();
+
+    // L3 — fire-and-forget filler clip plays at <300ms while the real
+    // LLM+TTS pipeline runs. chat_screen calls fadeOutAndStop() right
+    // before the real Aria voice playback starts.
+    unawaited(_fillerAudioController.playFor(
+      userMessage: content,
+      uid: userId,
+    ));
 
     // Retry logic for transient failures
     const maxRetries = 2;
@@ -381,6 +407,7 @@ class ChatService extends ChangeNotifier {
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    unawaited(_fillerAudioController.dispose());
     super.dispose();
   }
 }
