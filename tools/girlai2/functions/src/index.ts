@@ -1128,7 +1128,11 @@ export const generateVoiceMessage = functions
 
     try {
       const authUid = context.auth?.uid ?? '';
-      let subscriptionTier: 'regular' | 'ultra' = 'regular';
+      // Aria's voice is Natasha (ElevenLabs community voice). Route every turn
+      // through the 'ultra' path so generateVoiceWithVisemes calls ElevenLabs.
+      // Azure remains a wired emergency fallback inside generateWithElevenLabs'
+      // throttle/cooldown branches — never the default for new turns.
+      const subscriptionTier: 'regular' | 'ultra' = 'ultra';
 
       functions.logger.info('Voice request', {
         userId,
@@ -1141,12 +1145,12 @@ export const generateVoiceMessage = functions
       // Check voice service configuration
       const configStatus = checkVoiceServiceConfig();
 
-      if (subscriptionTier === 'regular' && !configStatus.azure) {
-        functions.logger.warn('Azure not configured for regular voice path');
+      if (!configStatus.elevenlabs) {
+        functions.logger.warn('ElevenLabs not configured for ultra voice path');
         throw new functions.https.HttpsError(
           'failed-precondition',
           'Voice service not configured. Contact support.',
-          { reason: 'voice_not_configured', provider: 'azure' }
+          { reason: 'voice_not_configured', provider: 'elevenlabs' }
         );
       }
 
