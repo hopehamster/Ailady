@@ -72,6 +72,7 @@ import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService'
 import { runPostResponseOrchestration } from './postResponseOrchestrationService';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
+import { injectHumanity } from './responseHumanityInjector';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
 import { tagError, isProviderConnectionError } from '../failureClass';
 import { callWithFallback, type ProviderCall } from './providerRouter';
@@ -2863,7 +2864,17 @@ export async function generateAIResponse(
       }
     }
 
-
+    // Aria humanity #3+#4 — post-LLM filler + metacommentary injection.
+    // Both default OFF via env (HUMANITY_FILLER_INJECTION_RATE and
+    // HUMANITY_METACOMMENTARY_INJECTION_RATE). Skipped when the output
+    // scan blocked above — we don't inject into the stall variant we just
+    // swapped in (it already has its own variance).
+    if (!stageTimingsMs.outputScanBlocked) {
+      aiContent = injectHumanity(aiContent, {
+        uid: userId,
+        userMessageComplexity: preSignals.userMessageComplexity,
+      });
+    }
 
     return finalizeAIResponse({
       userId,
