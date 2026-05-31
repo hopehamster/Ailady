@@ -221,7 +221,7 @@ function normalizeTemporalContext(raw: unknown): UserTemporalContext | undefined
 export const generateResponse = functions
   .region('us-central1')
   .runWith({
-    minInstances: 1,
+    minInstances: 0, // keep-warm off — solo testing
     memory: '1GB',
     timeoutSeconds: 60,
   })
@@ -684,7 +684,7 @@ export const processLiveModeInput = functions
     // Phase 3 P6 — pre-warm LLM-bearing callable. Per round_11.md Pattern C #5,
     // cold starts on Node Cloud Functions with all Aria service deps loaded
     // are 800ms-1.5s — bigger than the LLM call itself.
-    minInstances: 1,
+    minInstances: 0, // keep-warm off — solo testing
     memory: '1GB',
     timeoutSeconds: 60,
   })
@@ -890,7 +890,7 @@ export const createRealtimeSession = functions
     // Phase 3 P6 — pre-warm Realtime session creator. First-byte latency on
     // Live Mode is user-perceived as "wait to start talking" — cold start
     // here directly hurts that experience.
-    minInstances: 1,
+    minInstances: 0, // keep-warm off — solo testing
     memory: '512MB',
     timeoutSeconds: 30,
   })
@@ -961,7 +961,7 @@ export const analyzeImage = functions
   .runWith({
     // Phase 3 P6 — pre-warm vision callable. Vision cold-starts are heavier
     // because OpenAI SDK init + image-pipeline deps load on first call.
-    minInstances: 1,
+    minInstances: 0, // keep-warm off — solo testing
     memory: '1GB',
     timeoutSeconds: 60,
   })
@@ -1078,7 +1078,7 @@ export const generateVoiceMessage = functions
   .runWith({
     timeoutSeconds: 120, // TTS + upload can take time
     memory: '512MB',
-    minInstances: 1,
+    minInstances: 0, // keep-warm off — solo testing
   })
   .https.onCall(async (data, context) => {
     const callableStartedAt = Date.now();
