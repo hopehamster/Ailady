@@ -237,7 +237,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   /// Play voice for an assistant message
-  Future<void> _playVoiceForMessage(String messageId, String text) async {
+  Future<void> _playVoiceForMessage(
+    String messageId,
+    String text, {
+    String? emotion,
+  }) async {
     // Don't replay the same message
     if (_lastPlayedMessageId == messageId) return;
     if (_isPreparingVoice) return;
@@ -261,7 +265,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
       // Generate voice with visemes
       final voiceCallStopwatch = Stopwatch()..start();
-      final voiceResult = await _firebaseService.generateVoice(text);
+      final voiceResult = await _firebaseService.generateVoice(
+        text,
+        emotion: emotion,
+      );
       voiceCallStopwatch.stop();
 
       if (!mounted) return;
@@ -438,7 +445,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     // Play voice asynchronously
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && !_isSpeaking && !_isPreparingVoice) {
-        _playVoiceForMessage(latestMessage.id, latestMessage.content);
+        _playVoiceForMessage(
+          latestMessage.id,
+          latestMessage.content,
+          emotion: latestMessage.emotion,
+        );
       }
     });
   }

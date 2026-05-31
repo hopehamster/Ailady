@@ -30,6 +30,7 @@ import {
   VoiceServiceError,
 } from './services/voiceService';
 import type { FeedbackReasonCode } from './services/memoryService';
+import type { EmotionKey } from './services/emotionUtils';
 import {
   checkAndAwardMilestones,
   ensureRelationshipDashboardState,
@@ -1101,6 +1102,14 @@ export const generateVoiceMessage = functions
       cost: typeof text === 'string' ? text.length : 1,
     });
     const voiceId = data.voiceId as string | undefined;
+    // L1: emotion + intensity route the voice profile through the emotion-
+    // aware selector (per-emotion Azure express-as style + intensity-scaled
+    // styleDegree). Missing → falls back to the legacy text-regex selector.
+    const emotionRaw = typeof data.emotion === 'string' ? data.emotion : undefined;
+    const emotion = emotionRaw ? (emotionRaw as EmotionKey) : undefined;
+    const emotionIntensity = typeof data.emotionIntensity === 'number'
+      ? data.emotionIntensity
+      : undefined;
 
     // Validate input
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -1145,7 +1154,10 @@ export const generateVoiceMessage = functions
       const result = await generateVoiceWithVisemes(
         text.trim(),
         subscriptionTier,
-        voiceId
+        voiceId,
+        emotion,
+        emotionIntensity,
+        userId,
       );
 
       const blendFrameCount = Object.keys(result.blendTimeline).length;

@@ -9,6 +9,11 @@ import * as admin from 'firebase-admin';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 import { defineString } from 'firebase-functions/params';
 import { v4 as uuidv4 } from 'uuid';
+import type { EmotionKey } from './emotionUtils';
+import {
+  pickVoiceJitterForProfile,
+  type VoiceJitterOption,
+} from './voiceVariancePool';
 
 // Types
 export interface VisemeEvent {
@@ -103,7 +108,9 @@ const elevenLabsAzureFallbackPolish = {
 } as const;
 
 interface VoiceDeliveryProfile {
-  id: 'default' | 'excited' | 'reflective' | 'long_form';
+  id: 'default' | 'excited' | 'reflective' | 'long_form'
+    | 'loving' | 'flirty' | 'playful' | 'caring' | 'concerned'
+    | 'shy' | 'proud' | 'comforting' | 'surprised' | 'thoughtful' | 'curious';
   volume: string;
   pitch: string;
   rate: string;
@@ -626,6 +633,370 @@ function deriveVoiceDeliveryProfile(text: string): VoiceDeliveryProfile {
   };
 }
 
+// --- Emotion-aware delivery profile selector (L1) -------------------------
+//
+// Per L1 of melodic-fluttering-flame.md — replaces the text-regex selector
+// path with one driven by the LLM's structured emotion field. The LLM already
+// emits a 15-key emotion (happy/excited/loving/flirty/playful/caring/sad/
+// concerned/surprised/thoughtful/shy/proud/comforting/curious/neutral); using
+// regex on the response TEXT to recover that signal is lossy — a loving
+// response without the word "love" lands on the default profile.
+//
+// This selector keeps the original text-regex function as the fallback (when
+// emotion is null/undefined/unknown) so callers can opt into the new path
+// without ripping out the old one. The longForm override still applies.
+
+/**
+ * Base per-emotion VoiceDeliveryProfile templates. Azure styles are picked
+ * from those confirmed for en-US-AvaMultilingualNeural. The `styleDegree`
+ * here is the BASE value at emotionIntensity=0.5; the selector scales it
+ * by (0.75 + 0.5 * intensity) at call time.
+ */
+const emotionVoiceProfiles: Record<
+  Exclude<EmotionKey, 'happy' | 'sad' | 'excited' | 'neutral'>,
+  Omit<VoiceDeliveryProfile, 'styleDegree'> & { baseStyleDegree: number }
+> = {
+  loving: {
+    id: 'loving',
+    volume: '+7.0%',
+    pitch: '-1.0%',
+    rate: '-1.0%',
+    style: 'friendly',
+    baseStyleDegree: 1.18,
+    sentencePauseMs: 130,
+    clausePauseMs: 76,
+    elevenLabs: {
+      stability: elevenLabsVoicePolish.stability,
+      similarity_boost: elevenLabsVoicePolish.similarity_boost,
+      style: elevenLabsVoicePolish.style,
+      use_speaker_boost: elevenLabsVoicePolish.use_speaker_boost,
+    },
+  },
+  flirty: {
+    id: 'flirty',
+    volume: '+5.0%',
+    pitch: '-2.0%',
+    rate: '-2.0%',
+    style: 'whispering',
+    baseStyleDegree: 0.95,
+    sentencePauseMs: 138,
+    clausePauseMs: 80,
+    elevenLabs: {
+      stability: 0.32,
+      similarity_boost: 0.84,
+      style: 0.40,
+      use_speaker_boost: true,
+    },
+  },
+  playful: {
+    id: 'playful',
+    volume: '+8.0%',
+    pitch: '+1.0%',
+    rate: '+4.0%',
+    style: 'cheerful',
+    baseStyleDegree: 1.15,
+    sentencePauseMs: 110,
+    clausePauseMs: 60,
+    elevenLabs: {
+      stability: 0.34,
+      similarity_boost: 0.84,
+      style: 0.38,
+      use_speaker_boost: true,
+    },
+  },
+  caring: {
+    id: 'caring',
+    volume: '+6.0%',
+    pitch: '-1.0%',
+    rate: '-2.0%',
+    style: 'empathetic',
+    baseStyleDegree: 1.10,
+    sentencePauseMs: 134,
+    clausePauseMs: 78,
+    elevenLabs: {
+      stability: elevenLabsVoicePolish.stability,
+      similarity_boost: elevenLabsVoicePolish.similarity_boost,
+      style: elevenLabsVoicePolish.style,
+      use_speaker_boost: elevenLabsVoicePolish.use_speaker_boost,
+    },
+  },
+  concerned: {
+    id: 'concerned',
+    volume: '+5.0%',
+    pitch: '-3.0%',
+    rate: '-4.0%',
+    style: 'empathetic',
+    baseStyleDegree: 1.20,
+    sentencePauseMs: 144,
+    clausePauseMs: 82,
+    elevenLabs: {
+      stability: elevenLabsAzureFallbackPolish.stability,
+      similarity_boost: elevenLabsAzureFallbackPolish.similarity_boost,
+      style: elevenLabsAzureFallbackPolish.style,
+      use_speaker_boost: elevenLabsAzureFallbackPolish.use_speaker_boost,
+    },
+  },
+  shy: {
+    id: 'shy',
+    volume: '+3.0%',
+    pitch: '-2.0%',
+    rate: '-3.0%',
+    style: 'friendly',
+    baseStyleDegree: 0.92,
+    sentencePauseMs: 142,
+    clausePauseMs: 80,
+    elevenLabs: {
+      stability: 0.55,
+      similarity_boost: 0.86,
+      style: 0.16,
+      use_speaker_boost: true,
+    },
+  },
+  proud: {
+    id: 'proud',
+    volume: '+7.0%',
+    pitch: '+1.0%',
+    rate: '+2.0%',
+    style: 'hopeful',
+    baseStyleDegree: 1.12,
+    sentencePauseMs: 122,
+    clausePauseMs: 70,
+    elevenLabs: {
+      stability: elevenLabsVoicePolish.stability,
+      similarity_boost: elevenLabsVoicePolish.similarity_boost,
+      style: elevenLabsVoicePolish.style,
+      use_speaker_boost: elevenLabsVoicePolish.use_speaker_boost,
+    },
+  },
+  comforting: {
+    id: 'comforting',
+    volume: '+6.0%',
+    pitch: '-2.0%',
+    rate: '-3.0%',
+    style: 'empathetic',
+    baseStyleDegree: 1.15,
+    sentencePauseMs: 138,
+    clausePauseMs: 80,
+    elevenLabs: {
+      stability: elevenLabsAzureFallbackPolish.stability,
+      similarity_boost: elevenLabsAzureFallbackPolish.similarity_boost,
+      style: elevenLabsAzureFallbackPolish.style,
+      use_speaker_boost: elevenLabsAzureFallbackPolish.use_speaker_boost,
+    },
+  },
+  surprised: {
+    id: 'surprised',
+    volume: '+9.0%',
+    pitch: '+2.0%',
+    rate: '+5.0%',
+    style: 'excited',
+    baseStyleDegree: 1.10,
+    sentencePauseMs: 100,
+    clausePauseMs: 56,
+    elevenLabs: {
+      stability: 0.34,
+      similarity_boost: 0.84,
+      style: 0.38,
+      use_speaker_boost: true,
+    },
+  },
+  thoughtful: {
+    id: 'thoughtful',
+    volume: '+5.0%',
+    pitch: '-2.0%',
+    rate: '-3.0%',
+    style: 'narration-relaxed',
+    baseStyleDegree: 1.05,
+    sentencePauseMs: 150,
+    clausePauseMs: 88,
+    elevenLabs: {
+      stability: elevenLabsAzureFallbackPolish.stability,
+      similarity_boost: elevenLabsAzureFallbackPolish.similarity_boost,
+      style: elevenLabsAzureFallbackPolish.style,
+      use_speaker_boost: elevenLabsAzureFallbackPolish.use_speaker_boost,
+    },
+  },
+  curious: {
+    id: 'curious',
+    volume: '+6.0%',
+    pitch: '+0.0%',
+    rate: '+1.0%',
+    style: 'friendly',
+    baseStyleDegree: 1.05,
+    sentencePauseMs: 124,
+    clausePauseMs: 72,
+    elevenLabs: {
+      stability: elevenLabsVoicePolish.stability,
+      similarity_boost: elevenLabsVoicePolish.similarity_boost,
+      style: elevenLabsVoicePolish.style,
+      use_speaker_boost: elevenLabsVoicePolish.use_speaker_boost,
+    },
+  },
+};
+
+/**
+ * Scale a base Azure styleDegree by emotion intensity (0.0-1.0, default 0.5).
+ *
+ * Formula: final = base * (0.75 + 0.5 * intensity), clamped to [0.4, 2.0].
+ *
+ * Anchor points:
+ *   intensity 0.0 → 0.75× base (muted)
+ *   intensity 0.5 → 1.00× base (table value as-is)
+ *   intensity 1.0 → 1.25× base (amplified)
+ *
+ * Clamping to Azure's accepted styleDegree range [0.4, 2.0] protects against
+ * degenerate base values; in practice all configured bases × any intensity in
+ * [0,1] stay well inside that window.
+ */
+function scaleStyleDegreeByIntensity(base: number, intensity: number): number {
+  const safeIntensity = Number.isFinite(intensity)
+    ? Math.max(0, Math.min(1, intensity))
+    : 0.5;
+  const scaled = base * (0.75 + 0.5 * safeIntensity);
+  return clamp(scaled, 0.4, 2.0);
+}
+
+/**
+ * Pick a VoiceDeliveryProfile from the LLM's emotion field (preferred path)
+ * with intensity-aware tuning. Falls back to text-regex selection if emotion
+ * is missing/unknown.
+ *
+ * Per L1 of melodic-fluttering-flame.md — replaces the text-regex selector
+ * which produced default-profile output for any response that lacked a
+ * matching trigger word ("loving" without "love" in it, etc).
+ *
+ * Long-form override: if the text crosses the longForm threshold
+ * (length >= 240 OR words >= 48 OR sentences >= 4), the function returns
+ * id='long_form' regardless of emotion. This matches the original selector's
+ * pacing logic for long passages where emotion-styling tends to drag.
+ */
+export function deriveVoiceDeliveryProfileFromEmotion(
+  emotion: EmotionKey | null | undefined,
+  emotionIntensity: number | null | undefined,
+  text: string,
+): VoiceDeliveryProfile {
+  // Fallback path 1: missing emotion → delegate to text-regex selector.
+  if (emotion === null || emotion === undefined) {
+    return deriveVoiceDeliveryProfile(text);
+  }
+
+  // Long-form override applies before per-emotion styling.
+  const sentenceCount = (text.match(/[.!?]/g) ?? []).length;
+  const wordCount = text
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0).length;
+  const longForm = text.length >= 240 || wordCount >= 48 || sentenceCount >= 4;
+
+  if (longForm) {
+    // Reuse the long-form preset from the existing text-regex selector.
+    return {
+      id: 'long_form',
+      volume: '+6.5%',
+      pitch: '-2.0%',
+      rate: '+4.0%',
+      style: azureVoicePolish.style,
+      styleDegree: '1.02',
+      sentencePauseMs: 104,
+      clausePauseMs: 60,
+      elevenLabs: {
+        stability: 0.4,
+        similarity_boost: 0.82,
+        style: 0.24,
+        use_speaker_boost: true,
+      },
+    };
+  }
+
+  const intensity = typeof emotionIntensity === 'number' && Number.isFinite(emotionIntensity)
+    ? emotionIntensity
+    : 0.5;
+
+  // happy / neutral → existing default profile (light positive lift).
+  if (emotion === 'happy' || emotion === 'neutral') {
+    return {
+      id: 'default',
+      volume: azureVoicePolish.volume,
+      pitch: azureVoicePolish.pitch,
+      rate: azureVoicePolish.rate,
+      style: azureVoicePolish.style,
+      styleDegree: azureVoicePolish.styleDegree,
+      sentencePauseMs: 138,
+      clausePauseMs: 80,
+      elevenLabs: {
+        stability: elevenLabsVoicePolish.stability,
+        similarity_boost: elevenLabsVoicePolish.similarity_boost,
+        style: elevenLabsVoicePolish.style,
+        use_speaker_boost: elevenLabsVoicePolish.use_speaker_boost,
+      },
+    };
+  }
+
+  // excited → existing excited profile (intensity scales the styleDegree).
+  if (emotion === 'excited') {
+    const baseStyleDegree = 1.1;
+    return {
+      id: 'excited',
+      volume: '+8.0%',
+      pitch: '-1.0%',
+      rate: '+3.0%',
+      style: 'cheerful',
+      styleDegree: scaleStyleDegreeByIntensity(baseStyleDegree, intensity).toFixed(2),
+      sentencePauseMs: 112,
+      clausePauseMs: 64,
+      elevenLabs: {
+        stability: 0.34,
+        similarity_boost: 0.84,
+        style: 0.38,
+        use_speaker_boost: true,
+      },
+    };
+  }
+
+  // sad → reuse the existing reflective profile so downstream code that
+  // special-cases id='reflective' still triggers.
+  if (emotion === 'sad') {
+    const baseStyleDegree = 1.08;
+    return {
+      id: 'reflective',
+      volume: '+6.0%',
+      pitch: '-3.0%',
+      rate: '-3.0%',
+      style: 'empathetic',
+      styleDegree: scaleStyleDegreeByIntensity(baseStyleDegree, intensity).toFixed(2),
+      sentencePauseMs: 150,
+      clausePauseMs: 88,
+      elevenLabs: {
+        stability: 0.52,
+        similarity_boost: 0.86,
+        style: 0.18,
+        use_speaker_boost: true,
+      },
+    };
+  }
+
+  // Per-emotion profile lookup for the remaining 11 keys.
+  const base = emotionVoiceProfiles[
+    emotion as Exclude<EmotionKey, 'happy' | 'sad' | 'excited' | 'neutral'>
+  ];
+  if (!base) {
+    // Unknown / unmapped emotion → fallback to text-regex selector.
+    return deriveVoiceDeliveryProfile(text);
+  }
+
+  return {
+    id: base.id,
+    volume: base.volume,
+    pitch: base.pitch,
+    rate: base.rate,
+    style: base.style,
+    styleDegree: scaleStyleDegreeByIntensity(base.baseStyleDegree, intensity).toFixed(2),
+    sentencePauseMs: base.sentencePauseMs,
+    clausePauseMs: base.clausePauseMs,
+    elevenLabs: { ...base.elevenLabs },
+  };
+}
+
 function resolveElevenLabsVoiceSettings(
   profile: VoiceDeliveryProfile,
   consistencyMode: 'primary' | 'azure_fallback',
@@ -796,15 +1167,68 @@ const CHAR_TO_VISEME: Record<string, number> = {
 };
 
 /**
- * Main entry point - generates voice with visemes based on subscription tier
+ * Apply per-turn micro-variance jitter on top of a base voice profile so
+ * consecutive responses with the same emotion don't produce identical
+ * prosody. The jitter is selected by `pickVoiceJitterForProfile` with
+ * recency dampening per uid.
+ *
+ * Numeric jitter is parsed from the SSML percent strings, summed with the
+ * delta (where pitchDelta/rateDelta are fractional — 0.01 = 1%), and
+ * re-formatted to the same `+/-N.N%` shape Azure expects.
+ */
+function applyJitterToProfile(
+  base: VoiceDeliveryProfile,
+  jitter: VoiceJitterOption,
+): VoiceDeliveryProfile {
+  return {
+    ...base,
+    pitch: addSsmlPercent(base.pitch, jitter.pitchDelta * 100),
+    rate: addSsmlPercent(base.rate, jitter.rateDelta * 100),
+    styleDegree: clampStyleDegreeNumber(
+      parseFloat(base.styleDegree) + jitter.styleDegreeDelta,
+    ).toFixed(2),
+    sentencePauseMs: Math.max(50, base.sentencePauseMs + jitter.sentencePauseDeltaMs),
+    clausePauseMs: Math.max(20, base.clausePauseMs + jitter.clausePauseDeltaMs),
+  };
+}
+
+function addSsmlPercent(baseString: string, deltaPercent: number): string {
+  const match = baseString.match(/^([+-]?)(\d+(?:\.\d+)?)%$/);
+  const baseValue = match ? parseFloat(`${match[1] === '-' ? '-' : ''}${match[2]}`) : 0;
+  const next = baseValue + deltaPercent;
+  const sign = next >= 0 ? '+' : '-';
+  return `${sign}${Math.abs(next).toFixed(1)}%`;
+}
+
+function clampStyleDegreeNumber(value: number): number {
+  if (!Number.isFinite(value)) return 1.0;
+  return Math.max(0.4, Math.min(2.0, value));
+}
+
+/**
+ * Main entry point - generates voice with visemes based on subscription tier.
+ *
+ * `emotion` + `emotionIntensity` route the selector through the emotion-aware
+ * path (`deriveVoiceDeliveryProfileFromEmotion`) instead of the legacy text-
+ * regex selector. When emotion is missing, falls back to the legacy path.
+ * `uid` lets the variance pool dampen consecutive jitter picks per-user; if
+ * omitted, the pool treats the caller as anonymous (acceptable for cold
+ * starts / unknown callers).
  */
 export async function generateVoiceWithVisemes(
   text: string,
   subscriptionTier: 'regular' | 'ultra',
-  voiceId?: string
+  voiceId?: string,
+  emotion?: EmotionKey | null,
+  emotionIntensity?: number | null,
+  uid?: string,
 ): Promise<VoiceResult> {
   const speechText = prepareSpeechTextForTts(text);
-  const deliveryProfile = deriveVoiceDeliveryProfile(speechText);
+  const baseProfile = (emotion !== null && emotion !== undefined)
+    ? deriveVoiceDeliveryProfileFromEmotion(emotion, emotionIntensity, speechText)
+    : deriveVoiceDeliveryProfile(speechText);
+  const jitter = pickVoiceJitterForProfile(baseProfile.id, { uid });
+  const deliveryProfile = applyJitterToProfile(baseProfile, jitter);
 
   functions.logger.info('[VoiceService] Generating voice', {
     subscriptionTier,

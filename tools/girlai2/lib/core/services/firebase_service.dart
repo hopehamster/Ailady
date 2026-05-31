@@ -290,8 +290,18 @@ class FirebaseService {
   }
 
   /// Call the Voice Cloud Function
-  /// Returns audio URL and viseme timeline for lip-sync
-  Future<VoiceResult> generateVoice(String text, {String? voiceId}) async {
+  /// Returns audio URL and viseme timeline for lip-sync.
+  ///
+  /// `emotion` + `emotionIntensity` route the server to the L1 emotion-aware
+  /// voice profile selector (per-emotion Azure express-as style + intensity-
+  /// scaled styleDegree). Both are optional — server falls back to text-regex
+  /// profile selection when emotion is missing.
+  Future<VoiceResult> generateVoice(
+    String text, {
+    String? voiceId,
+    String? emotion,
+    double? emotionIntensity,
+  }) async {
     final startTime = DateTime.now();
 
     try {
@@ -314,6 +324,8 @@ class FirebaseService {
         'text': text,
         'voiceId': voiceId,
         'userId': user.uid,
+        if (emotion != null) 'emotion': emotion,
+        if (emotionIntensity != null) 'emotionIntensity': emotionIntensity,
       });
 
       final duration = DateTime.now().difference(startTime);
