@@ -20,6 +20,7 @@ import {
   recordShadowEvaluation,
   getRecentContextMessages,
   getInteractionCount,
+  getHoursSinceLastChat,
   IntelligentMemory,
   hasConflictingProfileNameReference,
   normalizeMemoryForProfileDisplayName,
@@ -74,6 +75,36 @@ import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
 import { detectTopicBoundary } from './responseTopicBoundary';
+// Aria humanity items #6/#7/#8/#9/#10 — wired into the turn lifecycle per the
+// unified architecture's wireInOrder. Every feature ships default-OFF behind
+// its own env flag; importing these modules is a zero-cost no-op until ops
+// flips the knobs.  See each module's docblock for canonical position.
+import {
+  getEmotionalContinuityTracker,
+  isContinuityFeatureEnabled,
+  isFirstTurnOfSession,
+  shouldWriteSnapshot,
+  snapshotFromTurnAnalysis,
+  computeToneBias,
+  type ContinuityState,
+  type ToneBias,
+} from './emotionalContinuity';
+import { injectSelfInterruption } from './responseSelfInterruption';
+import {
+  getRhythmTracker,
+  countWords as countRhythmWords,
+  applyRhythmBias,
+  type RhythmHint,
+} from './conversationRhythmTracker';
+import {
+  getPolicyTrajectoryTracker,
+  applyInertiaBlend,
+  type PolicyVector,
+} from './policyTrajectoryTracker';
+import {
+  applyResponsePatternDetector,
+  recordAriaResponse,
+} from './responsePatternDetector';
 import { pickVariantText, LLM_STALL_POOL } from './responseVariancePool';
 import { tagError, isProviderConnectionError } from '../failureClass';
 import { callWithFallback, type ProviderCall } from './providerRouter';
@@ -91,8 +122,10 @@ import {
 } from './signalDetectors';
 import {
   EMOTION_TRIGGERS,
+  EMOTION_KEYS,
   parseEmotionPayload,
   inferEmotionFallback,
+  type EmotionKey,
 } from './emotionUtils';
 import {
   clamp01,
@@ -2306,6 +2339,62 @@ export async function generateAIResponse(
       profileDisplayName: runtimeSelfModel.profileDisplayName,
     });
     const recentMessages = recentExchangeState.effectiveRecentMessages;
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Aria humanity #6/#8/#9 — load per-uid humanityTurnContext ONCE per turn.
+    // Threaded to downstream consumers (#7, #10) so no duplicate Firestore
+    // reads on the hot path. All loads parallelise; all errors swallowed
+    // (warm-path returns empty state). Pure no-op when uid is missing or
+    // the modules' env flags are off.
+    // ─────────────────────────────────────────────────────────────────────
+    const turnSessionTurnCount = Math.floor(recentMessages.length / 2);
+    const hoursSinceLastChatForTurn = getHoursSinceLastChat(memory);
+    const turnIsFirstOfSession = isFirstTurnOfSession(
+      hoursSinceLastChatForTurn,
+      turnSessionTurnCount,
+    );
+    let humanityContinuityState: ContinuityState = { recent: [], lastWrittenTurn: -1 };
+    let humanityRhythmHint: RhythmHint = {
+      preferred: null,
+      confidence: 0,
+      sampleSize: 0,
+      reason: 'disabled',
+    };
+    let humanityInertiaBias: PolicyVector | null = null;
+    if (userId) {
+      try {
+        // Per perf review of the fix-up workflow: each load fires ONLY when
+        // its module's master flag is on. Rhythm's getHint() already has an
+        // internal early-exit, so we keep it inside the parallel array; the
+        // other two get explicit flag-checked conditionals here so a cold
+        // cache miss never hits Firestore when the feature is off.
+        const inertiaEnvRaw =
+          (process.env.HUMANITY_TONE_INERTIA_ENABLED ?? '').trim().toLowerCase();
+        const inertiaEnabledForLoad =
+          inertiaEnvRaw === '1'
+          || inertiaEnvRaw === 'true'
+          || inertiaEnvRaw === 'yes'
+          || inertiaEnvRaw === 'on';
+        const [continuityState, rhythmHint, inertiaBias] = await Promise.all([
+          isContinuityFeatureEnabled()
+            ? getEmotionalContinuityTracker().load(userId)
+            : Promise.resolve(humanityContinuityState),
+          getRhythmTracker().getHint(userId),
+          inertiaEnabledForLoad
+            ? getPolicyTrajectoryTracker().getInertiaBias(userId)
+            : Promise.resolve(null),
+        ]);
+        humanityContinuityState = continuityState;
+        humanityRhythmHint = rhythmHint;
+        humanityInertiaBias = inertiaBias;
+      } catch (err: unknown) {
+        functions.logger.warn(
+          'llmService: humanityTurnContext load failed — best-effort',
+          { userId, error: err instanceof Error ? err.message : String(err) },
+        );
+      }
+    }
+
     const preSignals = deriveSocialSignals(userMessage, recentMessages);
     const routeDecision = determineRouteDecision(userMessage, preSignals);
     const fastTurnPath = routeDecision.route === 'fast';
@@ -2426,6 +2515,91 @@ export async function generateAIResponse(
         source: 'rules' as const,
       };
     });
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Aria humanity #8/#6/#9 — apply plan biases AFTER socialPlanning resolves
+    // and BEFORE buildResponseAssembly. The canonical order (documented in
+    // each module's docblock) is:
+    //   (1) #8 rhythm  — shifts responseLength one rung toward the user's
+    //                    word-count tendency. Orthogonal axis from #6/#9.
+    //   (2) #6 continuity — biases warmth/depth/playfulness on the first turn
+    //                       of a new session from the prior session's tone.
+    //                       No-op on subsequent turns.
+    //   (3) #9 inertia — blends the (rhythm-shifted, continuity-biased) 4D
+    //                    plan with the rolling weighted-average of last 5
+    //                    finalised plans. Bypassed on repair/crisis/
+    //                    emotionalDisclosure signals.
+    // All three modules are env-flag default-OFF, so each call is a near-zero-
+    // cost no-op until ops flips the knobs.
+    // ─────────────────────────────────────────────────────────────────────
+    // Pass sessionStage when available so the rhythm bias skips
+    // 'relief'/'closure' arcs (per RhythmBiasOptions defaults). When
+    // memory.sessionArc is absent, omitting sessionStage is safe — the
+    // module's null-guard at applyRhythmBias (options.sessionStage &&
+    // skipStages.includes(...)) short-circuits and does not skip.
+    socialPlanning.plan = applyRhythmBias(
+      socialPlanning.plan,
+      humanityRhythmHint,
+      { sessionStage: memory?.sessionArc?.stage },
+    );
+
+    if (isContinuityFeatureEnabled() && turnIsFirstOfSession) {
+      const toneBias: ToneBias = computeToneBias(
+        humanityContinuityState,
+        turnIsFirstOfSession,
+        hoursSinceLastChatForTurn,
+      );
+      const clampPlanAxis = (v: number): number => {
+        if (!Number.isFinite(v)) return 0;
+        if (v < 0) return 0;
+        if (v > 1) return 1;
+        return v;
+      };
+      socialPlanning.plan = {
+        ...socialPlanning.plan,
+        warmth: clampPlanAxis(socialPlanning.plan.warmth + toneBias.warmthDelta),
+        depth: clampPlanAxis(socialPlanning.plan.depth + toneBias.depthDelta),
+        playfulness: clampPlanAxis(
+          socialPlanning.plan.playfulness + toneBias.playfulnessDelta,
+        ),
+      };
+    }
+
+    // Inertia bypass — never blend tone history on the highest-stakes posture
+    // surfaces. Crisis + consent + repair + disclosure all override history
+    // with the FRESH signal of the current turn. Per brand-integrity review
+    // of the fix-up workflow: consent-sensitive turns (matter-of-fact boundary
+    // statements about intimacy/body/consent) and crisis-sensitive turns must
+    // not be tone-averaged against the prior 4D moving average.
+    if (
+      humanityInertiaBias !== null
+      && !socialPlanning.signals.repairSignal
+      && !socialPlanning.signals.emotionalDisclosure
+      && !socialPlanning.signals.consentSensitive
+      && !detectCrisisSensitiveIntent(userMessage)
+    ) {
+      const inertiaWeightRaw = Number.parseFloat(
+        process.env.HUMANITY_TONE_INERTIA_WEIGHT ?? '0.35',
+      );
+      const inertiaEnabled =
+        (process.env.HUMANITY_TONE_INERTIA_ENABLED ?? '').trim().toLowerCase();
+      const inertiaIsOn =
+        inertiaEnabled === '1'
+        || inertiaEnabled === 'true'
+        || inertiaEnabled === 'yes'
+        || inertiaEnabled === 'on';
+      const inertiaWeight = Number.isFinite(inertiaWeightRaw)
+        ? Math.max(0, Math.min(1, inertiaWeightRaw))
+        : 0.35;
+      if (inertiaIsOn && inertiaWeight > 0) {
+        socialPlanning.plan = applyInertiaBlend(
+          socialPlanning.plan,
+          humanityInertiaBias,
+          inertiaWeight,
+        );
+      }
+    }
+
     // Compute per-turn enhancement context
     const tzOffset = temporalContext.timeZoneOffsetMinutes;
     const shiftedMs = temporalContext.now.getTime() + tzOffset * 60 * 1000;
@@ -2890,11 +3064,126 @@ export async function generateAIResponse(
     // HUMANITY_METACOMMENTARY_INJECTION_RATE). Skipped when the output
     // scan blocked above — we don't inject into the stall variant we just
     // swapped in (it already has its own variance).
+    //
+    // Canonical post-LLM injector chain order (see unified architecture):
+    //   (1) injectHumanity            — #3 filler + #4 metacommentary prefix
+    //   (2) injectSelfInterruption    — #7 em-dash/ellipsis pivot mid-clause
+    //   (3) applyResponsePatternDetector — #10 observes the FINAL shipped text
+    // Each injector is idempotency-guarded against the others' artifacts.
+    // All run only when outputScanBlocked is false (so the stall-variant
+    // swap path is preserved verbatim).
     if (!stageTimingsMs.outputScanBlocked) {
       aiContent = injectHumanity(aiContent, {
         uid: userId,
         userMessageComplexity: preSignals.userMessageComplexity,
       });
+      const narrowedEmotionForInjector: EmotionKey | undefined =
+        analysis && (EMOTION_KEYS as readonly string[]).includes(analysis.emotion)
+          ? (analysis.emotion as EmotionKey)
+          : undefined;
+      aiContent = injectSelfInterruption(aiContent, {
+        uid: userId,
+        currentEmotion: narrowedEmotionForInjector,
+      });
+      // #10 pattern detector — pass currentEmotion + signals so the
+      // brand-contract bypass fires on sad/concerned/comforting turns AND
+      // on any repair/emotionalDisclosure/consentSensitive turn. Without
+      // these, the detector strips empathic check-in questions that are
+      // required on those turns (brand violation).
+      aiContent = await applyResponsePatternDetector(aiContent, {
+        uid: userId,
+        currentEmotion: narrowedEmotionForInjector,
+        signals: {
+          repairSignal: preSignals.repairSignal,
+          emotionalDisclosure: preSignals.emotionalDisclosure,
+          consentSensitive: preSignals.consentSensitive,
+        },
+      });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Aria humanity #8/#10/#6/#9 — fire-and-forget persistence writes.
+    // All swallow errors internally; none block the response. Capture the
+    // FINAL shipped text after the full injector chain. Order between the
+    // writes does not matter (no shared state).
+    //
+    // Two gates apply uniformly:
+    //   (a) outputScanBlocked — when the high-severity output scan swapped
+    //       in a stall variant above, NONE of these writes are meaningful:
+    //       the shipped text isn't Aria's plan, it's a generic stall string.
+    //       Persisting it would poison the rhythm / pattern / inertia
+    //       windows with off-distribution samples. The continuity snapshot
+    //       is also suppressed for the same reason (the analysis ran on
+    //       the suspect content, not the stall).
+    //   (b) Each write is additionally gated on its OWNING feature flag
+    //       so that turning a humanity feature off truly suppresses
+    //       ALL of its Firestore footprint (read AND write paths). The
+    //       continuity write was already conditionally gated via
+    //       isContinuityFeatureEnabled; the other three are added here.
+    // ─────────────────────────────────────────────────────────────────────
+    const isEnvBoolOn = (raw: string | undefined): boolean => {
+      const v = (raw ?? '').trim().toLowerCase();
+      return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+    };
+    if (userId && !stageTimingsMs.outputScanBlocked) {
+      // #8 — rhythm word-count observation (gated on
+      // HUMANITY_RHYTHM_BIAS_ENABLED, the rhythm module's master flag).
+      if (isEnvBoolOn(process.env.HUMANITY_RHYTHM_BIAS_ENABLED)) {
+        void getRhythmTracker()
+          .observe({
+            uid: userId,
+            userWords: countRhythmWords(userMessage),
+            assistantWords: countRhythmWords(aiContent),
+          })
+          .catch(() => {
+            /* errors swallowed inside tracker */
+          });
+      }
+      // #10 — Aria response fingerprint (captures POST-INJECTION text).
+      // Gated on HUMANITY_PATTERN_DETECTOR_ENABLED (the responsePatternDetector
+      // module's master flag) so persistence stops when the feature is off.
+      if (isEnvBoolOn(process.env.HUMANITY_PATTERN_DETECTOR_ENABLED)) {
+        void recordAriaResponse(userId, aiContent).catch(() => {
+          /* errors swallowed inside module */
+        });
+      }
+      // #6 — emotional-continuity snapshot (already gated on its master flag
+      // via isContinuityFeatureEnabled; left intact).
+      if (
+        isContinuityFeatureEnabled()
+        && analysis
+        && (EMOTION_KEYS as readonly string[]).includes(analysis.emotion)
+        && shouldWriteSnapshot(turnSessionTurnCount, -1)
+      ) {
+        const snapshot = snapshotFromTurnAnalysis(
+          analysis.emotion as EmotionKey,
+          {
+            emotionalDisclosure: preSignals.emotionalDisclosure,
+            userMessageComplexity: preSignals.userMessageComplexity,
+          },
+          turnSessionTurnCount,
+        );
+        void getEmotionalContinuityTracker()
+          .save(userId, snapshot)
+          .catch(() => {
+            /* errors swallowed inside tracker */
+          });
+      }
+      // #9 — append finalized plan to trajectory window. Gated on
+      // HUMANITY_TONE_INERTIA_ENABLED (the policyTrajectoryTracker module's
+      // master flag, read at the wire-in site per module docblock).
+      if (isEnvBoolOn(process.env.HUMANITY_TONE_INERTIA_ENABLED)) {
+        void getPolicyTrajectoryTracker()
+          .appendDecision(userId, {
+            warmth: socialPlanning.plan.warmth,
+            curiosity: socialPlanning.plan.curiosity,
+            depth: socialPlanning.plan.depth,
+            playfulness: socialPlanning.plan.playfulness,
+          })
+          .catch(() => {
+            /* errors swallowed inside tracker */
+          });
+      }
     }
 
     return finalizeAIResponse({
