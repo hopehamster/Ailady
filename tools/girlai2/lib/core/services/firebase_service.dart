@@ -8,6 +8,12 @@ import '../models/user_environment_context.dart';
 import '../utils/chat_error_handler.dart';
 import '../utils/debug_logger.dart';
 import '../utils/emulator_config.dart';
+import 'firebase_api_types.dart';
+import 'voice_error_mapping.dart' as voice_err;
+// L10 phase 1: data classes extracted to firebase_api_types.dart.
+// Re-exported here so existing consumers
+// (`import 'firebase_service.dart'` → use `VoiceResult`, etc.) keep working.
+export 'firebase_api_types.dart';
 
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
@@ -319,15 +325,15 @@ class FirebaseService {
 
       return VoiceResult.fromMap(Map<String, dynamic>.from(result.data));
     } on FirebaseFunctionsException catch (e) {
-      final reasonKey = _extractVoiceReasonKey(e.details);
-      final category = _mapVoiceErrorCategory(e.code, reasonKey);
+      final reasonKey = voice_err.extractVoiceReasonKey(e.details);
+      final category = voice_err.mapVoiceErrorCategory(e.code, reasonKey);
       if (kDebugMode) {
         debugPrint(
             '❌ Voice generation error: ${e.code} - ${e.message} (reason=$reasonKey, category=$category)');
       }
       throw VoiceGenerationException(
         category: category,
-        message: _voiceCategoryLabel(category),
+        message: voice_err.voiceCategoryLabel(category),
         reasonKey: reasonKey,
         code: e.code,
         original: e,
@@ -517,46 +523,8 @@ class FirebaseService {
     return Map<String, dynamic>.from(result.data);
   }
 
-  String? _extractVoiceReasonKey(dynamic details) {
-    if (details is Map) {
-      final reason = details['reason'];
-      if (reason is String && reason.isNotEmpty) {
-        return reason;
-      }
-    }
-    return null;
-  }
-
-  String _mapVoiceErrorCategory(String code, String? reasonKey) {
-    if (reasonKey == 'voice_not_allowed' || code == 'permission-denied') {
-      return 'account_access';
-    }
-    if (reasonKey == 'voice_not_configured' || code == 'failed-precondition') {
-      return 'service_config';
-    }
-    if (reasonKey == 'voice_storage_error') {
-      return 'audio_delivery';
-    }
-    if (code == 'unavailable' ||
-        code == 'deadline-exceeded' ||
-        code == 'timeout') {
-      return 'audio_delivery';
-    }
-    return 'unknown';
-  }
-
-  String _voiceCategoryLabel(String category) {
-    switch (category) {
-      case 'account_access':
-        return 'account access';
-      case 'service_config':
-        return 'service config';
-      case 'audio_delivery':
-        return 'audio delivery';
-      default:
-        return 'voice service';
-    }
-  }
+  // _extractVoiceReasonKey + _mapVoiceErrorCategory + _voiceCategoryLabel
+  // extracted to ./voice_error_mapping.dart as L10 phase 1.
 
   // ── Important Dates ──────────────────────────────────────────────────────
 
@@ -721,214 +689,7 @@ class FirebaseService {
   }
 }
 
-class RealtimeSessionToken {
-  final bool success;
-  final String clientSecret;
-  final int expiresAt;
-  final String sessionId;
-  final String model;
-  final String voice;
-  final String imageDetail;
-  final int audioSampleRateHz;
-  final int recommendedFrameIntervalMs;
-  final String instructionsVersion;
-
-  const RealtimeSessionToken({
-    required this.success,
-    required this.clientSecret,
-    required this.expiresAt,
-    required this.sessionId,
-    required this.model,
-    required this.voice,
-    required this.imageDetail,
-    required this.audioSampleRateHz,
-    required this.recommendedFrameIntervalMs,
-    required this.instructionsVersion,
-  });
-
-  factory RealtimeSessionToken.fromMap(Map<String, dynamic> map) {
-    return RealtimeSessionToken(
-      success: map['success'] == true,
-      clientSecret: map['clientSecret'] as String? ?? '',
-      expiresAt: (map['expiresAt'] as num?)?.toInt() ?? 0,
-      sessionId: map['sessionId'] as String? ?? '',
-      model: map['model'] as String? ?? 'gpt-realtime',
-      voice: map['voice'] as String? ?? 'marin',
-      imageDetail: map['imageDetail'] as String? ?? 'low',
-      audioSampleRateHz: (map['audioSampleRateHz'] as num?)?.toInt() ?? 24000,
-      recommendedFrameIntervalMs:
-          (map['recommendedFrameIntervalMs'] as num?)?.toInt() ?? 2800,
-      instructionsVersion:
-          map['instructionsVersion'] as String? ?? 'realtime_live_mode_v1',
-    );
-  }
-}
-
-class LiveModeVisionResult {
-  final bool success;
-  final String sessionId;
-  final bool shouldRespond;
-  final String reason;
-  final String? responseKey;
-  final int? frameSequence;
-  final String? description;
-  final String? response;
-  final String? changeSummary;
-  final String emotion;
-  final String emotionTrigger;
-  final double emotionIntensity;
-  final int suggestedNextFrameDelayMs;
-
-  const LiveModeVisionResult({
-    required this.success,
-    required this.sessionId,
-    required this.shouldRespond,
-    required this.reason,
-    required this.responseKey,
-    required this.frameSequence,
-    required this.description,
-    required this.response,
-    required this.changeSummary,
-    required this.emotion,
-    required this.emotionTrigger,
-    required this.emotionIntensity,
-    required this.suggestedNextFrameDelayMs,
-  });
-
-  factory LiveModeVisionResult.fromMap(Map<String, dynamic> map) {
-    return LiveModeVisionResult(
-      success: map['success'] == true,
-      sessionId: map['sessionId'] as String? ?? '',
-      shouldRespond: map['shouldRespond'] == true,
-      reason: map['reason'] as String? ?? 'unknown',
-      responseKey: map['responseKey'] as String?,
-      frameSequence: (map['frameSequence'] as num?)?.toInt(),
-      description: map['description'] as String?,
-      response: map['response'] as String?,
-      changeSummary: map['changeSummary'] as String?,
-      emotion: map['emotion'] as String? ?? 'neutral',
-      emotionTrigger:
-          map['emotionTrigger'] as String? ?? 'Idle_Gentle_Sway',
-      emotionIntensity:
-          (map['emotionIntensity'] as num?)?.toDouble() ?? 0.45,
-      suggestedNextFrameDelayMs:
-          (map['suggestedNextFrameDelayMs'] as num?)?.toInt() ?? 1800,
-    );
-  }
-}
-
-/// Result from voice generation including audio URL, viseme timeline, and blendshape data
-class VoiceResult {
-  final String audioUrl;
-  final String? audioBase64;
-  final String? audioContentType;
-  final String deliveryMode;
-  final List<VisemeEvent> visemeTimeline;
-  /// FacialExpression blendshape timeline: frame index (60fps) →
-  /// [openY, funnel, pucker, mouthX, form]
-  final Map<int, List<double>> blendTimeline;
-  final double durationMs;
-  final String provider;
-  final Map<String, dynamic>? timingsMs;
-
-  VoiceResult({
-    required this.audioUrl,
-    this.audioBase64,
-    this.audioContentType,
-    required this.deliveryMode,
-    required this.visemeTimeline,
-    required this.blendTimeline,
-    required this.durationMs,
-    required this.provider,
-    this.timingsMs,
-  });
-
-  factory VoiceResult.fromMap(Map<String, dynamic> map) {
-    final timelineData = map['visemeTimeline'] as List? ?? [];
-    final visemes = timelineData
-        .map((e) => VisemeEvent.fromMap(Map<String, dynamic>.from(e)))
-        .toList();
-
-    // Parse blendTimeline: JSON object keys are strings, values are List<double>
-    final blendTimeline = <int, List<double>>{};
-    final rawBlend = map['blendTimeline'];
-    if (rawBlend is Map) {
-      rawBlend.forEach((key, value) {
-        final frameIdx = int.tryParse(key.toString());
-        if (frameIdx != null && value is List) {
-          blendTimeline[frameIdx] =
-              value.map((v) => (v as num).toDouble()).toList();
-        }
-      });
-    }
-
-    return VoiceResult(
-      audioUrl: map['audioUrl'] as String? ?? '',
-      audioBase64: map['audioBase64'] as String?,
-      audioContentType: map['audioContentType'] as String?,
-      deliveryMode: map['deliveryMode'] as String? ?? 'storage',
-      visemeTimeline: visemes,
-      blendTimeline: blendTimeline,
-      durationMs: (map['durationMs'] as num?)?.toDouble() ?? 0,
-      provider: map['provider'] as String? ?? 'unknown',
-      timingsMs: map['timingsMs'] is Map
-          ? Map<String, dynamic>.from(map['timingsMs'] as Map)
-          : null,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-        'audioUrl': audioUrl,
-        'audioBase64': audioBase64,
-        'audioContentType': audioContentType,
-        'deliveryMode': deliveryMode,
-        'visemeTimeline': visemeTimeline.map((e) => e.toJson()).toList(),
-        'blendTimeline':
-            blendTimeline.map((k, v) => MapEntry(k.toString(), v)),
-        'durationMs': durationMs,
-        'provider': provider,
-        'timingsMs': timingsMs,
-      };
-}
-
-/// A single viseme event with ID and timing
-class VisemeEvent {
-  final int visemeId;
-  final double audioOffsetMs;
-
-  VisemeEvent({
-    required this.visemeId,
-    required this.audioOffsetMs,
-  });
-
-  factory VisemeEvent.fromMap(Map<String, dynamic> map) {
-    return VisemeEvent(
-      visemeId: (map['visemeId'] as num?)?.toInt() ?? 0,
-      audioOffsetMs: (map['audioOffsetMs'] as num?)?.toDouble() ?? 0,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-        'visemeId': visemeId,
-        'audioOffsetMs': audioOffsetMs,
-      };
-}
-
-class VoiceGenerationException implements Exception {
-  final String category;
-  final String message;
-  final String? reasonKey;
-  final String? code;
-  final Object? original;
-
-  const VoiceGenerationException({
-    required this.category,
-    required this.message,
-    this.reasonKey,
-    this.code,
-    this.original,
-  });
-
-  @override
-  String toString() => message;
-}
+// RealtimeSessionToken, LiveModeVisionResult, VoiceResult, VisemeEvent,
+// VoiceGenerationException all extracted to ./firebase_api_types.dart
+// (L10 phase 1). Re-exported above so consumers using
+// `import 'firebase_service.dart'` keep working without changes.
