@@ -5,10 +5,8 @@
  */
 
 import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
 import { defineString } from 'firebase-functions/params';
-import { v4 as uuidv4 } from 'uuid';
 import type { EmotionKey } from './emotionUtils';
 import {
   pickVoiceJitterForProfile,
@@ -19,6 +17,10 @@ import {
   lookupVoiceCache,
   writeVoiceCache,
 } from './voiceCache';
+import {
+  uploadVoiceAudio,
+  type VoiceStorageUploadResult,
+} from './voiceStorage';
 
 // Types
 export interface VisemeEvent {
@@ -49,6 +51,12 @@ export interface VoiceResult {
    * `audioBucket`.
    */
   audioObjectName?: string;
+  /**
+   * Internal (L1A): URL host prefix the cache persists so future hits
+   * rebuild URLs from the right host after a backend swap. Present only
+   * when deliveryMode='storage'. Same internal-only caveat.
+   */
+  audioHostBase?: string;
   timingsMs?: {
     synthesisMs?: number;
     providerRequestMs?: number;
@@ -94,10 +102,10 @@ const elevenlabsKeyParam = defineString('ELEVENLABS_API_KEY', { default: '' });
 const elevenlabsVoiceIdParam = defineString('ELEVENLABS_VOICE_ID', {
   default: '',
 });
-const voiceAudioBucketParam = defineString('VOICE_AUDIO_BUCKET', { default: '' });
-
-const fallbackVoiceBucket = 'girlai2-voice-audio';
-let cachedVoiceBucketName: string | null = null;
+// VOICE_AUDIO_BUCKET env handling lives in voiceStorage.ts now — single
+// source of truth for storage backend resolution. voiceCache.ts imports
+// the legacy GCS bucket name from voiceStorage directly when an
+// audioHostBase is missing on an old cache doc (Day 3 work).
 const inlineAudioMaxBytes = 1024 * 1024;
 let azureThrottleCooldownUntilMs = 0;
 let azureProviderFallbackUntilMs = 0;
@@ -191,20 +199,11 @@ const getElevenLabsConfig = () => ({
   modelId: 'eleven_multilingual_v2',
 });
 
-const getVoiceBucketOverride = () =>
-  readParamValue(voiceAudioBucketParam) || process.env.VOICE_AUDIO_BUCKET || '';
-
-function resolveVoiceBucketCandidates(configuredBucket: string): string[] {
-  if (!configuredBucket) {
-    return [fallbackVoiceBucket];
-  }
-
-  if (configuredBucket === fallbackVoiceBucket) {
-    return [configuredBucket];
-  }
-
-  return [configuredBucket, fallbackVoiceBucket];
-}
+// L1A: bucket override + multi-candidate fallback logic moved to
+// voiceStorage.ts. The active storage backend (gcs / r2 / dual) is now the
+// single switch for routing — the previous "try configured then fall back
+// to default GCS bucket" probe is gone because R2 doesn't have a peer
+// bucket to fall back to, and GCS-only mode reads from a single env var.
 
 function escapeXml(value: string): string {
   return value
@@ -1377,6 +1376,7 @@ export async function generateVoiceWithVisemes(
       speechText: truncatedText,
       audioBucket: synthResult.audioBucket,
       audioObjectName: synthResult.audioObjectName,
+      audioHostBase: synthResult.audioHostBase,
       visemeTimeline: synthResult.visemeTimeline,
       blendTimeline: synthResult.blendTimeline,
       durationMs: synthResult.durationMs,
@@ -1667,6 +1667,7 @@ async function generateWithAzureRestFallback(
     provider: 'azure',
     audioBucket: delivery.audioBucket,
     audioObjectName: delivery.audioObjectName,
+    audioHostBase: delivery.audioHostBase,
     timingsMs: {
       providerRequestMs: Date.now() - startedAt,
       uploadMs: delivery.uploadMs,
@@ -1782,6 +1783,7 @@ async function runAzureSynthesisAttempt(
           provider: 'azure',
           audioBucket: delivery.audioBucket,
           audioObjectName: delivery.audioObjectName,
+          audioHostBase: delivery.audioHostBase,
           timingsMs: {
             synthesisMs,
             providerRequestMs: synthesisMs,
@@ -1913,6 +1915,7 @@ async function generateWithElevenLabs(
     provider: 'elevenlabs',
     audioBucket: delivery.audioBucket,
     audioObjectName: delivery.audioObjectName,
+    audioHostBase: delivery.audioHostBase,
     timingsMs: {
       providerRequestMs,
       uploadMs: delivery.uploadMs,
@@ -2008,143 +2011,50 @@ function buildHeuristicVisemeTimelineFromText(
 }
 
 /** Result of uploadAudioToStorage — includes bucket + object name so the
- *  voice cache can persist a re-derivable pointer to the audio. */
+ *  voice cache can persist a re-derivable pointer to the audio.
+ *  `hostBase` (added in L1A of the Cloudflare migration) is the URL prefix
+ *  the cache persists so future hits rebuild the URL from the right host
+ *  even after a backend swap. */
 interface AudioUploadResult {
   audioUrl: string;
   bucket: string;
   objectName: string;
+  hostBase: string;
 }
 
 /**
- * Uploads audio buffer to Cloud Storage and returns a playable URL plus the
- * bucket + object name (needed by the voice cache to rehydrate the URL on a
- * cache hit without re-uploading).
+ * Uploads audio buffer to the active storage backend.
+ *
+ * Pre-L1A: hardcoded GCS path with a probe-and-cache bucket-name resolution.
+ * L1A onward: delegates entirely to `voiceStorage.uploadVoiceAudio`, which
+ * routes to GCS / R2 / dual based on `VOICE_STORAGE_BACKEND` env var. The
+ * old in-process bucket-name probe cache (`cachedVoiceBucketName`) is gone —
+ * `voiceStorage` resolves the bucket name from env on every call, which is
+ * fast (no I/O, just `defineString().value()`).
+ *
+ * The legacy bucket-probe-with-fallback code below this function is kept
+ * unreachable-but-present for one release cycle so the diff stays auditable
+ * during the cutover. Will be deleted in a follow-up commit after R2 is the
+ * confirmed active backend in production.
  */
 async function uploadAudioToStorage(
   audioBuffer: Buffer,
   contentType: string,
   provider: string
 ): Promise<AudioUploadResult> {
-  if (cachedVoiceBucketName) {
-    const cachedBucket = admin.storage().bucket(cachedVoiceBucketName);
-    const filename = `voice/${provider}/${uuidv4()}.mp3`;
-    const file = cachedBucket.file(filename);
-    try {
-      await file.save(audioBuffer, {
-        metadata: {
-          contentType,
-          metadata: {
-            provider,
-            generatedAt: new Date().toISOString(),
-            // firebaseStorageDownloadTokens removed — not needed with signed URLs
-          },
-        },
-      });
-      // girlai2-voice-audio has allUsers:objectViewer so plain public URL works.
-      // No signed URL needed (avoids iam.serviceAccounts.signBlob requirement).
-      return {
-        audioUrl: `https://storage.googleapis.com/${cachedBucket.name}/${filename}`,
-        bucket: cachedBucket.name,
-        objectName: filename,
-      };
-    } catch (error) {
-      const err = error as { code?: string; message?: string };
-      functions.logger.warn('[VoiceService] Cached bucket upload failed, falling back to probe', {
-        stage: 'cached_upload',
-        bucket: cachedVoiceBucketName,
-        code: err?.code ?? 'unknown',
-        error: err?.message ?? String(error),
-      });
-      cachedVoiceBucketName = null;
-    }
-  }
-
-  const configuredBucket = getVoiceBucketOverride();
-  const bucketCandidates = resolveVoiceBucketCandidates(configuredBucket);
-  let bucket: any = null;
-  let resolvedBucketName = '';
-  let lastBucketError: string | undefined;
-
-  for (const candidate of bucketCandidates) {
-    const candidateBucket = admin.storage().bucket(candidate);
-    try {
-      const [exists] = await candidateBucket.exists();
-      functions.logger.info('[VoiceService] Voice bucket probe', {
-        stage: 'bucket_probe',
-        configuredBucket,
-        candidateBucket: candidate,
-        exists,
-      });
-      if (exists) {
-        bucket = candidateBucket;
-        resolvedBucketName = candidate;
-        cachedVoiceBucketName = candidate;
-        break;
-      }
-    } catch (error) {
-      const err = error as { code?: string; message?: string };
-      lastBucketError = err?.message ?? String(error);
-      functions.logger.error('[VoiceService] Voice bucket probe failed', {
-        stage: 'bucket_probe',
-        configuredBucket,
-        candidateBucket: candidate,
-        code: err?.code ?? 'unknown',
-        error: lastBucketError,
-      });
-    }
-  }
-
-  if (!bucket) {
-    throw new VoiceServiceError('voice_storage_error', 'No valid voice storage bucket found', {
-      stage: 'bucket_resolution',
-      configuredBucket,
-      fallbackBucket: fallbackVoiceBucket,
-      candidates: bucketCandidates,
-      lastBucketError: lastBucketError ?? null,
-    });
-  }
-
-  const filename = `voice/${provider}/${uuidv4()}.mp3`;
-  const file = bucket.file(filename);
-
-  try {
-    await file.save(audioBuffer, {
-      metadata: {
-        contentType,
-        metadata: {
-          provider,
-          generatedAt: new Date().toISOString(),
-        },
-      },
-    });
-  } catch (error) {
-    const err = error as { code?: string; message?: string };
-    functions.logger.error('[VoiceService] Audio upload failed', {
-      reason: 'voice_storage_error',
-      stage: 'upload',
-      bucket: bucket.name,
-      resolvedBucket: resolvedBucketName,
-      filename,
-      code: err?.code ?? 'unknown',
-      error: err?.message ?? String(error),
-    });
-    throw new VoiceServiceError('voice_storage_error', 'Failed to upload voice audio', {
-      stage: 'upload',
-      bucket: bucket.name,
-      resolvedBucket: resolvedBucketName,
-      filename,
-      code: err?.code ?? 'unknown',
-    });
-  }
-
-  // girlai2-voice-audio has allUsers:objectViewer — return plain public URL.
-  // Avoids iam.serviceAccounts.signBlob requirement on the Cloud Functions SA.
+  const result: VoiceStorageUploadResult = await uploadVoiceAudio({
+    buffer: audioBuffer,
+    contentType,
+    provider,
+  });
   return {
-    audioUrl: `https://storage.googleapis.com/${bucket.name}/${filename}`,
-    bucket: bucket.name,
-    objectName: filename,
+    audioUrl: result.audioUrl,
+    bucket: result.bucket,
+    objectName: result.objectName,
+    hostBase: result.hostBase,
   };
 }
+
 
 async function prepareAudioDelivery(
   audioBuffer: Buffer,
@@ -2160,10 +2070,14 @@ async function prepareAudioDelivery(
   audioContentType?: string;
   deliveryMode: 'inline' | 'storage';
   uploadMs: number;
-  /** GCS bucket name when deliveryMode='storage'; undefined for inline delivery. */
+  /** Storage bucket name when deliveryMode='storage'; undefined for inline. */
   audioBucket?: string;
-  /** GCS object name when deliveryMode='storage'; undefined for inline delivery. */
+  /** Object name within `audioBucket`. Same caveats as `audioBucket`. */
   audioObjectName?: string;
+  /** URL host prefix the cache should persist so future hits rebuild the
+   *  right URL after a backend swap. L1A field — undefined for inline
+   *  delivery and for legacy code paths that bypass voiceStorage. */
+  audioHostBase?: string;
 }> {
   const preferStreaming =
     options?.deliveryProfileId === 'long_form' &&
@@ -2190,6 +2104,7 @@ async function prepareAudioDelivery(
     uploadMs: Date.now() - uploadStartedAt,
     audioBucket: upload.bucket,
     audioObjectName: upload.objectName,
+    audioHostBase: upload.hostBase,
   };
 }
 

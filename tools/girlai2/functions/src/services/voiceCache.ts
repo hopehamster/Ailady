@@ -27,6 +27,7 @@ import * as admin from 'firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 import type { VisemeEvent } from './voiceService';
+import { buildVoiceAudioUrl, LEGACY_GCS_BUCKET } from './voiceStorage';
 
 const VOICE_CACHE_COLLECTION = 'voice_cache';
 
@@ -64,6 +65,11 @@ export interface VoiceCacheWriteInput {
   speechText: string;
   audioBucket: string;
   audioObjectName: string;
+  /** L1A: URL host prefix the cache persists so a future hit can rebuild the
+   *  right URL after a storage backend swap (GCS → R2). When omitted, the
+   *  read path falls back to the legacy GCS public-URL pattern for backward
+   *  compatibility with pre-L1A cache docs. */
+  audioHostBase?: string;
   visemeTimeline: VisemeEvent[];
   blendTimeline: Record<number, number[]>;
   durationMs: number;
@@ -107,14 +113,21 @@ export function isCacheable(input: { speechText: string; skipCache?: boolean }):
 }
 
 /**
- * Derive a publicly-playable URL for a GCS bucket/object. Matches the format
- * used by `uploadAudioToStorage` in voiceService: the voice bucket is configured
- * with `allUsers:objectViewer`, so the plain public URL works (no signing
- * required, which is important because the Cloud Functions SA lacks
- * iam.serviceAccounts.signBlob).
+ * Derive a publicly-playable URL for a (bucket, objectName) pair. L1A
+ * delegates to voiceStorage.buildVoiceAudioUrl which handles both new docs
+ * (with audioHostBase) and legacy docs (no host info — fall back to the
+ * legacy GCS public-URL pattern).
  */
-function buildPublicAudioUrl(bucket: string, objectName: string): string {
-  return `https://storage.googleapis.com/${bucket}/${objectName}`;
+function buildPublicAudioUrl(
+  bucket: string,
+  objectName: string,
+  hostBase?: string,
+): string {
+  if (hostBase) {
+    return buildVoiceAudioUrl(bucket, objectName, hostBase);
+  }
+  // Legacy: pre-L1A cache docs were always GCS; use the public-URL pattern.
+  return buildVoiceAudioUrl(bucket || LEGACY_GCS_BUCKET, objectName);
 }
 
 /**
@@ -143,6 +156,9 @@ export async function lookupVoiceCache(
     const data = snapshot.data() ?? {};
     const audioBucket = typeof data.audioBucket === 'string' ? data.audioBucket : '';
     const audioObjectName = typeof data.audioObjectName === 'string' ? data.audioObjectName : '';
+    const audioHostBase = typeof data.audioHostBase === 'string' && data.audioHostBase
+      ? data.audioHostBase
+      : undefined;
     if (!audioBucket || !audioObjectName) {
       // Malformed entry. Treat as a miss and let the caller re-synth.
       functions.logger.warn('[VoiceCache] hit with missing bucket/object — treating as miss', {
@@ -187,7 +203,7 @@ export async function lookupVoiceCache(
       provider: input.provider,
       voiceId: input.voiceId,
       profileId: input.profileId,
-      audioUrl: buildPublicAudioUrl(audioBucket, audioObjectName),
+      audioUrl: buildPublicAudioUrl(audioBucket, audioObjectName, audioHostBase),
       audioContentType,
       visemeTimeline,
       blendTimeline,
@@ -238,6 +254,7 @@ export async function writeVoiceCache(input: VoiceCacheWriteInput): Promise<void
       textLength: input.speechText.length,
       audioBucket: input.audioBucket,
       audioObjectName: input.audioObjectName,
+      ...(input.audioHostBase ? { audioHostBase: input.audioHostBase } : {}),
       visemeTimeline: input.visemeTimeline,
       blendTimeline: input.blendTimeline,
       durationMs: input.durationMs,
