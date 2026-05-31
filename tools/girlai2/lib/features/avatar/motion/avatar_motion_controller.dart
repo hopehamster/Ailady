@@ -1,6 +1,26 @@
 import 'dart:math' as math;
 
-enum AvatarMotionEmotion { neutral, happy, angry, sad, shy, excited }
+enum AvatarMotionEmotion {
+  neutral,
+  happy,
+  angry,
+  sad,
+  shy,
+  excited,
+  // L7 — server-side ontology has 15+ emotion keys; previously the 10 below
+  // collapsed into the 6 above on the device, making distinct response moods
+  // visually indistinguishable. Each now has its own motion config.
+  loving,
+  flirty,
+  playful,
+  caring,
+  concerned,
+  comforting,
+  surprised,
+  thoughtful,
+  proud,
+  curious,
+}
 
 class AvatarMotionState {
   const AvatarMotionState({
@@ -98,6 +118,59 @@ class AvatarMotionController {
       shakeAmplitude: 0.0018,
       shakeFrequency: 10.0,
       enableBounce: true,
+    ),
+    // L7 additions — subtle, perceptually distinguishable, kept within the
+    // established offset/scale range so existing clamps stay in spec.
+    AvatarMotionEmotion.loving: AvatarMotionConfig(
+      targetOffsetX: 0.0,
+      targetOffsetY: 0.004,
+      targetScale: 1.012,
+    ),
+    AvatarMotionEmotion.flirty: AvatarMotionConfig(
+      targetOffsetX: 0.008,
+      targetOffsetY: 0.002,
+      targetScale: 1.005,
+    ),
+    AvatarMotionEmotion.playful: AvatarMotionConfig(
+      targetOffsetX: 0.0,
+      targetOffsetY: -0.004,
+      targetScale: 1.020,
+      enableBounce: true,
+    ),
+    AvatarMotionEmotion.caring: AvatarMotionConfig(
+      targetOffsetX: 0.0,
+      targetOffsetY: 0.008,
+      targetScale: 0.995,
+    ),
+    AvatarMotionEmotion.concerned: AvatarMotionConfig(
+      targetOffsetX: -0.004,
+      targetOffsetY: 0.006,
+      targetScale: 0.985,
+    ),
+    AvatarMotionEmotion.comforting: AvatarMotionConfig(
+      targetOffsetX: 0.0,
+      targetOffsetY: 0.006,
+      targetScale: 0.992,
+    ),
+    AvatarMotionEmotion.surprised: AvatarMotionConfig(
+      targetOffsetX: 0.0,
+      targetOffsetY: -0.012,
+      targetScale: 1.045,
+    ),
+    AvatarMotionEmotion.thoughtful: AvatarMotionConfig(
+      targetOffsetX: -0.006,
+      targetOffsetY: 0.004,
+      targetScale: 0.988,
+    ),
+    AvatarMotionEmotion.proud: AvatarMotionConfig(
+      targetOffsetX: 0.0,
+      targetOffsetY: -0.006,
+      targetScale: 1.025,
+    ),
+    AvatarMotionEmotion.curious: AvatarMotionConfig(
+      targetOffsetX: 0.006,
+      targetOffsetY: 0.002,
+      targetScale: 1.005,
     ),
   };
 

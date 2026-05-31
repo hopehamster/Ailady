@@ -22,24 +22,41 @@ import '../motion/avatar_motion_controller.dart' show AvatarMotionEmotion;
 import 'avatar_view_types.dart';
 
 AvatarMotionEmotion mapStyleToMotionEmotion(String style) {
+  // L7 — every server-side style now maps to a distinct motion enum value.
+  // Previously the 10 styles below collapsed (loving/flirty/playful/proud/
+  // caring → happy; concerned/comforting → sad; surprised/thoughtful/curious
+  // → neutral), making distinct response moods look identical on device.
   switch (style) {
     case 'excited':
       return AvatarMotionEmotion.excited;
     case 'angry':
       return AvatarMotionEmotion.angry;
     case 'sad':
-    case 'concerned':
-    case 'comforting':
       return AvatarMotionEmotion.sad;
+    case 'concerned':
+      return AvatarMotionEmotion.concerned;
+    case 'comforting':
+      return AvatarMotionEmotion.comforting;
     case 'shy':
       return AvatarMotionEmotion.shy;
     case 'happy':
-    case 'loving':
-    case 'flirty':
-    case 'playful':
-    case 'proud':
-    case 'caring':
       return AvatarMotionEmotion.happy;
+    case 'loving':
+      return AvatarMotionEmotion.loving;
+    case 'flirty':
+      return AvatarMotionEmotion.flirty;
+    case 'playful':
+      return AvatarMotionEmotion.playful;
+    case 'proud':
+      return AvatarMotionEmotion.proud;
+    case 'caring':
+      return AvatarMotionEmotion.caring;
+    case 'surprised':
+      return AvatarMotionEmotion.surprised;
+    case 'thoughtful':
+      return AvatarMotionEmotion.thoughtful;
+    case 'curious':
+      return AvatarMotionEmotion.curious;
     default:
       return AvatarMotionEmotion.neutral;
   }

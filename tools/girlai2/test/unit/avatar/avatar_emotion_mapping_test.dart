@@ -4,28 +4,55 @@ import 'package:girlai2/features/avatar/widgets/avatar_emotion_mapping.dart';
 
 void main() {
   group('mapStyleToMotionEmotion', () {
+    // L7 — each server style now maps to a distinct motion enum (was: 10 of
+    // the styles collapsed into 4 buckets, making distinct moods look identical
+    // on the avatar).
     test('excited → excited', () {
       expect(mapStyleToMotionEmotion('excited'), AvatarMotionEmotion.excited);
     });
     test('angry → angry', () {
       expect(mapStyleToMotionEmotion('angry'), AvatarMotionEmotion.angry);
     });
-    test('sad / concerned / comforting → sad bucket', () {
+    test('sad → sad (no longer collapses concerned/comforting)', () {
       expect(mapStyleToMotionEmotion('sad'), AvatarMotionEmotion.sad);
-      expect(mapStyleToMotionEmotion('concerned'), AvatarMotionEmotion.sad);
-      expect(mapStyleToMotionEmotion('comforting'), AvatarMotionEmotion.sad);
+    });
+    test('concerned → concerned (own motion config, was collapsed to sad)', () {
+      expect(mapStyleToMotionEmotion('concerned'), AvatarMotionEmotion.concerned);
+    });
+    test('comforting → comforting (own motion config, was collapsed to sad)', () {
+      expect(mapStyleToMotionEmotion('comforting'), AvatarMotionEmotion.comforting);
     });
     test('shy → shy', () {
       expect(mapStyleToMotionEmotion('shy'), AvatarMotionEmotion.shy);
     });
-    test('warm-positive styles (happy/loving/flirty/playful/proud/caring) → happy', () {
-      for (final s in ['happy', 'loving', 'flirty', 'playful', 'proud', 'caring']) {
-        expect(mapStyleToMotionEmotion(s), AvatarMotionEmotion.happy,
-            reason: '$s should map to happy');
-      }
+    test('happy → happy', () {
+      expect(mapStyleToMotionEmotion('happy'), AvatarMotionEmotion.happy);
     });
-    test('unknown style → neutral', () {
-      expect(mapStyleToMotionEmotion('curious'), AvatarMotionEmotion.neutral);
+    test('loving → loving (was collapsed to happy)', () {
+      expect(mapStyleToMotionEmotion('loving'), AvatarMotionEmotion.loving);
+    });
+    test('flirty → flirty (was collapsed to happy)', () {
+      expect(mapStyleToMotionEmotion('flirty'), AvatarMotionEmotion.flirty);
+    });
+    test('playful → playful (was collapsed to happy)', () {
+      expect(mapStyleToMotionEmotion('playful'), AvatarMotionEmotion.playful);
+    });
+    test('proud → proud (was collapsed to happy)', () {
+      expect(mapStyleToMotionEmotion('proud'), AvatarMotionEmotion.proud);
+    });
+    test('caring → caring (was collapsed to happy)', () {
+      expect(mapStyleToMotionEmotion('caring'), AvatarMotionEmotion.caring);
+    });
+    test('curious → curious (was falling through to neutral)', () {
+      expect(mapStyleToMotionEmotion('curious'), AvatarMotionEmotion.curious);
+    });
+    test('thoughtful → thoughtful (was falling through to neutral)', () {
+      expect(mapStyleToMotionEmotion('thoughtful'), AvatarMotionEmotion.thoughtful);
+    });
+    test('surprised → surprised (was falling through to neutral)', () {
+      expect(mapStyleToMotionEmotion('surprised'), AvatarMotionEmotion.surprised);
+    });
+    test('unknown / empty style still → neutral', () {
       expect(mapStyleToMotionEmotion(''), AvatarMotionEmotion.neutral);
       expect(mapStyleToMotionEmotion('nonsense'), AvatarMotionEmotion.neutral);
     });
