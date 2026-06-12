@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../core/services/context_service.dart';
 import '../../core/services/firebase_service.dart';
+import '../../core/services/streaming_chat_service.dart';
 import '../../core/utils/debug_logger.dart';
 import '../../core/constants/app_constants.dart';
 import '../../models/message.dart';
@@ -19,6 +20,13 @@ class ChatService extends ChangeNotifier {
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
   List<Message> _messages = [];
   bool _isTyping = false;
+
+  // Phase 3.2 (5c) — SSE streaming path. Default OFF: when false, sendMessage
+  // behaves byte-identically to the pre-streaming callable flow. When on, the
+  // response renders progressively via [StreamingChatService] and falls back to
+  // the callable on any failure.
+  final StreamingChatService _streamingService;
+  final bool _streamingEnabled;
 
   // L3 — short prefetched interjection clip plays at <300ms after send
   // while the real LLM+TTS pipeline runs. fadeOutAndStop() is called by
@@ -56,8 +64,12 @@ class ChatService extends ChangeNotifier {
     this._firebaseService,
     this._userId, {
     FillerAudioController? fillerAudioController,
-  }) : _fillerAudioController =
-            fillerAudioController ?? FillerAudioController() {
+    StreamingChatService? streamingService,
+    bool streamingEnabled = false,
+  })  : _fillerAudioController =
+            fillerAudioController ?? FillerAudioController(),
+        _streamingService = streamingService ?? StreamingChatService(),
+        _streamingEnabled = streamingEnabled {
     // Eager-load filler clip definitions so the first send doesn't pay
     // the JSON parse cost in the critical <300ms window.
     unawaited(_fillerAudioController.ensureLoaded());
@@ -193,6 +205,15 @@ class ChatService extends ChangeNotifier {
       userMessage: content,
       uid: userId,
     ));
+
+    // Phase 3.2 (5c) — SSE streaming path (flag-gated, default OFF). Renders the
+    // response progressively; on any failure (disabled/unavailable/transport/
+    // empty) it cleans up and returns false so we fall through to the callable
+    // path below. flag-OFF -> this block is skipped and behavior is unchanged.
+    if (_streamingEnabled) {
+      final handled = await _trySendStreaming(content, userId, messageId);
+      if (handled) return;
+    }
 
     // Retry logic for transient failures
     const maxRetries = 2;
@@ -333,6 +354,88 @@ class ChatService extends ChangeNotifier {
 
     if (lastError != null) {
       throw lastError;
+    }
+  }
+
+  /// Phase 3.2 (5c) — attempt the SSE streaming path. Renders the response
+  /// progressively into a local message as guarded sentences arrive. Returns
+  /// true if it rendered a response; returns false (after cleaning up) on any
+  /// failure so [sendMessage] falls back to the callable path.
+  ///
+  /// NOTE (MVP, behind the default-OFF flag): the streamed turn is rendered
+  /// locally and is NOT yet persisted to Firestore — backend persistence of
+  /// streamed turns, plus emotion metadata, per-sentence TTS, and incremental
+  /// visemes, are the device-verified follow-ups. The optimistic user message
+  /// is kept (the streaming endpoint does not persist it either on this path).
+  Future<bool> _trySendStreaming(
+    String content,
+    String userId,
+    String messageId,
+  ) async {
+    final streamMsgId = 'stream_$messageId';
+    final streamTs = DateTime.now();
+    final buffer = StringBuffer();
+    var sawContent = false;
+
+    void render() {
+      final msg = Message(
+        id: streamMsgId,
+        userId: userId,
+        content: buffer.toString(),
+        isFromUser: false,
+        timestamp: streamTs,
+      );
+      final idx = _messages.indexWhere((m) => m.id == streamMsgId);
+      if (idx >= 0) {
+        _messages[idx] = msg;
+      } else {
+        _messages.insert(0, msg);
+      }
+      notifyListeners();
+    }
+
+    try {
+      await for (final event in _streamingService.streamResponse(content)) {
+        switch (event.event) {
+          case 'sentence':
+            if (buffer.isNotEmpty) buffer.write(' ');
+            buffer.write(event.text);
+            sawContent = true;
+            render();
+            break;
+          case 'replace':
+            buffer
+              ..clear()
+              ..write(event.text);
+            sawContent = true;
+            render();
+            break;
+          case 'done':
+            break;
+          case 'error':
+            throw StateError('stream error: ${event.data['message']}');
+        }
+      }
+
+      if (!sawContent) {
+        // Empty stream — fall back rather than show a blank reply.
+        _messages.removeWhere((m) => m.id == streamMsgId);
+        notifyListeners();
+        return false;
+      }
+
+      _isTyping = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      // Any failure (StreamingUnavailable / transport / error event) — discard
+      // the partial streamed message and let sendMessage run the callable path.
+      _messages.removeWhere((m) => m.id == streamMsgId);
+      notifyListeners();
+      DebugLogger.log('ChatService.sendMessage',
+          'streaming path failed; falling back to callable',
+          data: {'error': e.toString()});
+      return false;
     }
   }
 
