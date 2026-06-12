@@ -8,6 +8,7 @@ import {
 import type { CompanionRuntimeSelfModel } from './truthKernelService';
 import type { TraceHandle } from '../observability/langfuse';
 import { estimateChatInputTokens, auditTokenDrift } from './tokenObservability';
+import { buildAnthropicSystemParam } from './anthropicCache';
 
 export interface ProviderCandidateScores {
   engagement: number;
@@ -183,23 +184,11 @@ export async function executeAnthropicCompletion({
   trace,
 }: ExecuteAnthropicCompletionArgs): Promise<ProviderRankedCandidate> {
   const start = Date.now();
-  // Phase 0 P2 — split at PROMPT_CACHE_BOUNDARY sentinel so Anthropic caches
-  // the stable prefix. Falls back to whole-string send if sentinel absent.
+  // Phase 0 P2 / Phase 3.3 — split at the cache-boundary sentinel so Anthropic
+  // caches the stable prefix (shared helper, single source of truth used by the
+  // streaming path too). Falls back to whole-string send if sentinel absent.
   // Per oreilly_ai_perf.md Finding #1 + Anthropic prompt-caching docs.
-  const CACHE_BOUNDARY = '<!--PROMPT_CACHE_BOUNDARY-->';
-  const systemForAnthropic = effectiveSystemPrompt.includes(CACHE_BOUNDARY)
-    ? (() => {
-        const [stable, volatile] = effectiveSystemPrompt.split(CACHE_BOUNDARY);
-        return [
-          {
-            type: 'text' as const,
-            text: stable.trimEnd(),
-            cache_control: { type: 'ephemeral' as const },
-          },
-          { type: 'text' as const, text: volatile.trimStart() },
-        ];
-      })()
-    : effectiveSystemPrompt;
+  const systemForAnthropic = buildAnthropicSystemParam(effectiveSystemPrompt);
   let claudeResponse: Awaited<ReturnType<typeof anthropic.messages.create>>;
   try {
     claudeResponse = await anthropic.messages.create({
@@ -235,7 +224,14 @@ export async function executeAnthropicCompletion({
     tokensIn: (claudeResponse as any).usage?.input_tokens,
     tokensOut: (claudeResponse as any).usage?.output_tokens,
     latencyMs: Date.now() - start,
-    metadata: { provider: 'anthropic' },
+    metadata: {
+      provider: 'anthropic',
+      // Phase 3.3 — surface prompt-cache effectiveness in Langfuse. On a cache
+      // hit cacheReadTokens > 0 (stable prefix re-read at ~10% cost); on the
+      // first call cacheCreationTokens > 0 (prefix written to cache).
+      cacheCreationTokens: (claudeResponse as any).usage?.cache_creation_input_tokens ?? 0,
+      cacheReadTokens: (claudeResponse as any).usage?.cache_read_input_tokens ?? 0,
+    },
   });
   auditTokenDrift({
     provider: 'anthropic',

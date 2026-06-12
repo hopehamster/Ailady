@@ -91,6 +91,7 @@ import {
   applyDepthGate,
 } from './depthEscalationGate';
 import { textDeltaStream, extractAnthropicTextDelta } from './responseStreaming';
+import { buildAnthropicSystemParam } from './anthropicCache';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -3305,10 +3306,13 @@ export function streamAnthropicTextDeltas(prep: StreamingTurnPrep): AsyncGenerat
   if (!anthropic) {
     throw new Error('streamAnthropicTextDeltas: Anthropic client not configured');
   }
+  // Phase 3.3 — apply the same prompt-cache breakpoint as the non-streaming
+  // path so the streaming path also caches the stable prefix (incl. the Phase 1
+  // connection-knowledge block).
   const stream = anthropic.messages.stream({
     model: prep.modelName,
     max_tokens: prep.generationTokens,
-    system: prep.effectiveSystemPrompt as unknown as string,
+    system: buildAnthropicSystemParam(prep.effectiveSystemPrompt) as unknown as string,
     messages: prep.anthropicMessages,
   });
   return textDeltaStream(stream as AsyncIterable<unknown>, extractAnthropicTextDelta);
