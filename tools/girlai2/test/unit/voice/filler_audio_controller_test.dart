@@ -222,6 +222,37 @@ void main() {
         expect(category, anyOf('ack', 'engage'));
       }
     });
+
+    test('a question to Aria picks a THINKING sound (think or hold)',
+        () async {
+      for (final msg in <String>[
+        'where do you think i should go this weekend?',
+        'you pick the restaurant for me',
+        'what do you think about that',
+      ]) {
+        for (var seed = 0; seed < 10; seed++) {
+          final fake = _FakeFillerPlayer();
+          final c = _buildController(player: fake, randomSeed: seed);
+          await c.playFor(userMessage: msg, uid: 'uq-$seed');
+          expect(fake.setAssetCalls, hasLength(1));
+          final category = _categoryOf(fake.setAssetCalls.single);
+          expect(category, anyOf('think', 'hold'),
+              reason: 'question "$msg" seed $seed picked $category');
+        }
+      }
+    });
+
+    test('emotional disclosure phrased as a question still routes warm',
+        () async {
+      final fake = _FakeFillerPlayer();
+      final c = _buildController(player: fake, randomSeed: 1);
+      await c.playFor(
+        userMessage: 'why do i always feel so alone after work?',
+        emotionalDisclosure: true,
+        uid: 'uw',
+      );
+      expect(_categoryOf(fake.setAssetCalls.single), 'warm');
+    });
   });
 
   group('FillerAudioController.playFor — recency dampening', () {

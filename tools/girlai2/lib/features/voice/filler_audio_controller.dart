@@ -266,9 +266,20 @@ class FillerAudioController {
         .where((w) => w.isNotEmpty)
         .length;
 
+    // A question aimed at Aria deserves a THINKING sound ("Um...", "Hmm,
+    // let me think...", "Hold that thought—") — the human/actor move of
+    // holding the floor while forming an answer, not a bare "Mhm."
+    final isQuestion = userMessage.trim().endsWith('?') ||
+        RegExp(
+          r'\b(what do you think|you pick|would you|do you think|can you|should i|tell me about)\b',
+          caseSensitive: false,
+        ).hasMatch(userMessage);
+
     final List<String> categoryOrder;
     if (emotionalDisclosure) {
       categoryOrder = const <String>['warm'];
+    } else if (isQuestion) {
+      categoryOrder = const <String>['think', 'hold'];
     } else if (wordCount <= 4) {
       categoryOrder = const <String>['ack'];
     } else if (wordCount >= 30) {
