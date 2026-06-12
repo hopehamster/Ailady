@@ -71,6 +71,11 @@ import {
 } from './providerExecutionService';
 import { runPostGenerationQualityWorkflow } from './qualityOrchestrationService';
 import { runPostResponseOrchestration } from './postResponseOrchestrationService';
+import {
+  maybeCompactHistoryInBackground,
+  saveHistorySummary,
+  summarizerPromptForTurns,
+} from './historyCompactionStore';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -2993,6 +2998,33 @@ export async function generateAIResponse(
       analysis: analysis ? { emotion: analysis.emotion } : null,
       turnSessionTurnCount,
     });
+
+    // Phase 3 Step 3.1 — async-after-response history compaction (Zone D).
+    // Flag-gated (HISTORY_COMPACTION_ENABLED, default OFF). The summarizer LLM
+    // call runs HERE, off the user-facing critical path; the result is persisted
+    // for the NEXT turn to consume. Fire-and-forget — never blocks the turn,
+    // never throws (the store swallows summarizer + persist failures).
+    if (userId) {
+      void maybeCompactHistoryInBackground({
+        uid: userId,
+        memory,
+        now: Date.now(),
+        summarize: async (turns) => {
+          const completion = await openai.chat.completions.create({
+            model: process.env.HISTORY_SUMMARY_MODEL ?? 'gpt-4o-mini',
+            messages: [{ role: 'user', content: summarizerPromptForTurns(turns) }],
+            temperature: 0.3,
+            max_tokens: 400,
+          });
+          return completion.choices[0]?.message?.content ?? '';
+        },
+        persist: saveHistorySummary,
+      }).catch((error: any) =>
+        functions.logger.warn('llmService: history compaction bg failed', {
+          error: error?.message ?? String(error),
+        }),
+      );
+    }
 
     return finalizeAIResponse({
       userId,
