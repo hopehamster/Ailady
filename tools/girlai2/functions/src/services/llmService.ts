@@ -79,6 +79,11 @@ import {
   loadHistorySummary,
   buildHistorySummaryBlock,
 } from './historyCompactionStore';
+import {
+  isManipulationGuardEnabled,
+  scanForManipulation,
+  maxManipulationSeverity,
+} from './manipulationGuard';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -2964,6 +2969,38 @@ export async function generateAIResponse(
         });
         stageTimingsMs.outputScanBlocked = 1;
         aiContent = pickVariantText('llmStall', LLM_STALL_POOL, { uid: userId });
+      }
+    }
+
+    // Phase 4 Step 4.1 — manipulation guard. Flag-gated (default OFF). Scans the
+    // generated reply for emotional dark patterns (guilt / obligation / scarcity
+    // / early-stage love-bombing) BEFORE it reaches the user. Guilt + obligation
+    // + early-stage love-bombing are softened in place; scarcity blocks (swap for
+    // a safe stall variant, mirroring the high-severity output-scan path above).
+    // On block we set outputScanBlocked so the injector chain + persistence below
+    // skip the suppressed content, exactly like an output-scan block.
+    if (isManipulationGuardEnabled() && !stageTimingsMs.outputScanBlocked) {
+      const manip = scanForManipulation(aiContent, { relationshipStage: turnStage });
+      if (manip.findings.length > 0) {
+        stageTimingsMs.manipulationFindings = manip.findings.length;
+        const mSev = maxManipulationSeverity(manip.findings);
+        stageTimingsMs.manipulationSeverity =
+          mSev === 'high' ? 1 : mSev === 'medium' ? 0.5 : 0.1;
+        functions.logger.warn('llmService: manipulation guard flagged response', {
+          userId,
+          categories: [...new Set(manip.findings.map((f) => f.category))],
+          labels: manip.findings.map((f) => f.label),
+          severity: mSev,
+          blocked: manip.blocked,
+          rewritten: manip.rewritten,
+        });
+        if (manip.blocked) {
+          stageTimingsMs.manipulationBlocked = 1;
+          stageTimingsMs.outputScanBlocked = 1;
+          aiContent = pickVariantText('llmStall', LLM_STALL_POOL, { uid: userId });
+        } else if (manip.rewritten) {
+          aiContent = manip.text;
+        }
       }
     }
 
