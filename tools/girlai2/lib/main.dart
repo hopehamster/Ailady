@@ -8,9 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'core/services/error_reporting_service.dart';
 import 'core/services/firebase_service.dart';
 import 'core/services/user_service.dart';
+import 'core/utils/emulator_config.dart';
 import 'core/services/revenuecat_service.dart';
 import 'core/services/analytics_service.dart';
 import 'core/utils/debug_logger.dart';
@@ -44,6 +46,20 @@ void main() async {
 
     debugPrint('✅ DART: Firebase initialized successfully!');
     debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
+
+    // ── Local emulator wiring ──────────────────────────────────────────────
+    // EmulatorConfig reads the FIREBASE_*_EMULATOR_HOST env vars (desktop) or
+    // --dart-define values (physical device). No-op when neither is set —
+    // production builds are unchanged. Functions host is consumed separately
+    // in firebase_service.dart; Auth + Firestore are wired here.
+    final authEmulator = EmulatorConfig.getAuthEmulatorHost();
+    if (authEmulator != null) {
+      await FirebaseAuth.instance
+          .useAuthEmulator(authEmulator.host, authEmulator.port);
+      debugPrint(
+          '🔧 DART: Auth emulator wired at ${authEmulator.host}:${authEmulator.port}');
+    }
+    await EmulatorConfig.configureEmulators();
 
     // ── Crashlytics (via Track E error-reporting facade) ──────────────────
     // Disable in debug to keep crash reports clean from dev iteration.
