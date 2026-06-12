@@ -86,6 +86,13 @@ import {
 } from './manipulationGuard';
 import { isCadenceControllerEnabled, evaluateCadence } from './cadenceController';
 import {
+  resolvePresenceRegister,
+  buildSessionPresenceInstruction,
+  finalizeSessionPresenceLine,
+  type SessionPresencePool,
+} from './sessionPresenceService';
+import { buildConnectionKnowledgeBlock } from './connectionKnowledge';
+import {
   isDepthEscalationGateEnabled,
   classifyVolunteeredDepth,
   applyDepthGate,
@@ -2676,6 +2683,8 @@ export async function generateAIResponse(
             memory,
             runtimeSelfModel,
             partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+            effectiveSystemPrompt,
+            conversationMessages: anthropicMessages,
             logInfo: (message, metadata) => functions.logger.info(message, metadata),
           });
           return {
@@ -2821,6 +2830,8 @@ export async function generateAIResponse(
             memory,
             runtimeSelfModel,
             partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+            effectiveSystemPrompt,
+            conversationMessages: anthropicMessages,
             logInfo: (message, metadata) => functions.logger.info(message, metadata),
           });
           functions.logger.info('Gemini fallback succeeded (post-processing skipped)');
@@ -2902,6 +2913,8 @@ export async function generateAIResponse(
             memory,
             runtimeSelfModel,
             partnerName: resolvePreferredUserName(runtimeSelfModel, memory),
+            effectiveSystemPrompt,
+            conversationMessages: anthropicMessages,
             logInfo: (message, metadata) => functions.logger.info(message, metadata),
           });
           aiContent = geminiText;
@@ -3368,3 +3381,89 @@ export function streamAnthropicTextDeltas(prep: StreamingTurnPrep): AsyncGenerat
 
 
 
+
+// ── Session presence (Phase: healthy-pattern steering) ───────────────────────
+//
+// Generates Aria's ONE quiet-moment line authentically: her full persona +
+// connection knowledge + the real conversation history, with a stage-specific
+// instruction distilled from the presence principles. NO canned lines — if
+// generation fails or the manipulation guard objects, returns null and the
+// quiet moment stays quiet (per the no-canned-content edict, 2026-06-12).
+
+export interface SessionPresenceResult {
+  text: string;
+  register: SessionPresencePool;
+}
+
+export async function generateSessionPresenceLine(
+  userId: string,
+): Promise<SessionPresenceResult | null> {
+  if (!googleGenAI) return null;
+
+  const rawMemory = await getIntelligentMemory(userId);
+  if (!rawMemory) return null;
+  const runtimeSelfModel = await getCompanionRuntimeSelfModel(userId, rawMemory);
+  const memory = normalizeMemoryForProfileDisplayName(
+    rawMemory,
+    runtimeSelfModel.profileDisplayName,
+  );
+  if (!memory) return null;
+
+  const register = resolvePresenceRegister({
+    stage: (memory.sessionArc?.stage as 'rapport' | 'deepen' | 'relief' | 'closure' | undefined) ?? null,
+    turnCount: memory.sessionArc?.turnCount ?? 0,
+  });
+
+  const temporalContext = resolveEffectiveTemporalContext(undefined, runtimeSelfModel);
+  const systemPrompt = buildSystemPrompt({
+    memory,
+    runtime: runtimeSelfModel,
+    preferredUserName: resolvePreferredUserName(runtimeSelfModel, memory),
+    localNowLabel: formatAbsoluteDateForContext(
+      temporalContext.now,
+      temporalContext.timeZoneOffsetMinutes,
+    ),
+    currentServerUtcIso: temporalContext.now.toISOString(),
+    timeZoneOffsetMinutes: temporalContext.timeZoneOffsetMinutes,
+    timeZoneName: temporalContext.timeZoneName,
+    temporalSource: temporalContext.source,
+  });
+  const connectionKnowledge = buildConnectionKnowledgeBlock();
+  const fullSystemPrompt = connectionKnowledge
+    ? `${systemPrompt}\n\n${connectionKnowledge}`
+    : systemPrompt;
+
+  const history = getRecentContextMessages(memory).slice(-10);
+  const contents = [
+    ...history.map((m) => ({
+      role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
+      parts: [{ text: m.content }],
+    })),
+    { role: 'user' as const, parts: [{ text: buildSessionPresenceInstruction(register) }] },
+  ];
+
+  try {
+    const result = await googleGenAI.models.generateContent({
+      model: GEMINI_MODEL,
+      config: {
+        systemInstruction: fullSystemPrompt,
+        temperature: 0.85,
+        maxOutputTokens: 1024,
+        thinkingConfig: { thinkingBudget: 0 },
+      },
+      contents,
+    });
+    const text = finalizeSessionPresenceLine(result.text);
+    if (!text) {
+      functions.logger.info('sessionPresence: generation skipped by guard/empty', { userId, register });
+      return null;
+    }
+    return { text, register };
+  } catch (error: any) {
+    functions.logger.warn('sessionPresence: generation failed — staying quiet', {
+      userId,
+      error: error?.message ?? String(error),
+    });
+    return null;
+  }
+}

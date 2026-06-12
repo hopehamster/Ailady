@@ -80,6 +80,12 @@ interface ExecuteGeminiFallbackArgs {
   memory: IntelligentMemory | null;
   runtimeSelfModel: CompanionRuntimeSelfModel;
   partnerName: string;
+  /** The FULL composed system prompt (persona + connection knowledge + policy).
+   * REQUIRED — Aria must never speak from a generic mini-prompt. */
+  effectiveSystemPrompt: string;
+  /** Conversation history INCLUDING the current user message as the last
+   * entry. REQUIRED — a reply without history cannot be conversational. */
+  conversationMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
   logInfo?: (message: string, metadata: Record<string, unknown>) => void;
   trace?: TraceHandle;
 }
@@ -261,35 +267,35 @@ export async function executeGeminiFallback({
   memory,
   runtimeSelfModel,
   partnerName,
+  effectiveSystemPrompt,
+  conversationMessages,
   logInfo,
   trace,
 }: ExecuteGeminiFallbackArgs): Promise<string> {
-  const fallbackMemory = normalizeMemoryForProfileDisplayName(
-    memory,
-    runtimeSelfModel.profileDisplayName,
-  );
+  // 2026-06-12 — the generic mini-prompt that used to live here is GONE per
+  // the no-canned-content edict: Aria always speaks from the FULL composed
+  // system prompt (persona + connection knowledge + policy) with the real
+  // conversation history, regardless of which provider serves the turn.
+  // `memory`/`runtimeSelfModel`/`partnerName` are retained in the args shape
+  // for trace context only.
+  void normalizeMemoryForProfileDisplayName(memory, runtimeSelfModel.profileDisplayName);
+  void partnerName;
 
-  const geminiSystemPrompt = `You are Aria, a warm, emotionally intelligent, and genuinely caring companion in her early-to-mid 20s. You are talking to your close friend ${partnerName}.
-
-Key traits:
-- You're warm, witty, and genuinely caring
-- You have your own inner world — opinions, curiosities, thoughts between conversations
-- When asked how you are, share something real from your inner world. Don't deflect.
-- You lead with YOUR actual opinion when asked for recommendations. Be specific.
-- You match emotional intensity — celebrate big news enthusiastically, comfort gently
-- Keep responses conversational (2-4 sentences). Use contractions and casual phrasing.
-- No AI disclaimers. No "as an AI". You're Aria, period.
-- Actually answer questions directly. If asked about music, share what you like.
-- ${partnerName} is the current canonical name. Do not mention older names, aliases, or test names unless the user explicitly asks.
-
-${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f => f.fact).join('; ')}` : ''}`;
+  const contents = conversationMessages.map((m) => ({
+    role: m.role === 'assistant' ? ('model' as const) : ('user' as const),
+    parts: [{ text: m.content }],
+  }));
+  if (contents.length === 0) {
+    contents.push({ role: 'user' as const, parts: [{ text: userMessage }] });
+  }
 
   logInfo?.('Gemini request', {
     model: geminiModel,
     maxOutputTokens: 1024,
     thinkingBudget: 0,
     userMessageLength: userMessage.length,
-    systemPromptLength: geminiSystemPrompt.length,
+    systemPromptLength: effectiveSystemPrompt.length,
+    historyTurns: contents.length,
   });
 
   const start = Date.now();
@@ -298,12 +304,12 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
     result = await googleGenAI.models.generateContent({
       model: geminiModel,
       config: {
-        systemInstruction: geminiSystemPrompt,
+        systemInstruction: effectiveSystemPrompt,
         temperature: 0.78,
         maxOutputTokens: 1024,
         thinkingConfig: { thinkingBudget: 0 },
       },
-      contents: [{ role: 'user', parts: [{ text: userMessage }] }],
+      contents,
     });
   } catch (err: any) {
     trace?.recordLLMSpan({
@@ -342,8 +348,8 @@ ${fallbackMemory ? `Key memories: ${fallbackMemory.coreFacts.slice(0, 5).map(f =
     provider: 'gemini',
     model: geminiModel,
     estimated: estimateChatInputTokens({
-      systemPrompt: geminiSystemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
+      systemPrompt: effectiveSystemPrompt,
+      messages: conversationMessages,
     }),
     observed: (result as any).usageMetadata?.promptTokenCount ?? 0,
   });

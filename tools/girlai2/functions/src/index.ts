@@ -14,6 +14,7 @@ import {
   prepareStreamingTurn,
   streamLlmTextDeltas,
   analyzeConversation,
+  generateSessionPresenceLine,
 } from './services/llmService';
 import { isStreamingEnabled } from './services/responseStreaming';
 import {
@@ -23,7 +24,6 @@ import {
 } from './services/openaiCompat';
 import {
   isSessionPresenceEnabled,
-  pickSessionPresenceLine,
   SESSION_PRESENCE_MIN_GAP_MS,
 } from './services/sessionPresenceService';
 import { buildSentenceGuard, streamGuardedSentences } from './services/streamingPipeline';
@@ -1569,23 +1569,20 @@ export const sessionPresence = functions
       return { sent: false, reason: 'cooldown' };
     }
 
-    const memDoc = await db.collection('intelligentMemory').doc(userId).get();
-    const arc = memDoc.exists
-      ? (memDoc.data()?.sessionArc as { stage?: string; turnCount?: number } | undefined)
-      : undefined;
+    // LLM-generated, persona-grounded, guard-finalized — never canned. Null
+    // means generation failed or the guard objected: the quiet moment stays
+    // quiet (no fallback script, per the no-canned-content edict).
+    const line = await generateSessionPresenceLine(userId);
+    if (!line) {
+      return { sent: false, reason: 'skipped' };
+    }
 
-    const pick = pickSessionPresenceLine({
-      stage: (arc?.stage as 'rapport' | 'deepen' | 'relief' | 'closure' | undefined) ?? null,
-      turnCount: arc?.turnCount ?? 0,
-      uid: userId,
-    });
-
-    const soothing = pick.pool !== 'rapport';
+    const soothing = line.register !== 'rapport';
     const timestamp = admin.firestore.Timestamp.now();
     await Promise.all([
       db.collection('conversations').add({
         userId,
-        content: pick.text,
+        content: line.text,
         isFromUser: false,
         timestamp,
         emotion: soothing ? 'caring' : 'neutral',
@@ -1597,8 +1594,8 @@ export const sessionPresence = functions
       gateRef.set({ lastAt: timestamp }, { merge: true }),
     ]);
 
-    functions.logger.info('sessionPresence line sent', { userId, pool: pick.pool });
-    return { sent: true, pool: pick.pool };
+    functions.logger.info('sessionPresence line sent', { userId, register: line.register });
+    return { sent: true, register: line.register };
   });
 
 /**
