@@ -84,6 +84,7 @@ import {
   scanForManipulation,
   maxManipulationSeverity,
 } from './manipulationGuard';
+import { isCadenceControllerEnabled, evaluateCadence } from './cadenceController';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -1901,6 +1902,36 @@ export async function generateProactiveCompanionMessage(
     }
 
     const temporalContext = resolveEffectiveTemporalContext(undefined, runtimeSelfModel);
+
+    // Phase 4 Step 4.2 — cadence controller. Flag-gated (default OFF). Layered
+    // on top of the existing canGenerateProactiveNow eligibility check as an
+    // additional connection-not-addiction gate, evaluated before the expensive
+    // prompt build. Today it enforces the rules backed by persisted state:
+    // quiet-hours (>=10pm local) + min-gap + rolling daily-cap from
+    // proactiveConfig.lastProactiveAt. The ignored / app-close cooldowns and the
+    // consecutive-initiation rule are no-ops until their tracking signals are
+    // persisted (a follow-up: a proactive-timestamp array + initiator log +
+    // client-side ignored/app-close events).
+    if (isCadenceControllerEnabled()) {
+      const lastProactiveMs = memory.proactiveConfig?.lastProactiveAt?.toMillis?.() ?? null;
+      const cadence = evaluateCadence({
+        now: temporalContext.now.getTime(),
+        timezoneOffsetMinutes: temporalContext.timeZoneOffsetMinutes,
+        proactiveSentAt: lastProactiveMs != null ? [lastProactiveMs] : [],
+        lastProactiveIgnoredAt: null,
+        lastAppCloseWithoutReplyAt: null,
+        recentInitiators: [],
+      });
+      if (!cadence.allowed) {
+        functions.logger.info('proactive blocked by cadence controller', {
+          userId,
+          reason: cadence.reason,
+          detail: cadence.detail,
+        });
+        return { shouldSend: false, reason: `cadence_${cadence.reason}` };
+      }
+    }
+
     const relationshipDays = runtimeSelfModel.relationshipDays;
     const systemPrompt = buildSystemPrompt({
       memory,
