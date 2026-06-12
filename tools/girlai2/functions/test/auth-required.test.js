@@ -51,11 +51,14 @@ test('every callable export checks context.auth or is on the webhook allowlist',
     if (!usesOnCall && !usesOnRequest) continue; // not an HTTPS-triggered export
 
     // Allowlist webhooks need a separate justification; everything else MUST
-    // either reference context.auth or throw HttpsError('unauthenticated').
+    // either reference context.auth or throw HttpsError('unauthenticated')
+    // (callable pattern), OR verify a Firebase ID token and reject with 401
+    // (onRequest pattern, e.g. the SSE streaming endpoint).
     const hasAuthRef = /context\.auth/.test(body);
     const hasUnauthErr = /HttpsError\(\s*['"]unauthenticated['"]/.test(body);
+    const hasIdTokenAuth = /verifyIdToken\s*\(/.test(body) && /401/.test(body);
 
-    if (!hasAuthRef && !hasUnauthErr) {
+    if (!hasAuthRef && !hasUnauthErr && !hasIdTokenAuth) {
       failures.push(name);
     }
   }

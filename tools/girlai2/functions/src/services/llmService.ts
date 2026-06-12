@@ -36,7 +36,7 @@ import {
   CompanionRuntimeSelfModel,
   buildCapabilityOverviewResponseFromKernel,
 } from './truthKernelService';
-import { getRelationshipStage } from './ariaRelationshipService';
+import { getRelationshipStage, type RelationshipStage } from './ariaRelationshipService';
 import {
   buildConversationPolicy,
   buildConversationPolicyDirectives,
@@ -90,6 +90,7 @@ import {
   classifyVolunteeredDepth,
   applyDepthGate,
 } from './depthEscalationGate';
+import { textDeltaStream, extractAnthropicTextDelta } from './responseStreaming';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -3182,6 +3183,135 @@ export async function generateAIResponse(
       modelUsed: 'fallback',
     };
   }
+}
+
+// ── Phase 3.2 (4b): streaming turn preparation + Anthropic streaming ──────────
+//
+// Lean, isolated setup for the SSE streaming endpoint. Reuses the same proven
+// prompt-build helpers as the proactive path (memory -> runtime -> system prompt
+// -> augments -> social plan -> buildResponseAssembly) but produces Anthropic
+// streaming inputs instead of a single completion. Deliberately does NOT touch
+// generateAIResponse (the critical non-streaming path stays the untouched
+// fallback). The endpoint runs this only when STREAMING_ENABLED is on.
+
+export interface StreamingTurnPrep {
+  effectiveSystemPrompt: string;
+  anthropicMessages: Array<{ role: 'user' | 'assistant'; content: string }>;
+  modelName: string;
+  generationTokens: number;
+  relationshipStage: RelationshipStage;
+}
+
+/** Build the prompt + plan for a streaming turn. Returns null if memory is unavailable. */
+export async function prepareStreamingTurn(
+  userId: string,
+  userMessage: string,
+): Promise<StreamingTurnPrep | null> {
+  const rawMemory = await getIntelligentMemory(userId);
+  if (!rawMemory) return null;
+
+  const runtimeSelfModel = await getCompanionRuntimeSelfModel(userId, rawMemory);
+  const memory = normalizeMemoryForProfileDisplayName(
+    rawMemory,
+    runtimeSelfModel.profileDisplayName,
+  );
+  if (!memory) return null;
+
+  const temporalContext = resolveEffectiveTemporalContext(undefined, runtimeSelfModel);
+  const preferredName = resolvePreferredUserName(runtimeSelfModel, memory);
+
+  const systemPrompt = buildSystemPrompt({
+    memory,
+    runtime: runtimeSelfModel,
+    preferredUserName: preferredName,
+    localNowLabel: formatAbsoluteDateForContext(
+      temporalContext.now,
+      temporalContext.timeZoneOffsetMinutes,
+    ),
+    currentServerUtcIso: temporalContext.now.toISOString(),
+    timeZoneOffsetMinutes: temporalContext.timeZoneOffsetMinutes,
+    timeZoneName: temporalContext.timeZoneName,
+    temporalSource: temporalContext.source,
+  });
+
+  const recentMessages = getRecentContextMessages(memory).filter(
+    (m) => !hasConflictingProfileNameReference(m.content, runtimeSelfModel.profileDisplayName),
+  );
+
+  const promptAugments = PERSONALITY_UPGRADE_ENABLED
+    ? await buildPromptAugments(
+        userMessage,
+        userId,
+        memory,
+        runtimeSelfModel,
+        preferredName,
+        {},
+        temporalContext,
+        recentMessages,
+      )
+    : EMPTY_PROMPT_AUGMENTS;
+
+  const social = await createSocialPlan(
+    userMessage,
+    recentMessages,
+    memory,
+    runtimeSelfModel.relationshipDays,
+  );
+
+  const relationshipStage = getRelationshipStage(
+    runtimeSelfModel.relationshipDays,
+    getInteractionCount(memory),
+    memory?.pacingProfile
+      ? (memory.pacingProfile.intimacy + memory.pacingProfile.depth) / 2
+      : 0.5,
+  );
+
+  const shiftedMs =
+    temporalContext.now.getTime() + temporalContext.timeZoneOffsetMinutes * 60 * 1000;
+  const hourOfDay = new Date(shiftedMs).getUTCHours();
+
+  const { effectiveSystemPrompt, anthropicMessages } = buildResponseAssembly({
+    systemPrompt,
+    promptAugments,
+    route: 'quality',
+    preferRecentExchange: false,
+    recentExchangePriorityBlock: '',
+    datesContextBlock: null,
+    chatMode: undefined,
+    historySummaryBlock: '',
+    userMessage,
+    recentMessages,
+    policyPlan: social.plan,
+    policySignals: social.signals,
+    policyContext: {
+      memory,
+      hourOfDay,
+      sessionTurnCount: Math.floor(recentMessages.length / 2),
+      stage: relationshipStage,
+    },
+  });
+
+  return {
+    effectiveSystemPrompt,
+    anthropicMessages,
+    modelName: FALLBACK_MODEL,
+    generationTokens: resolveGenerationTokens(social.plan),
+    relationshipStage,
+  };
+}
+
+/** Stream Anthropic text deltas for a prepared streaming turn. */
+export function streamAnthropicTextDeltas(prep: StreamingTurnPrep): AsyncGenerator<string> {
+  if (!anthropic) {
+    throw new Error('streamAnthropicTextDeltas: Anthropic client not configured');
+  }
+  const stream = anthropic.messages.stream({
+    model: prep.modelName,
+    max_tokens: prep.generationTokens,
+    system: prep.effectiveSystemPrompt as unknown as string,
+    messages: prep.anthropicMessages,
+  });
+  return textDeltaStream(stream as AsyncIterable<unknown>, extractAnthropicTextDelta);
 }
 
 

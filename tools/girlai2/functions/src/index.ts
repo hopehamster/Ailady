@@ -11,7 +11,13 @@ import {
   getCompanionQualityInsights as getCompanionQualityInsightsData,
   ConversationMessage,
   UserTemporalContext,
+  prepareStreamingTurn,
+  streamAnthropicTextDeltas,
 } from './services/llmService';
+import { isStreamingEnabled } from './services/responseStreaming';
+import { buildSentenceGuard, streamGuardedSentences } from './services/streamingPipeline';
+import { formatSseEvent, runStreamingTurn } from './services/streamingResponseService';
+import { pickVariantText, LLM_STALL_POOL } from './services/responseVariancePool';
 import type { ChatMode } from './services/chatModeService';
 import {
   runGoldenPromptSuiteEval,
@@ -638,6 +644,98 @@ export const generateResponse = functions
         'Failed to generate response. Please try again.',
         error.message
       );
+    }
+  });
+
+/**
+ * Phase 3.2 — SSE streaming endpoint (roadmap Option B). A separate HTTP
+ * function that streams the response sentence-by-sentence via server-sent
+ * events, running PARALLEL to the generateResponse callable (which stays the
+ * untouched fallback). Each sentence passes Aria's guards BEFORE it is emitted
+ * (guard-before-emit); a blocked sentence swaps the whole reply for a safe
+ * variant and stops. Auth via a header-passed Firebase ID token. Flag-gated by
+ * STREAMING_ENABLED (default OFF) — returns 503 when disabled, so it is inert
+ * until explicitly turned on.
+ *
+ * NOTE: this MVP streams + guards; persisting the streamed turn to memory/trace
+ * is a follow-up (increment 5, alongside the Flutter client).
+ */
+export const generateResponseStream = functions
+  .region('us-central1')
+  .runWith({ minInstances: 0, memory: '1GB', timeoutSeconds: 120 })
+  .https.onRequest(async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'method_not_allowed' });
+      return;
+    }
+    if (!isStreamingEnabled()) {
+      res.status(503).json({ error: 'streaming_disabled' });
+      return;
+    }
+
+    // Auth — Firebase ID token in the Authorization header (no callable context).
+    const authHeader = req.get('Authorization') ?? '';
+    const tokenMatch = authHeader.match(/^Bearer (.+)$/);
+    if (!tokenMatch) {
+      res.status(401).json({ error: 'missing_token' });
+      return;
+    }
+    let userId: string;
+    try {
+      const decoded = await admin.auth().verifyIdToken(tokenMatch[1]);
+      userId = decoded.uid;
+    } catch {
+      res.status(401).json({ error: 'invalid_token' });
+      return;
+    }
+
+    const userMessage =
+      typeof req.body?.message === 'string' ? (req.body.message as string) : '';
+    if (!userMessage.trim()) {
+      res.status(400).json({ error: 'empty_message' });
+      return;
+    }
+
+    try {
+      await checkRateLimit({ uid: userId, kind: 'llmCalls' });
+    } catch {
+      res.status(429).json({ error: 'rate_limited' });
+      return;
+    }
+
+    const prep = await prepareStreamingTurn(userId, userMessage);
+    if (!prep) {
+      res.status(500).json({ error: 'prepare_failed' });
+      return;
+    }
+
+    res.set('Content-Type', 'text/event-stream');
+    res.set('Cache-Control', 'no-cache');
+    res.set('Connection', 'keep-alive');
+    res.set('X-Accel-Buffering', 'no');
+    if (typeof (res as { flushHeaders?: () => void }).flushHeaders === 'function') {
+      (res as { flushHeaders: () => void }).flushHeaders();
+    }
+
+    try {
+      const deltas = streamAnthropicTextDeltas(prep);
+      const guard = buildSentenceGuard({ relationshipStage: prep.relationshipStage });
+      const guarded = streamGuardedSentences(deltas, guard);
+      await runStreamingTurn({
+        sentences: guarded,
+        emit: (frame) => {
+          res.write(frame);
+        },
+        safeSwapText: () => pickVariantText('llmStall', LLM_STALL_POOL, { uid: userId }),
+      });
+    } catch (error: any) {
+      functions.logger.error('generateResponseStream failed', {
+        uid: userId,
+        error: error?.message ?? String(error),
+      });
+      res.write(formatSseEvent('error', { message: 'stream_failed' }));
+    } finally {
+      res.end();
     }
   });
 
