@@ -49,3 +49,29 @@ export function resolveStreamingProvider(): 'anthropic' | 'openai' {
   const v = (process.env.STREAMING_PROVIDER ?? '').trim().toLowerCase();
   return v === 'openai' ? 'openai' : 'anthropic';
 }
+
+// ── Vision knobs ──────────────────────────────────────────────────────────────
+// visionService sends base64 images via the OpenAI chat-completions shape.
+// Gemini exposes an OpenAI-COMPATIBLE endpoint that accepts the same shape
+// (https://generativelanguage.googleapis.com/v1beta/openai/), so vision can run
+// on the Gemini subscription while OpenAI credits are dry — same env-override
+// pattern, zero call-site changes. Defaults unchanged when unset.
+
+/** Base URL for the vision client; undefined = real OpenAI (SDK default). */
+export function visionBaseUrl(): string | undefined {
+  const v = (process.env.VISION_BASE_URL ?? '').trim();
+  return v.length > 0 ? v : undefined;
+}
+
+/** API key for the vision client; falls back to OPENAI_API_KEY. */
+export function visionApiKey(): string {
+  const override = (process.env.VISION_API_KEY ?? '').trim();
+  if (override.length > 0) return override;
+  return process.env.OPENAI_API_KEY ?? '';
+}
+
+/** Resolve a vision model: VISION_MODEL_OVERRIDE overrides every vision model. */
+export function resolveVisionModel(hardcodedDefault: string): string {
+  const v = (process.env.VISION_MODEL_OVERRIDE ?? '').trim();
+  return v.length > 0 ? v : hardcodedDefault;
+}

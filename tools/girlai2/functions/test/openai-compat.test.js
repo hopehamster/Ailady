@@ -6,9 +6,16 @@ const {
   openAiCompatApiKey,
   resolveOpenAiModel,
   resolveStreamingProvider,
+  visionBaseUrl,
+  visionApiKey,
+  resolveVisionModel,
 } = require('../lib/services/openaiCompat.js');
 
-const KEYS = ['OPENAI_BASE_URL', 'OPENAI_COMPAT_API_KEY', 'OPENAI_API_KEY', 'OPENAI_DEFAULT_MODEL', 'STREAMING_PROVIDER'];
+const KEYS = [
+  'OPENAI_BASE_URL', 'OPENAI_COMPAT_API_KEY', 'OPENAI_API_KEY',
+  'OPENAI_DEFAULT_MODEL', 'STREAMING_PROVIDER',
+  'VISION_BASE_URL', 'VISION_API_KEY', 'VISION_MODEL_OVERRIDE',
+];
 
 function withEnv(vars, fn) {
   const prev = {};
@@ -77,5 +84,27 @@ test('whitespace-only env values are treated as unset', () => {
   withEnv({ OPENAI_BASE_URL: '  ', OPENAI_DEFAULT_MODEL: ' ' }, () => {
     assert.equal(openAiCompatBaseUrl(), undefined);
     assert.equal(resolveOpenAiModel('gpt-4o'), 'gpt-4o');
+  });
+});
+
+test('vision knobs: defaults unchanged when unset', () => {
+  withEnv({ OPENAI_API_KEY: 'real-openai' }, () => {
+    assert.equal(visionBaseUrl(), undefined);
+    assert.equal(visionApiKey(), 'real-openai'); // falls back to OPENAI_API_KEY
+    assert.equal(resolveVisionModel('gpt-5.2-fast'), 'gpt-5.2-fast');
+  });
+});
+
+test('vision knobs: Gemini compat endpoint override', () => {
+  withEnv({
+    OPENAI_API_KEY: 'real-openai',
+    VISION_BASE_URL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    VISION_API_KEY: 'gemini-key',
+    VISION_MODEL_OVERRIDE: 'gemini-2.5-flash',
+  }, () => {
+    assert.equal(visionBaseUrl(), 'https://generativelanguage.googleapis.com/v1beta/openai/');
+    assert.equal(visionApiKey(), 'gemini-key'); // override wins over OPENAI_API_KEY
+    assert.equal(resolveVisionModel('gpt-5.2-fast'), 'gemini-2.5-flash');
+    assert.equal(resolveVisionModel('gpt-4o'), 'gemini-2.5-flash');
   });
 });

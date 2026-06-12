@@ -9,13 +9,19 @@ import {
 import { tagError } from '../failureClass';
 import { EMOTION_TRIGGERS } from './emotionUtils';
 
-const openaiApiKey = process.env.OPENAI_API_KEY || '';
-const openai = new OpenAI({ apiKey: openaiApiKey });
+import { visionApiKey, visionBaseUrl, resolveVisionModel } from './openaiCompat';
 
-// Vision model - GPT-5.2 fast for real-time camera vision
-const VISION_MODEL = 'gpt-5.2-fast';
-const FALLBACK_VISION_MODEL = 'gpt-4o'; // Fallback if 5.2-fast unavailable
-const EMOTION_MODEL = 'gpt-5.2-extra-high-fast'; // Fast 5.2 variant for emotion detection
+// VISION_BASE_URL env points this client at an OpenAI-compatible vision
+// provider (e.g. Gemini's compat endpoint while OpenAI credits are dry);
+// unset = real OpenAI, unchanged.
+const openaiApiKey = visionApiKey();
+const openai = new OpenAI({ apiKey: openaiApiKey, baseURL: visionBaseUrl() });
+
+// Vision model - GPT-5.2 fast for real-time camera vision.
+// VISION_MODEL_OVERRIDE env overrides all three (e.g. gemini-2.5-flash).
+const VISION_MODEL = resolveVisionModel('gpt-5.2-fast');
+const FALLBACK_VISION_MODEL = resolveVisionModel('gpt-4o'); // Fallback if 5.2-fast unavailable
+const EMOTION_MODEL = resolveVisionModel('gpt-5.2-extra-high-fast'); // Fast 5.2 variant for emotion detection
 
 // Emotion triggers imported from emotionUtils (single source of truth per
 // Phase 2 Session-β Step 2; previously this file maintained a duplicate copy).
