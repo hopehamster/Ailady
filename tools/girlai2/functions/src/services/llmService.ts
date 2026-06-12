@@ -85,6 +85,11 @@ import {
   maxManipulationSeverity,
 } from './manipulationGuard';
 import { isCadenceControllerEnabled, evaluateCadence } from './cadenceController';
+import {
+  isDepthEscalationGateEnabled,
+  classifyVolunteeredDepth,
+  applyDepthGate,
+} from './depthEscalationGate';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -2525,6 +2530,30 @@ export async function generateAIResponse(
       sessionStage: memory?.sessionArc?.stage,
       userMessage,
     });
+
+    // Phase 5 Step 5.1 — depth escalation gate. Flag-gated (default OFF). Caps
+    // the plan's intended depth to the user's volunteered depth (+ an invitation
+    // margin) BEFORE the plan drives response length / question allocation
+    // below. Overlay on the plan — conversationPolicyService is do-not-edit.
+    // Never escalates; only caps when Aria would out-pace what the user opened.
+    if (isDepthEscalationGateEnabled()) {
+      const depthGate = applyDepthGate(socialPlanning.plan, {
+        volunteeredDepth: classifyVolunteeredDepth({
+          emotionalDisclosure: socialPlanning.signals.emotionalDisclosure,
+          consentSensitive: socialPlanning.signals.consentSensitive,
+          userMessageComplexity: socialPlanning.signals.userMessageComplexity,
+        }),
+      });
+      if (depthGate.gated) {
+        functions.logger.info('depth escalation gated', {
+          userId,
+          cappedFrom: depthGate.cappedFrom,
+          allowedDepth: depthGate.allowedDepth,
+          volunteeredDepth: depthGate.volunteeredDepth,
+        });
+        socialPlanning.plan = depthGate.plan;
+      }
+    }
 
     // Compute per-turn enhancement context
     const tzOffset = temporalContext.timeZoneOffsetMinutes;
