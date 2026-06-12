@@ -35,9 +35,18 @@ class StreamingChatService {
   final Dio _dio;
   final FirebaseAuth _auth;
 
+  /// Functions-emulator host from --dart-define (physical-device path, same
+  /// define emulator_config.dart uses). Empty = production.
+  static const String _functionsEmulatorHost =
+      String.fromEnvironment('FIREBASE_FUNCTIONS_EMULATOR_HOST');
+
   /// Cloud Functions HTTP URL for the streaming endpoint (us-central1).
+  /// Routes to the local functions emulator when the emulator define is set.
   String endpointUrl() {
     final projectId = Firebase.app().options.projectId;
+    if (_functionsEmulatorHost.isNotEmpty) {
+      return 'http://$_functionsEmulatorHost/$projectId/us-central1/generateResponseStream';
+    }
     return 'https://us-central1-$projectId.cloudfunctions.net/generateResponseStream';
   }
 
