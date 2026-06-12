@@ -83,7 +83,7 @@ void main() {
         replyText: 'Hi!',
         rng: math.Random(42),
       );
-      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(80, 200));
+      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(100, 300));
       expect(pace.msPerChar, const Duration(milliseconds: 8));
     });
 
@@ -94,8 +94,8 @@ void main() {
         replyText: 'Mhm.',
         rng: math.Random(42),
       );
-      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(500, 800));
-      expect(pace.msPerChar, const Duration(milliseconds: 14));
+      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(1200, 2600));
+      expect(pace.msPerChar, const Duration(milliseconds: 15));
     });
 
     test('emotional disclosure → slower pacing even when short', () {
@@ -104,8 +104,8 @@ void main() {
         replyText: 'I hear you.',
         rng: math.Random(42),
       );
-      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(500, 800));
-      expect(pace.msPerChar, const Duration(milliseconds: 14));
+      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(1200, 2600));
+      expect(pace.msPerChar, const Duration(milliseconds: 15));
     });
 
     test('mid-length user message → conversational pace', () {
@@ -114,7 +114,7 @@ void main() {
         replyText: 'Sure!',
         rng: math.Random(42),
       );
-      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(200, 400));
+      expect(pace.initialDelay.inMilliseconds, inInclusiveRange(350, 900));
       expect(pace.msPerChar, const Duration(milliseconds: 11));
     });
 
@@ -156,7 +156,7 @@ void main() {
         userMessage: 'hey',
         replyText: 'hi',
       );
-      expect(pace.jitterMsPlusMinus, 6);
+      expect(pace.jitterMsPlusMinus, 9);
     });
   });
 }

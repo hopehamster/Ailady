@@ -133,19 +133,23 @@ TypingPace typingPaceForReply({
 
   // Initial pre-type pause. Encodes "thinking" — heavier user message
   // means longer pause before Aria starts to type, which reads as care.
+  // Calibrated 2026-06-12 to normal human texting cadence: people fire back
+  // on banter within a few hundred ms of reading, but SIT with a heavy
+  // disclosure for a second or two before starting to type. The old deep
+  // ceiling (800ms) read as too quick to have actually absorbed it.
   final Duration initialDelay;
   if (isUserDeep) {
-    initialDelay = Duration(milliseconds: 500 + r.nextInt(301)); // 500-800ms
+    initialDelay = Duration(milliseconds: 1200 + r.nextInt(1401)); // 1200-2600ms
   } else if (isUserShort) {
-    initialDelay = Duration(milliseconds: 80 + r.nextInt(121)); // 80-200ms
+    initialDelay = Duration(milliseconds: 100 + r.nextInt(201)); // 100-300ms
   } else {
-    initialDelay = Duration(milliseconds: 200 + r.nextInt(201)); // 200-400ms
+    initialDelay = Duration(milliseconds: 350 + r.nextInt(551)); // 350-900ms
   }
 
   // Per-character base latency.
   final Duration msPerChar;
   if (isUserDeep) {
-    msPerChar = const Duration(milliseconds: 14);
+    msPerChar = const Duration(milliseconds: 15);
   } else if (isUserShort) {
     msPerChar = const Duration(milliseconds: 8);
   } else {
@@ -155,13 +159,13 @@ TypingPace typingPaceForReply({
   // Sentence-end pause widens for longer replies — clause-by-clause
   // breathing room so the reader doesn't drown in a wall of text.
   final Duration sentenceEndPause = isReplyLong
-      ? const Duration(milliseconds: 280)
+      ? const Duration(milliseconds: 320)
       : const Duration(milliseconds: 180);
 
   return TypingPace(
     initialDelay: initialDelay,
     msPerChar: msPerChar,
-    jitterMsPlusMinus: 6,
+    jitterMsPlusMinus: 9,
     sentenceEndPause: sentenceEndPause,
     clauseEndPause: const Duration(milliseconds: 90),
     maxTotalDuration: const Duration(seconds: 8),
