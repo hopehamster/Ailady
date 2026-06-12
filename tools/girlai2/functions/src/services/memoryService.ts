@@ -3,9 +3,16 @@ import * as admin from 'firebase-admin';
 import { FieldValue,Timestamp } from 'firebase-admin/firestore';
 import OpenAI from 'openai';
 import { evaluateMemoryWrite } from '../memoryWriteGate';
+import {
+  openAiCompatApiKey,
+  openAiCompatBaseUrl,
+  resolveOpenAiModel,
+} from './openaiCompat';
 
-const openaiApiKey = process.env.OPENAI_API_KEY || '';
-const openai = new OpenAI({ apiKey: openaiApiKey });
+const openaiApiKey = openAiCompatApiKey();
+// OPENAI_BASE_URL env points this client at an OpenAI-compatible provider
+// (e.g. DeepSeek for test/cost mode); unset = real OpenAI, unchanged.
+const openai = new OpenAI({ apiKey: openaiApiKey, baseURL: openAiCompatBaseUrl() });
 
 // Memory structure interfaces
 export interface CoreFact {
@@ -859,7 +866,7 @@ Return strict JSON:
 }`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
+      model: resolveOpenAiModel('gpt-4o-mini'),
       messages: [
         {
           role: 'system',
@@ -1577,7 +1584,7 @@ async function scoreMessageImportance(
 ): Promise<{ userImportance: number; aiImportance: number; topics: string[] }> {
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o', // Use faster model for scoring
+      model: resolveOpenAiModel('gpt-4o'), // Use faster model for scoring
       messages: [{
         role: 'user',
         content: `Score the importance of this conversation exchange for long-term memory.
@@ -1656,7 +1663,7 @@ async function extractCoreFacts(
     const existingFactsList = existingFacts.map(f => f.fact).join('\n');
     
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: resolveOpenAiModel('gpt-4o'),
       messages: [{
         role: 'user',
         content: `Analyze this conversation exchange and extract any NEW important personal facts about the user.
@@ -1726,7 +1733,7 @@ async function analyzeEmotionalSignificance(
 ): Promise<{ significant: boolean; emotion: string; intensity: number; summary: string } | null> {
   try {
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: resolveOpenAiModel('gpt-4o'),
       messages: [{
         role: 'user',
         content: `Rate the emotional significance of this exchange.
@@ -1781,7 +1788,7 @@ export async function generateWeeklySummary(
       .join('\n');
     
     const response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: resolveOpenAiModel('gpt-4o'),
       messages: [{
         role: 'user',
         content: `Summarize this week's conversations between a user and their companion Aria.

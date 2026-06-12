@@ -12,9 +12,14 @@ import {
   ConversationMessage,
   UserTemporalContext,
   prepareStreamingTurn,
-  streamAnthropicTextDeltas,
+  streamLlmTextDeltas,
 } from './services/llmService';
 import { isStreamingEnabled } from './services/responseStreaming';
+import {
+  openAiCompatApiKey,
+  openAiCompatBaseUrl,
+  resolveOpenAiModel,
+} from './services/openaiCompat';
 import { buildSentenceGuard, streamGuardedSentences } from './services/streamingPipeline';
 import { formatSseEvent, runStreamingTurn } from './services/streamingResponseService';
 import { pickVariantText, LLM_STALL_POOL } from './services/responseVariancePool';
@@ -718,7 +723,7 @@ export const generateResponseStream = functions
     }
 
     try {
-      const deltas = streamAnthropicTextDeltas(prep);
+      const deltas = streamLlmTextDeltas(prep);
       const guard = buildSentenceGuard({ relationshipStage: prep.relationshipStage });
       const guarded = streamGuardedSentences(deltas, guard);
       await runStreamingTurn({
@@ -2445,7 +2450,10 @@ export const generateAriaGift = functions
 
     const db = admin.firestore();
     const OpenAI = require('openai').default;
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({
+      apiKey: openAiCompatApiKey(),
+      baseURL: openAiCompatBaseUrl(),
+    });
 
     // Load memory for personalization
     const memDoc = await db.collection('intelligentMemory').doc(userId).get();
@@ -2493,7 +2501,7 @@ Format: Playlist name, then numbered list. Make the song choices feel personal a
     };
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: resolveOpenAiModel('gpt-4o'),
       messages: [{ role: 'user', content: prompts[giftType] }],
       max_tokens: 600,
       temperature: 0.85,

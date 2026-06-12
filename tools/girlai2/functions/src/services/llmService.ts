@@ -90,8 +90,18 @@ import {
   classifyVolunteeredDepth,
   applyDepthGate,
 } from './depthEscalationGate';
-import { textDeltaStream, extractAnthropicTextDelta } from './responseStreaming';
+import {
+  textDeltaStream,
+  extractAnthropicTextDelta,
+  extractOpenAITextDelta,
+} from './responseStreaming';
 import { buildAnthropicSystemParam } from './anthropicCache';
+import {
+  openAiCompatApiKey,
+  openAiCompatBaseUrl,
+  resolveOpenAiModel,
+  resolveStreamingProvider,
+} from './openaiCompat';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
 import { injectHumanity } from './responseHumanityInjector';
@@ -293,14 +303,17 @@ interface LatencyBudgetPolicy {
 }
 
 // Initialize OpenAI client
-const openaiApiKey = process.env.OPENAI_API_KEY || '';
+const openaiApiKey = openAiCompatApiKey();
 
 if (!openaiApiKey) {
   functions.logger.error('OpenAI API key is not configured.');
 }
 
+// OPENAI_BASE_URL env points this client at an OpenAI-compatible provider
+// (e.g. DeepSeek for test/cost mode); unset = real OpenAI, unchanged.
 const openai = new OpenAI({
   apiKey: openaiApiKey,
+  baseURL: openAiCompatBaseUrl(),
 });
 
 // Initialize Anthropic client for Claude Opus 4.5 fallback
@@ -350,15 +363,15 @@ if (GEMINI_API_KEY) {
 }
 
 // Model configuration tuned for stable availability in this project.
-const PRIMARY_MODEL = 'gpt-4o';
-const FAST_TURN_MODEL = process.env.FAST_TURN_MODEL || 'gpt-4o-mini';
+const PRIMARY_MODEL = resolveOpenAiModel('gpt-4o');
+const FAST_TURN_MODEL = process.env.FAST_TURN_MODEL || resolveOpenAiModel('gpt-4o-mini');
 const FALLBACK_MODEL = 'claude-opus-4-8'; // Claude Opus 4.8 (stable id; bumped from 4-5-20250101 which 404s in live API)
 // Gemini via Vertex AI is now the final fallback (Google-internal network)
 // const FINAL_FALLBACK_MODEL = 'gpt-4o'; // Replaced by GEMINI_MODEL
-const EMOTION_MODEL = 'gpt-4o';
-const SOCIAL_PLANNER_MODEL = 'gpt-4o';
-const RERANK_MODEL = 'gpt-4o';
-const PERSONA_AUDIT_MODEL = 'gpt-4o';
+const EMOTION_MODEL = resolveOpenAiModel('gpt-4o');
+const SOCIAL_PLANNER_MODEL = resolveOpenAiModel('gpt-4o');
+const RERANK_MODEL = resolveOpenAiModel('gpt-4o');
+const PERSONA_AUDIT_MODEL = resolveOpenAiModel('gpt-4o');
 const SHORT_RESPONSE_TOKENS = 180;
 const MEDIUM_RESPONSE_TOKENS = 300;
 const DEEP_RESPONSE_TOKENS = 520;
@@ -3131,7 +3144,7 @@ export async function generateAIResponse(
         now: Date.now(),
         summarize: async (turns) => {
           const completion = await openai.chat.completions.create({
-            model: process.env.HISTORY_SUMMARY_MODEL ?? 'gpt-4o-mini',
+            model: process.env.HISTORY_SUMMARY_MODEL ?? resolveOpenAiModel('gpt-4o-mini'),
             messages: [{ role: 'user', content: summarizerPromptForTurns(turns) }],
             temperature: 0.3,
             max_tokens: 400,
@@ -3299,6 +3312,38 @@ export async function prepareStreamingTurn(
     generationTokens: resolveGenerationTokens(social.plan),
     relationshipStage,
   };
+}
+
+/**
+ * Stream text deltas from the provider selected by STREAMING_PROVIDER:
+ * 'anthropic' (default — Claude with prompt caching) or 'openai' (the
+ * OpenAI-compatible client — real OpenAI, or DeepSeek via OPENAI_BASE_URL).
+ */
+export function streamLlmTextDeltas(prep: StreamingTurnPrep): AsyncGenerator<string> {
+  return resolveStreamingProvider() === 'openai'
+    ? streamOpenAICompatTextDeltas(prep)
+    : streamAnthropicTextDeltas(prep);
+}
+
+/** Stream text deltas via the OpenAI-compatible client (PRIMARY_MODEL). */
+export function streamOpenAICompatTextDeltas(
+  prep: StreamingTurnPrep,
+): AsyncGenerator<string> {
+  async function* events(): AsyncGenerator<unknown> {
+    const stream = await openai.chat.completions.create({
+      model: PRIMARY_MODEL,
+      max_tokens: prep.generationTokens,
+      stream: true,
+      messages: [
+        { role: 'system', content: prep.effectiveSystemPrompt },
+        ...prep.anthropicMessages,
+      ],
+    });
+    for await (const chunk of stream) {
+      yield chunk;
+    }
+  }
+  return textDeltaStream(events(), extractOpenAITextDelta);
 }
 
 /** Stream Anthropic text deltas for a prepared streaming turn. */
