@@ -28,6 +28,17 @@ class ChatService extends ChangeNotifier {
   final StreamingChatService _streamingService;
   final bool _streamingEnabled;
 
+  // Session presence steering — when the user goes quiet mid-session, ONE
+  // no-pressure presence line (server-picked, stage-aware, warm-close-steering
+  // on long sessions). Comfortable silence first (timer), one line, then real
+  // quiet — never a second nudge this session. Backend additionally gates via
+  // SESSION_PRESENCE_ENABLED (default OFF) + a 30-min per-user floor.
+  static const int _presenceIdleSeconds =
+      int.fromEnvironment('SESSION_PRESENCE_IDLE_SECONDS', defaultValue: 180);
+  Timer? _presenceIdleTimer;
+  bool _presenceSentThisSession = false;
+  int _userTurnsThisSession = 0;
+
   // L3 — short prefetched interjection clip plays at <300ms after send
   // while the real LLM+TTS pipeline runs. fadeOutAndStop() is called by
   // chat_screen just before the real Aria voice begins.
@@ -302,6 +313,9 @@ class ChatService extends ChangeNotifier {
         _isTyping = false;
         notifyListeners();
 
+        _userTurnsThisSession++;
+        _schedulePresenceTimer();
+
         final duration = DateTime.now().difference(startTime);
         DebugLogger.log('ChatService.sendMessage', 'Message sent successfully',
             data: {
@@ -442,6 +456,8 @@ class ChatService extends ChangeNotifier {
 
       _isTyping = false;
       notifyListeners();
+      _userTurnsThisSession++;
+      _schedulePresenceTimer();
       return true;
     } catch (e) {
       // Any failure (StreamingUnavailable / transport / error event) — discard
@@ -452,6 +468,39 @@ class ChatService extends ChangeNotifier {
           'streaming path failed; falling back to callable',
           data: {'error': e.toString()});
       return false;
+    }
+  }
+
+  /// Session presence — (re)arm the quiet-moment timer after each completed
+  /// user turn. Comfortable silence comes first ([_presenceIdleSeconds]);
+  /// then ONE stage-aware, no-pressure line; then genuine quiet for the rest
+  /// of the session. Requires at least 2 user turns so a one-line drive-by
+  /// doesn't trigger presence.
+  void _schedulePresenceTimer() {
+    _presenceIdleTimer?.cancel();
+    if (_presenceSentThisSession || _userTurnsThisSession < 2) return;
+    _presenceIdleTimer = Timer(
+      const Duration(seconds: _presenceIdleSeconds),
+      _fireSessionPresence,
+    );
+  }
+
+  Future<void> _fireSessionPresence() async {
+    if (_presenceSentThisSession) return;
+    _presenceSentThisSession = true;
+    try {
+      // Server picks the line (stage-aware, manipulation-guard-tested pool),
+      // persists it as a normal Aria message — it arrives via the Firestore
+      // stream and renders/speaks through the existing path. Server enforces
+      // its own flag + 30-min floor, so this call is safe to fire blindly.
+      await _firebaseService.functions
+          .httpsCallable('sessionPresence')
+          .call<Map<String, dynamic>>({});
+      DebugLogger.log('ChatService.sessionPresence', 'presence line requested');
+    } catch (e) {
+      // Fail-soft: presence is a nicety; never surface an error for it.
+      DebugLogger.log('ChatService.sessionPresence', 'presence call failed',
+          data: {'error': e.toString()});
     }
   }
 
@@ -525,6 +574,7 @@ class ChatService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _presenceIdleTimer?.cancel();
     _messagesSubscription?.cancel();
     unawaited(_fillerAudioController.dispose());
     super.dispose();

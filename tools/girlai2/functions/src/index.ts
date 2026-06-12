@@ -21,6 +21,11 @@ import {
   openAiCompatBaseUrl,
   resolveOpenAiModel,
 } from './services/openaiCompat';
+import {
+  isSessionPresenceEnabled,
+  pickSessionPresenceLine,
+  SESSION_PRESENCE_MIN_GAP_MS,
+} from './services/sessionPresenceService';
 import { buildSentenceGuard, streamGuardedSentences } from './services/streamingPipeline';
 import { formatSseEvent, runStreamingTurn } from './services/streamingResponseService';
 import { pickVariantText, LLM_STALL_POOL } from './services/responseVariancePool';
@@ -1527,6 +1532,73 @@ export const generateProactiveMessage = functions
         error?.message,
       );
     }
+  });
+
+/**
+ * Session presence steering — ONE no-pressure line when the user goes quiet
+ * mid-session, matched to the session arc, steering toward a warm close on
+ * long sessions (healthy-pattern behavior; never chases). Lines come from a
+ * curated pool (no LLM), pass the manipulation-guard test suite, and persist
+ * as a normal Aria message so the existing render + voice path handles them.
+ *
+ * Gates: SESSION_PRESENCE_ENABLED (default OFF) + 30-min per-user server floor;
+ * the client additionally enforces once-per-session.
+ */
+export const sessionPresence = functions
+  .region('us-central1')
+  .runWith({ minInstances: 0, memory: '256MB', timeoutSeconds: 30 })
+  .https.onCall(async (data, context) => {
+    const userId = context.auth?.uid;
+    if (!userId) {
+      throw new functions.https.HttpsError(
+        'unauthenticated',
+        'User must be authenticated',
+      );
+    }
+    if (!isSessionPresenceEnabled()) {
+      return { sent: false, reason: 'disabled' };
+    }
+
+    const db = admin.firestore();
+    const gateRef = db.collection('ariaSessionPresence').doc(userId);
+    const gate = await gateRef.get();
+    const lastAtMs = gate.exists
+      ? ((gate.data()?.lastAt as FirebaseFirestore.Timestamp | undefined)?.toMillis() ?? 0)
+      : 0;
+    if (Date.now() - lastAtMs < SESSION_PRESENCE_MIN_GAP_MS) {
+      return { sent: false, reason: 'cooldown' };
+    }
+
+    const memDoc = await db.collection('intelligentMemory').doc(userId).get();
+    const arc = memDoc.exists
+      ? (memDoc.data()?.sessionArc as { stage?: string; turnCount?: number } | undefined)
+      : undefined;
+
+    const pick = pickSessionPresenceLine({
+      stage: (arc?.stage as 'rapport' | 'deepen' | 'relief' | 'closure' | undefined) ?? null,
+      turnCount: arc?.turnCount ?? 0,
+      uid: userId,
+    });
+
+    const soothing = pick.pool !== 'rapport';
+    const timestamp = admin.firestore.Timestamp.now();
+    await Promise.all([
+      db.collection('conversations').add({
+        userId,
+        content: pick.text,
+        isFromUser: false,
+        timestamp,
+        emotion: soothing ? 'caring' : 'neutral',
+        emotionTrigger: soothing ? 'Comforting_Hug_Ready' : 'Idle_Gentle_Sway',
+        emotionIntensity: 0.45,
+        modelUsed: 'session-presence',
+        createdAt: timestamp,
+      }),
+      gateRef.set({ lastAt: timestamp }, { merge: true }),
+    ]);
+
+    functions.logger.info('sessionPresence line sent', { userId, pool: pick.pool });
+    return { sent: true, pool: pick.pool };
   });
 
 /**
