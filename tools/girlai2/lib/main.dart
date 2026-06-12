@@ -155,9 +155,17 @@ class MyApp extends StatelessWidget {
             create: (_) => RevenueCatService(),
           ),
 
-          // Provide ChatService (depends on FirebaseService and AuthService)
+          // Provide ChatService (depends on FirebaseService and AuthService).
+          // Phase 3.2 (5c) — SSE streaming is opt-in per build via
+          // --dart-define=STREAMING_CLIENT_ENABLED=true (default false ->
+          // callable path, byte-identical to pre-streaming behavior).
           ChangeNotifierProxyProvider<AuthService, ChatService>(
-            create: (_) => ChatService(firebaseService, null),
+            create: (_) => ChatService(
+              firebaseService,
+              null,
+              streamingEnabled:
+                  const bool.fromEnvironment('STREAMING_CLIENT_ENABLED'),
+            ),
             update: (_, auth, previousChat) {
               // If userId changed, we might need to update the chat service
               // For now, we'll just recreate it if the user changes
@@ -166,7 +174,12 @@ class MyApp extends StatelessWidget {
                   previousChat.userId == auth.user?.uid) {
                 return previousChat;
               }
-              return ChatService(firebaseService, auth.user?.uid);
+              return ChatService(
+                firebaseService,
+                auth.user?.uid,
+                streamingEnabled:
+                    const bool.fromEnvironment('STREAMING_CLIENT_ENABLED'),
+              );
             },
           ),
         ],
