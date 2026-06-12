@@ -69,4 +69,17 @@ echo "  FIREBASE_FUNCTIONS_EMULATOR_HOST=127.0.0.1:5001"
 echo ""
 
 cd "$REPO_FUNCTIONS_DIR/.."
-exec "$NODE_DIR/npx.cmd" firebase emulators:start --only "$EMULATORS" --project "$FIREBASE_PROJECT"
+
+# Persist emulator state (auth users, firestore data) across restarts —
+# without this, every restart wipes the in-memory auth store and invalidates
+# every signed-in device's refresh token (forcing re-login mid-test).
+EMULATOR_DATA_DIR=".emulator-data"
+IMPORT_ARGS=()
+if [[ -d "$EMULATOR_DATA_DIR" ]]; then
+  IMPORT_ARGS=(--import "$EMULATOR_DATA_DIR")
+fi
+
+exec "$NODE_DIR/npx.cmd" firebase emulators:start --only "$EMULATORS" \
+  --project "$FIREBASE_PROJECT" \
+  "${IMPORT_ARGS[@]}" \
+  --export-on-exit "$EMULATOR_DATA_DIR"

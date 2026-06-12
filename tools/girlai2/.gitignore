@@ -58,3 +58,4 @@ android/app/upload-keystore.jks
 android/app/release.keystore
 *.jks
 *.keystore
+.emulator-data/
