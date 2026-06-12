@@ -24,6 +24,9 @@ export interface BuildResponseAssemblyArgs {
   recentExchangePriorityBlock: string;
   datesContextBlock?: string | null;
   chatMode?: ChatMode;
+  /** Phase 3.1 consume side: cached summary of older turns, injected as
+   * additive recall. Empty/undefined = no-op (production byte-identical). */
+  historySummaryBlock?: string;
   userMessage: string;
   recentMessages: ResponseAssemblyMessage[];
   policyPlan: ConversationPolicyPlanSource;
@@ -49,6 +52,7 @@ export function buildResponseAssembly({
   recentExchangePriorityBlock,
   datesContextBlock,
   chatMode,
+  historySummaryBlock,
   userMessage,
   recentMessages,
   policyPlan,
@@ -109,7 +113,11 @@ export function buildResponseAssembly({
     .filter((s) => s.length > 0)
     .join('\n\n');
 
+  // historySummaryBlock first: it summarizes turns OLDER than the verbatim
+  // window, so chronologically it precedes the recent exchange. Empty when the
+  // compaction flag is off -> filtered out -> prompt unchanged.
   const recentRecall = [
+    historySummaryBlock ?? '',
     compactedPromptAugments.semanticRecallBlock,
     recentExchangePriorityBlock,
   ]

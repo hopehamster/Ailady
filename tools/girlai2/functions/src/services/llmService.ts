@@ -75,6 +75,9 @@ import {
   maybeCompactHistoryInBackground,
   saveHistorySummary,
   summarizerPromptForTurns,
+  isHistoryCompactionEnabled,
+  loadHistorySummary,
+  buildHistorySummaryBlock,
 } from './historyCompactionStore';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from '../promptInjectionGuard';
@@ -2502,6 +2505,23 @@ export async function generateAIResponse(
       avgSentimentScore,
     );
 
+    // Phase 3 Step 3.1 — consume side. Inject the cached history summary
+    // (produced async-after-response on a prior turn) as ADDITIVE recall.
+    // Flag-gated: OFF -> no Firestore read, no prompt change. Does NOT remove
+    // verbatim turns, so chronology / recent-exchange selection / replay are
+    // untouched — it only recovers older context the capped window had dropped.
+    let historySummaryBlock = '';
+    if (userId && isHistoryCompactionEnabled()) {
+      try {
+        const summaryRecord = await loadHistorySummary(userId);
+        historySummaryBlock = buildHistorySummaryBlock(summaryRecord?.summary);
+      } catch (error: any) {
+        functions.logger.warn('llmService: history summary load failed', {
+          error: error?.message ?? String(error),
+        });
+      }
+    }
+
     const {
       effectiveRecentMessages,
       effectiveSystemPrompt,
@@ -2515,6 +2535,7 @@ export async function generateAIResponse(
       recentExchangePriorityBlock,
       datesContextBlock,
       chatMode,
+      historySummaryBlock,
       userMessage,
       recentMessages,
       policyPlan: socialPlanning.plan,
