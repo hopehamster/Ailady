@@ -13,6 +13,7 @@ import {
   UserTemporalContext,
   prepareStreamingTurn,
   streamLlmTextDeltas,
+  analyzeConversation,
 } from './services/llmService';
 import { isStreamingEnabled } from './services/responseStreaming';
 import {
@@ -662,8 +663,11 @@ export const generateResponse = functions
  * STREAMING_ENABLED (default OFF) — returns 503 when disabled, so it is inert
  * until explicitly turned on.
  *
- * NOTE: this MVP streams + guards; persisting the streamed turn to memory/trace
- * is a follow-up (increment 5, alongside the Flutter client).
+ * Quality bridge (post-MVP): after the stream completes, the turn gets the same
+ * post-turn treatment as the callable — emotion analysis (emitted as a `meta`
+ * SSE event so the avatar reacts) + persistence to `conversations`. Remaining
+ * gap vs the callable: humanity injectors / critic pass don't run on streamed
+ * text (sentences are already emitted); acceptable trade for streaming.
  */
 export const generateResponseStream = functions
   .region('us-central1')
@@ -726,13 +730,61 @@ export const generateResponseStream = functions
       const deltas = streamLlmTextDeltas(prep);
       const guard = buildSentenceGuard({ relationshipStage: prep.relationshipStage });
       const guarded = streamGuardedSentences(deltas, guard);
-      await runStreamingTurn({
+      const turn = await runStreamingTurn({
         sentences: guarded,
         emit: (frame) => {
           res.write(frame);
         },
         safeSwapText: () => pickVariantText('llmStall', LLM_STALL_POOL, { uid: userId }),
       });
+
+      // Phase 3.2 quality bridge — streamed turns get the same post-turn
+      // treatment as the callable path: emotion analysis (emitted as a `meta`
+      // SSE event so the avatar reacts) + persistence to `conversations` (so
+      // memory/history include the turn and the Firestore stream swaps the
+      // client's local message for the canonical doc).
+      if (turn.fullText.trim().length > 0) {
+        let emotion = { emotion: 'neutral', emotionTrigger: 'Idle_Gentle_Sway', emotionIntensity: 0.5 };
+        try {
+          emotion = await analyzeConversation(userMessage, turn.fullText, []);
+        } catch (emotionError: any) {
+          functions.logger.warn('generateResponseStream: emotion analysis failed', {
+            uid: userId,
+            error: emotionError?.message ?? String(emotionError),
+          });
+        }
+        res.write(formatSseEvent('meta', emotion));
+
+        try {
+          const timestamp = admin.firestore.Timestamp.now();
+          const db = admin.firestore();
+          await Promise.all([
+            db.collection('conversations').add({
+              userId,
+              content: userMessage,
+              isFromUser: true,
+              timestamp,
+              createdAt: timestamp,
+            }),
+            db.collection('conversations').add({
+              userId,
+              content: turn.fullText,
+              isFromUser: false,
+              timestamp,
+              emotion: emotion.emotion,
+              emotionTrigger: emotion.emotionTrigger,
+              emotionIntensity: emotion.emotionIntensity,
+              modelUsed: `${prep.modelName} (stream)`,
+              createdAt: timestamp,
+            }),
+          ]);
+        } catch (persistError: any) {
+          functions.logger.warn('generateResponseStream: persistence failed', {
+            uid: userId,
+            error: persistError?.message ?? String(persistError),
+          });
+        }
+      }
     } catch (error: any) {
       functions.logger.error('generateResponseStream failed', {
         uid: userId,

@@ -73,6 +73,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Map<int, List<double>> _currentBlendTimeline = {};
   double _currentDurationMs = 0;
   String? _lastPlayedMessageId;
+  // Streamed turns render locally (stream_<id>) then swap for the persisted
+  // Firestore doc (new id, same text) — dedup by text so the swap doesn't
+  // replay the same line.
+  String? _lastPlayedText;
   String? _lastFailedMessageId;
   DateTime? _lastFailedAt;
   bool _hasHydratedAutoplayBaseline = false;
@@ -250,8 +254,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     String text, {
     String? emotion,
   }) async {
-    // Don't replay the same message
+    // Don't replay the same message — by id, and by text (a streamed local
+    // message swaps for its persisted Firestore doc under a new id).
     if (_lastPlayedMessageId == messageId) return;
+    if (_lastPlayedText != null && _lastPlayedText == text) {
+      _lastPlayedMessageId = messageId;
+      return;
+    }
     if (_isPreparingVoice) return;
     _isPreparingVoice = true;
 
@@ -346,6 +355,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         _isSpeaking = true;
       });
       _lastPlayedMessageId = messageId;
+      _lastPlayedText = text;
       _lastFailedMessageId = null;
       _lastFailedAt = null;
 

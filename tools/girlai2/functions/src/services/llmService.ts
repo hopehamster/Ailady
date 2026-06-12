@@ -1708,9 +1708,11 @@ function createTimedStage<T>(
 }
 
 /**
- * Use GPT to analyze emotions for avatar triggers
+ * Use GPT to analyze emotions for avatar triggers.
+ * Exported for the streaming endpoint (Phase 3.2 quality bridge) — streamed
+ * turns run the same post-turn emotion analysis as the callable path.
  */
-async function analyzeConversation(
+export async function analyzeConversation(
   userMessage: string,
   aiResponse: string,
   conversationHistory: ConversationMessage[]

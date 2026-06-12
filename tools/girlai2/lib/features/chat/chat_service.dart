@@ -412,6 +412,22 @@ class ChatService extends ChangeNotifier {
             break;
           case 'done':
             break;
+          case 'meta':
+            // Quality bridge — backend emits post-turn emotion analysis so the
+            // avatar reacts on streamed turns (mirrors the callable path).
+            final trigger = event.data['emotionTrigger'] as String?;
+            if (trigger != null && trigger.isNotEmpty) {
+              _currentEmotion = event.data['emotion'] as String? ?? 'neutral';
+              _currentEmotionTrigger = trigger;
+              _currentEmotionIntensity =
+                  (event.data['emotionIntensity'] as num?)?.toDouble() ?? 0.5;
+              onEmotionTrigger?.call(
+                _currentEmotion,
+                _currentEmotionTrigger,
+                _currentEmotionIntensity,
+              );
+            }
+            break;
           case 'error':
             throw StateError('stream error: ${event.data['message']}');
         }
