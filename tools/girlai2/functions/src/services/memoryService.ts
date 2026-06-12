@@ -2,6 +2,7 @@ import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import { FieldValue,Timestamp } from 'firebase-admin/firestore';
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { evaluateMemoryWrite } from '../memoryWriteGate';
 import {
   openAiCompatApiKey,
@@ -13,6 +14,39 @@ const openaiApiKey = openAiCompatApiKey();
 // OPENAI_BASE_URL env points this client at an OpenAI-compatible provider
 // (e.g. DeepSeek for test/cost mode); unset = real OpenAI, unchanged.
 const openai = new OpenAI({ apiKey: openaiApiKey, baseURL: openAiCompatBaseUrl() });
+
+// ── Embeddings provider ──────────────────────────────────────────────────────
+// DeepSeek has NO embeddings endpoint, so in DeepSeek test mode semantic-memory
+// indexing/recall would 404. EMBEDDINGS_PROVIDER=gemini routes embeddings to
+// Gemini's gemini-embedding-001 (3072-dim — same dimensionality as
+// text-embedding-3-large). Default unset = OpenAI, unchanged.
+// NOTE: vectors from different providers are NOT comparable — switch providers
+// only against an empty/rebuilt semantic store (the emulator starts empty).
+const EMBEDDINGS_PROVIDER = (process.env.EMBEDDINGS_PROVIDER ?? 'openai').toLowerCase();
+const GEMINI_EMBED_MODEL = 'gemini-embedding-001';
+const geminiEmbedClient =
+  EMBEDDINGS_PROVIDER === 'gemini' && (process.env.GEMINI_API_KEY ?? '').length > 0
+    ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string })
+    : null;
+
+/** Create a semantic-memory embedding via the configured provider. */
+async function createSemanticEmbedding(text: string): Promise<number[] | null> {
+  if (geminiEmbedClient) {
+    const res = await geminiEmbedClient.models.embedContent({
+      model: GEMINI_EMBED_MODEL,
+      contents: [text],
+    });
+    const e = res.embeddings?.[0] as { values?: number[]; value?: number[] } | undefined;
+    const vector = e?.values ?? e?.value ?? null;
+    return vector && vector.length > 0 ? vector : null;
+  }
+  const embeddingResponse = await openai.embeddings.create({
+    model: 'text-embedding-3-large',
+    input: text,
+  });
+  const vector = embeddingResponse.data[0]?.embedding;
+  return vector && vector.length > 0 ? vector : null;
+}
 
 // Memory structure interfaces
 export interface CoreFact {
@@ -2563,12 +2597,8 @@ export async function indexSemanticMemoryForTurn(
       }
 
       try {
-        const embeddingResponse = await openai.embeddings.create({
-          model: 'text-embedding-3-large',
-          input: chunk,
-        });
-        const vector = embeddingResponse.data[0]?.embedding;
-        if (!vector || vector.length === 0) {
+        const vector = await createSemanticEmbedding(chunk);
+        if (!vector) {
           continue;
         }
         await admin.firestore().collection(SEMANTIC_MEMORY_COLLECTION).add({
@@ -2633,12 +2663,8 @@ export async function recallSemanticMemories(
   const candidates = Math.max(20, options?.candidates ?? SEMANTIC_RECALL_CANDIDATES);
 
   try {
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-large',
-      input: query,
-    });
-    const queryEmbedding = embeddingResponse.data[0]?.embedding;
-    if (!queryEmbedding || queryEmbedding.length === 0) {
+    const queryEmbedding = await createSemanticEmbedding(query);
+    if (!queryEmbedding) {
       return [];
     }
 
