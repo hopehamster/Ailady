@@ -120,9 +120,12 @@ const azureVoicePolish = {
 } as const;
 const elevenLabsVoicePolish = {
   // Tuned for smoother, warmer output while keeping intelligibility.
-  stability: 0.38,
+  // 2026-06-12 live-voice QA (Gemini audio eval, 6.5/10 human): delivery read
+  // as "too perfect / performed" — lowered stability + raised style for more
+  // organic, spontaneous variation. Re-evaluated through the same loop.
+  stability: 0.3,
   similarity_boost: 0.84,
-  style: 0.30,
+  style: 0.4,
   use_speaker_boost: true,
 } as const;
 const elevenLabsAzureFallbackPolish = {
@@ -906,6 +909,34 @@ export function deriveVoiceDeliveryProfileFromEmotion(
   const longForm = text.length >= 240 || wordCount >= 48 || sentenceCount >= 4;
 
   if (longForm) {
+    // 2026-06-12 live-voice QA: long-form used to override emotion entirely,
+    // so a long COMFORTING reply got the bright +4%-rate preset and read as
+    // "bouncy when it should be grounded" (Gemini audio eval). Soothing
+    // emotions now keep their grounded delivery in long replies.
+    const soothing =
+      emotion === 'comforting' ||
+      emotion === 'caring' ||
+      emotion === 'concerned' ||
+      emotion === 'sad' ||
+      emotion === 'thoughtful';
+    if (soothing) {
+      return {
+        id: 'long_form',
+        volume: '+6.0%',
+        pitch: '-3.0%',
+        rate: '-1.0%',
+        style: 'empathetic',
+        styleDegree: '1.08',
+        sentencePauseMs: 128,
+        clausePauseMs: 76,
+        elevenLabs: {
+          stability: 0.52,
+          similarity_boost: 0.86,
+          style: 0.18,
+          use_speaker_boost: true,
+        },
+      };
+    }
     // Reuse the long-form preset from the existing text-regex selector.
     return {
       id: 'long_form',
