@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'core/services/error_reporting_service.dart';
 import 'core/services/firebase_service.dart';
 import 'core/services/user_service.dart';
 import 'core/services/revenuecat_service.dart';
@@ -44,19 +45,35 @@ void main() async {
     debugPrint('✅ DART: Firebase initialized successfully!');
     debugPrint('✅ DART: Firebase apps count: ${Firebase.apps.length}');
 
-    // ── Crashlytics ────────────────────────────────────────────────────────
+    // ── Crashlytics (via Track E error-reporting facade) ──────────────────
     // Disable in debug to keep crash reports clean from dev iteration.
-    // Route Flutter framework + platform errors through Crashlytics in release.
+    // Route Flutter framework + platform errors through the facade — backend
+    // is Crashlytics today; Sentry activates when SENTRY_DSN is supplied
+    // (dual-write during the migration window). Step 6.3 of the migration.
     await FirebaseCrashlytics.instance
         .setCrashlyticsCollectionEnabled(!kDebugMode);
+    ErrorReportingService.configure(
+      crashlytics: (error, stack, {fatal = false}) =>
+          FirebaseCrashlytics.instance.recordError(error, stack, fatal: fatal),
+    );
     FlutterError.onError = (errorDetails) {
+      // Keep the richer Flutter-specific Crashlytics call for framework errors;
+      // mirror to Sentry (when enabled) via the facade.
       FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+      if (ErrorReportingService.sentryEnabled) {
+        ErrorReportingService.report(
+          errorDetails.exception,
+          errorDetails.stack,
+          fatal: true,
+        );
+      }
     };
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      ErrorReportingService.report(error, stack, fatal: true);
       return true;
     };
-    debugPrint('✅ DART: Crashlytics wired (collection enabled = ${!kDebugMode})');
+    debugPrint(
+        '✅ DART: Crash reporting wired (collection=${!kDebugMode}, sentry=${ErrorReportingService.sentryEnabled})');
 
     // ── Analytics ──────────────────────────────────────────────────────────
     // Single emission so we can confirm pipe is open in dashboard DebugView.
@@ -104,7 +121,8 @@ void main() async {
   runApp(const MyApp());
   }, (error, stack) {
     // Catches any uncaught async errors that escape Flutter's framework.
-    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    // Routed through the Track E facade (Crashlytics today; +Sentry with DSN).
+    ErrorReportingService.report(error, stack, fatal: true);
   });
 }
 
