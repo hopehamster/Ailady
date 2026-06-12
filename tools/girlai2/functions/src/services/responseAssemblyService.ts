@@ -9,6 +9,7 @@ import {
 import { type PromptAugmentShape, compactPromptAugmentsForRoute } from './promptCostService';
 import { buildChatModeOverlayBlock, type ChatMode } from './chatModeService';
 import { composePrompt, type PromptComponent } from './promptComposer';
+import { buildConnectionKnowledgeBlock } from './connectionKnowledge';
 
 export interface ResponseAssemblyMessage {
   role: 'user' | 'assistant';
@@ -87,7 +88,14 @@ export function buildResponseAssembly({
   // moving them up the prompt would shift voice. safety_policy slot left
   // unused for now (reserved for future hard-boundary content that benefits
   // from the cache prefix without altering conversational voice).
+  // Connection Knowledge (Phase 1) — flag-gated, default OFF. Returns '' when
+  // disabled, so the empty-string filter below drops it and the production
+  // prompt is byte-identical to pre-flag behavior. Lives on the stable
+  // (cacheable) prefix side as foundational, voice-shaping knowledge.
+  const connectionKnowledgeBlock = buildConnectionKnowledgeBlock();
+
   const userSemanticKv = [
+    connectionKnowledgeBlock,
     compactedPromptAugments.personalityBlock,
     compactedPromptAugments.personaVoiceBlock,
     compactedPromptAugments.innerLifeBlock,
