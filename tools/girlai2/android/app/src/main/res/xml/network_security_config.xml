@@ -4,5 +4,9 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
+        <!-- Dev-machine LAN IP: Firebase emulator suite (auth/firestore/functions)
+             is plain HTTP. Scoped to this one address — everything else keeps
+             the platform default (cleartext blocked). -->
+        <domain includeSubdomains="false">192.168.1.195</domain>
     </domain-config>
 </network-security-config>
