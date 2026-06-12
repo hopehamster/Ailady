@@ -110,3 +110,49 @@ export class StreamingSentenceAccumulator {
     return this.pending;
   }
 }
+
+// ── Provider streaming primitive ──────────────────────────────────────────────
+//
+// The actual `anthropic.messages.stream(...)` / `openai.chat.completions.create
+// ({stream:true})` call lives at the wiring site (keeps this module SDK-free and
+// pure-testable). The caller passes the provider's event async-iterable plus the
+// matching pure extractor below into `textDeltaStream`, which yields plain text
+// deltas — feed those straight into a StreamingSentenceAccumulator.
+
+/** Extract the text delta from an Anthropic streaming event (''. if none). */
+export function extractAnthropicTextDelta(event: unknown): string {
+  const e = event as {
+    type?: string;
+    delta?: { type?: string; text?: unknown };
+  } | null;
+  if (e && e.type === 'content_block_delta' && e.delta?.type === 'text_delta') {
+    return typeof e.delta.text === 'string' ? e.delta.text : '';
+  }
+  return '';
+}
+
+/** Extract the text delta from an OpenAI streaming chunk ('' if none). */
+export function extractOpenAITextDelta(chunk: unknown): string {
+  const c = chunk as {
+    choices?: Array<{ delta?: { content?: unknown } }>;
+  } | null;
+  const content = c?.choices?.[0]?.delta?.content;
+  return typeof content === 'string' ? content : '';
+}
+
+/**
+ * Turn a provider's event stream into a stream of non-empty text deltas, using
+ * the supplied pure extractor. Provider-agnostic + dependency-injected so it is
+ * fully testable with a synthetic async-iterable.
+ */
+export async function* textDeltaStream<T>(
+  events: AsyncIterable<T>,
+  extract: (event: T) => string,
+): AsyncGenerator<string> {
+  for await (const event of events) {
+    const delta = extract(event);
+    if (delta) {
+      yield delta;
+    }
+  }
+}

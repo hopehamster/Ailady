@@ -5,7 +5,19 @@ const {
   isStreamingEnabled,
   extractCompleteSentences,
   StreamingSentenceAccumulator,
+  extractAnthropicTextDelta,
+  extractOpenAITextDelta,
+  textDeltaStream,
 } = require('../lib/services/responseStreaming.js');
+
+async function* fromArray(items) {
+  for (const it of items) yield it;
+}
+async function collect(gen) {
+  const out = [];
+  for await (const x of gen) out.push(x);
+  return out;
+}
 
 test('flag defaults OFF', () => {
   const prev = process.env.STREAMING_ENABLED;
@@ -92,4 +104,51 @@ test('a terminator at end-of-stream is emitted only on flush', () => {
   const mid = acc.push('Done.');
   assert.deepEqual(mid, []); // not yet — no trailing whitespace
   assert.equal(acc.flush(), 'Done.');
+});
+
+test('extractAnthropicTextDelta pulls text_delta, ignores other events', () => {
+  assert.equal(
+    extractAnthropicTextDelta({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'hi' } }),
+    'hi',
+  );
+  assert.equal(extractAnthropicTextDelta({ type: 'message_start' }), '');
+  assert.equal(extractAnthropicTextDelta({ type: 'content_block_delta', delta: { type: 'input_json_delta' } }), '');
+  assert.equal(extractAnthropicTextDelta(null), '');
+});
+
+test('extractOpenAITextDelta pulls choices[0].delta.content', () => {
+  assert.equal(extractOpenAITextDelta({ choices: [{ delta: { content: 'yo' } }] }), 'yo');
+  assert.equal(extractOpenAITextDelta({ choices: [{ delta: {} }] }), ''); // finish chunk
+  assert.equal(extractOpenAITextDelta({ choices: [] }), '');
+  assert.equal(extractOpenAITextDelta(null), '');
+});
+
+test('textDeltaStream filters empties and yields only text', async () => {
+  const events = [
+    { type: 'message_start' },
+    { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello ' } },
+    { type: 'content_block_delta', delta: { type: 'text_delta', text: 'there.' } },
+    { type: 'message_stop' },
+  ];
+  const deltas = await collect(textDeltaStream(fromArray(events), extractAnthropicTextDelta));
+  assert.deepEqual(deltas, ['Hello ', 'there.']);
+});
+
+test('end-to-end: provider stream → deltas → accumulator → sentences', async () => {
+  const events = [
+    { choices: [{ delta: { content: 'I ' } }] },
+    { choices: [{ delta: { content: 'missed you. ' } }] },
+    { choices: [{ delta: { content: 'How are ' } }] },
+    { choices: [{ delta: { content: 'you?' } }] },
+    { choices: [{ delta: {} }] },
+  ];
+  const acc = new StreamingSentenceAccumulator();
+  const emitted = [];
+  for await (const delta of textDeltaStream(fromArray(events), extractOpenAITextDelta)) {
+    emitted.push(...acc.push(delta));
+  }
+  const tail = acc.flush();
+  assert.deepEqual(emitted, ['I missed you.']);
+  assert.equal(tail, 'How are you?');
+  assert.equal(acc.fullText, 'I missed you. How are you?');
 });
