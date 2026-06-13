@@ -220,16 +220,25 @@ class FillerAudioController {
     _currentClipId = clip.id;
     final token = ++_playToken;
 
+    // Humanized onset (2026-06-12): firing the sound ~300ms after send reads
+    // as a triggered sound effect — a person vocalizes AFTER a beat of
+    // reading/registering what you said. Jittered 700-1400ms. The token guard
+    // below means a fast real reply simply cancels the pending filler.
+    final onsetMs = 700 + _random.nextInt(701);
+    await Future<void>.delayed(Duration(milliseconds: onsetMs));
+    if (_disposed || token != _playToken) return;
+
     final assetPath = '$_kFillerClipsDir/${clip.id}.mp3';
     try {
-      // Reset volume to 1.0 in case a prior playFor was mid-fade-out.
-      await _player.setVolume(1.0);
+      // Slightly under full volume — the interjection should sit a touch
+      // behind her real reply's presence, like a half-voiced thought.
+      await _player.setVolume(0.92);
       await _player.setAsset(assetPath);
       if (_disposed || token != _playToken) return;
       // play() is fire-and-forget — don't await.
       unawaited(_player.play());
       debugPrint(
-          '$_kLogPrefix playing ${clip.id} (category=${clip.category})');
+          '$_kLogPrefix playing ${clip.id} (category=${clip.category}, onset=${onsetMs}ms)');
     } catch (e) {
       if (_missingAssetLogged.add(clip.id)) {
         debugPrint(

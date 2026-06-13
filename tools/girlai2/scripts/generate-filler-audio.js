@@ -123,6 +123,12 @@ async function synthesizeOne({ apiKey, voiceId, clip, settings, format }) {
   const body = {
     text: clip.text,
     model_id: 'eleven_multilingual_v2',
+    // Prosody conditioning (2026-06-12): without context, ElevenLabs reads a
+    // bare "Um..." like a word being announced. previous_text/next_text are
+    // NOT rendered — they only condition delivery, so the interjection comes
+    // out as a mid-conversation thinking sound instead of a read-aloud word.
+    previous_text: "Oh, that's a good question. Let me actually think about this for a second.",
+    next_text: 'Okay, so here is what I think.',
     voice_settings: {
       stability: settings.stability,
       similarity_boost: settings.similarityBoost,
