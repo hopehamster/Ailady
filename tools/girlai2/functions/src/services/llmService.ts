@@ -372,6 +372,13 @@ if (GEMINI_API_KEY) {
 // Model configuration tuned for stable availability in this project.
 const PRIMARY_MODEL = resolveOpenAiModel('gpt-4o');
 const FAST_TURN_MODEL = process.env.FAST_TURN_MODEL || resolveOpenAiModel('gpt-4o-mini');
+// Fast-path provider preference. Default ON = production behavior (fast turns
+// take the Gemini shortcut for latency). Set FAST_PATH_GEMINI_ENABLED=false to
+// route fast turns through the OpenAI-compat primary instead (e.g. a permanent-
+// free provider like Cloudflare Workers AI) with Gemini retained as the
+// downstream fallback. Lets cost/runway dictate the high-volume fast path.
+const FAST_PATH_GEMINI_ENABLED =
+  (process.env.FAST_PATH_GEMINI_ENABLED ?? 'true').toLowerCase() !== 'false';
 const FALLBACK_MODEL = 'claude-opus-4-8'; // Claude Opus 4.8 (stable id; bumped from 4-5-20250101 which 404s in live API)
 // Gemini via Vertex AI is now the final fallback (Google-internal network)
 // const FINAL_FALLBACK_MODEL = 'gpt-4o'; // Replaced by GEMINI_MODEL
@@ -2663,7 +2670,7 @@ export async function generateAIResponse(
       persona: 0.70,
     };
 
-    if (fastTurnPath && googleGenAI) {
+    if (fastTurnPath && googleGenAI && FAST_PATH_GEMINI_ENABLED) {
       try {
         modelUsed = GEMINI_MODEL;
         const runResponseStage = createTimedStage(
