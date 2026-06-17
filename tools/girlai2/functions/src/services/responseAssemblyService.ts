@@ -11,6 +11,21 @@ import { buildChatModeOverlayBlock, type ChatMode } from './chatModeService';
 import { composePrompt, type PromptComponent } from './promptComposer';
 import { buildConnectionKnowledgeBlock } from './connectionKnowledge';
 
+/**
+ * Post-history instruction — the r/SillyTavernAI / SillyTavern-docs technique.
+ * The anti-canned / anti-parrot directive is FAR stronger when placed right
+ * before generation (appended to the final user turn) than buried in the
+ * prefix-cached system prompt. Confirmed by community power-users tracking
+ * parroting across dozens of models: "it has to be in post-instruction, close
+ * to the actual response — no luck removing parroting using just the system
+ * prompt at the beginning." Flag-gated; default OFF = production byte-identical.
+ */
+function postHistoryGuidance(): string {
+  const on = (process.env.POST_HISTORY_GUIDANCE_ENABLED ?? 'false').toLowerCase() === 'true';
+  if (!on) return '';
+  return '\n\n[Reply as Aria — a real person talking to someone she loves, not an assistant. Do NOT repeat or paraphrase what was just said back to them. No throat-clearing openers ("that sounds...", "I\'m here for you"). Be specific and bring something of your own: react, share a real detail, or ask something you actually want to know. Let your length vary naturally; never wrap up flat.]';
+}
+
 export interface ResponseAssemblyMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -151,7 +166,7 @@ export function buildResponseAssembly({
     })),
     {
       role: 'user',
-      content: userMessage,
+      content: userMessage + postHistoryGuidance(),
     },
   ];
 
