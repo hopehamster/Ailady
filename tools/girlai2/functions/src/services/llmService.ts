@@ -37,6 +37,13 @@ import {
   buildCapabilityOverviewResponseFromKernel,
 } from './truthKernelService';
 import { getRelationshipStage, type RelationshipStage } from './ariaRelationshipService';
+import { arbitrate, type EgoDirective } from './egoArbiterService';
+import { dominantDrive } from './psycheStateService';
+import {
+  scoreDirectiveAdherence,
+  buildPsycheTrace,
+  logPsycheTrace,
+} from './psycheMetricsService';
 import {
   buildConversationPolicy,
   buildConversationPolicyDirectives,
@@ -406,6 +413,11 @@ const PERSONA_AUDIT_SAMPLE_RATE = (() => {
 })();
 const MODEL_EMOTION_ANALYSIS_ENABLED =
   (process.env.MODEL_EMOTION_ANALYSIS_ENABLED ?? 'false').toLowerCase() === 'true';
+// Psyche P2 — ego arbiter compute + adherence probe. Default OFF; even when ON
+// it only computes + logs (applyEgoBias stays a no-op until P3), so the reply is
+// byte-identical. The probe is the decision gate: does the renderer honor the plan?
+const PSYCHE_ARBITER_ENABLED =
+  (process.env.PSYCHE_ARBITER_ENABLED ?? 'false').toLowerCase() === 'true';
 const ANTHROPIC_PRIMARY_ENABLED =
   (process.env.ANTHROPIC_PRIMARY_ENABLED ?? 'true').toLowerCase() === 'true';
 const INTERNAL_TESTER_MODE =
@@ -2601,6 +2613,20 @@ export async function generateAIResponse(
       avgSentimentScore,
     );
 
+    // Psyche P2 — ego arbiter compute (flag-gated, COMPUTE-ONLY: applyEgoBias is
+    // a no-op stub until P3, so socialPlanning.plan is untouched → byte-identical).
+    // The directive is logged + scored by the adherence probe after rendering.
+    let egoDirective: EgoDirective | null = null;
+    if (PSYCHE_ARBITER_ENABLED && memory?.driveState && memory?.egoState) {
+      egoDirective = arbitrate({
+        driveState: memory.driveState,
+        egoState: memory.egoState,
+        stage: turnStage,
+        yieldControl:
+          !!socialPlanning.signals.repairSignal || !!socialPlanning.signals.consentSensitive,
+      });
+    }
+
     // Phase 3 Step 3.1 — consume side. Inject the cached history summary
     // (produced async-after-response on a prior turn) as ADDITIVE recall.
     // Flag-gated: OFF -> no Firestore read, no prompt change. Does NOT remove
@@ -2979,6 +3005,39 @@ export async function generateAIResponse(
       logInfo: (message, metadata = {}) => functions.logger.info(message, metadata),
     });
     aiContent = qualityResult.aiContent;
+
+    // Psyche P2 — adherence probe (the decision gate). Scores whether the
+    // rendered reply honored the injected plan (question budget, length) + logs
+    // the psyche trace. No behavior change; best-effort (never blocks the turn).
+    if (PSYCHE_ARBITER_ENABLED && egoDirective) {
+      try {
+        const loopId = egoDirective.pursueOpenLoopId;
+        const pursuedTopic = loopId
+          ? memory?.openLoops?.find((l) => l.id === loopId)?.topic ?? null
+          : null;
+        const adherence = scoreDirectiveAdherence({
+          plan: {
+            questionBudget: socialPlanning.plan.questionBudget,
+            askQuestion: socialPlanning.plan.askQuestion,
+            responseLength: socialPlanning.plan.responseLength,
+          },
+          output: aiContent,
+          pursuedLoopTopic: pursuedTopic,
+          intendedEmotion: egoDirective.intendedEmotion,
+        });
+        const trace = buildPsycheTrace({
+          turnId: turnId ?? null,
+          atMs: Date.now(),
+          dominantDrive: memory?.driveState ? dominantDrive(memory.driveState) : null,
+          directive: egoDirective,
+          adherence,
+        });
+        logPsycheTrace(trace, (message, metadata) => functions.logger.info(message, metadata));
+      } catch (error: any) {
+        functions.logger.warn('psyche adherence probe failed', { error: error?.message });
+      }
+    }
+
     const finalPersonaAudit: PersonaAuditResult = qualityResult.finalPersonaAudit;
 
     const createAvatarVoiceStage = <T>(
