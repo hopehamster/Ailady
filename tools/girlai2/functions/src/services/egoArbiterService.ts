@@ -291,14 +291,61 @@ export function arbitrate(input: ArbitrateInput): EgoDirective {
   };
 }
 
+export interface ApplyEgoBiasOptions {
+  stage: RelationshipStage;
+}
+
+/** BL-3 — the stage-capped self-disclosure / warmth ceiling (the real guard). */
+function disclosureCeiling(stage: RelationshipStage): number {
+  const tier = stageTier(stage);
+  return tier === 2 ? 0.95 : tier === 1 ? 0.8 : 0.6;
+}
+
 /**
- * P2 NO-OP STUB. Returns the plan unchanged (same reference) so production is
- * byte-identical even with the arbiter flag ON. P3 (PSYCHE_PLAN_BIAS_ENABLED)
- * applies `directive.scalarBias` here — AFTER applyHumanityBiases, before
- * applyDepthGate — guarded by the stage-capped scalar self-disclosure budget.
+ * P3: apply the ego directive's clamped scalar deltas to the plan, then enforce
+ * the BL-3 self-disclosure guard. Runs once in `llmService`, AFTER
+ * `applyHumanityBiases` and BEFORE `applyDepthGate`, gated by
+ * PSYCHE_PLAN_BIAS_ENABLED. When the flag is OFF the caller never invokes this,
+ * so production stays byte-identical; the guarantee is caller-gated, not no-op.
+ *
+ * The disclosure ceiling caps warmth + depth to the stage's vulnerability tier
+ * but ONLY limits UPWARD escalation — it never pulls a scalar below what the
+ * base plan already set, so the ego can reach toward intimacy without ever
+ * suppressing the planner. The self-directed Recognition drive therefore cannot
+ * over-express (neediness) through the scalar path. The depth-escalation gate
+ * that runs next rations depth further against the user's volunteered depth.
  */
-export function applyEgoBias<T extends BiasablePlan>(plan: T, _directive: EgoDirective | null): T {
-  return plan;
+export function applyEgoBias<T extends BiasablePlan>(
+  plan: T,
+  directive: EgoDirective | null,
+  opts: ApplyEgoBiasOptions,
+): T {
+  if (!directive) return plan;
+  const b = directive.scalarBias;
+  const ceiling = disclosureCeiling(opts.stage);
+
+  // Disclosure-bearing scalars: bias up toward max(base, ceiling), never below base.
+  const capUp = (base: number, delta: number) =>
+    clamp01(Math.min(base + delta, Math.max(base, ceiling)));
+  const warmth = capUp(plan.warmth, b.warmth);
+  const depth = capUp(plan.depth, b.depth);
+  // Non-disclosure scalars: plain clamped add.
+  const curiosity = clamp01(plan.curiosity + b.curiosity);
+  const playfulness = clamp01(plan.playfulness + b.playfulness);
+
+  // Question-budget nudge: lowering (give-space) always allowed; raising 0→1
+  // only from friend stage up (cold stages stay low-pressure).
+  let questionBudget: 0 | 1 = plan.questionBudget;
+  let askQuestion = plan.askQuestion;
+  if (b.questionBudget <= -0.5 && questionBudget === 1) {
+    questionBudget = 0;
+    askQuestion = false;
+  } else if (b.questionBudget >= 0.5 && questionBudget === 0 && stageTier(opts.stage) >= 1) {
+    questionBudget = 1;
+    askQuestion = true;
+  }
+
+  return { ...plan, warmth, depth, curiosity, playfulness, questionBudget, askQuestion };
 }
 
 export const ARBITER_TUNING = {

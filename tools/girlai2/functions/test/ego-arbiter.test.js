@@ -171,18 +171,61 @@ test('filterPermissibleMoves drops over-tier moves by stage', () => {
   );
 });
 
-test('applyEgoBias is a no-op in P2 (same reference) — byte-identical guarantee', () => {
-  const plan = {
-    warmth: 0.5, curiosity: 0.5, depth: 0.5, playfulness: 0.5, questionBudget: 1, askQuestion: true,
-  };
+test('applyEgoBias (P3): null directive returns the plan unchanged (same ref)', () => {
+  const plan = { warmth: 0.5, curiosity: 0.5, depth: 0.5, playfulness: 0.5, questionBudget: 1, askQuestion: true };
+  assert.equal(applyEgoBias(plan, null, { stage: 'friend' }), plan);
+});
+
+test('applyEgoBias (P3): applies clamped deltas + raises question budget at friend+', () => {
   const directive = arbitrate({
     driveState: driveStateWith('understanding', 0.8),
     egoState: defaultEgoState(NOW),
     stage: 'friend',
   });
-  const out = applyEgoBias(plan, directive);
-  assert.equal(out, plan, 'returns the same object reference');
-  assert.deepEqual(out, {
-    warmth: 0.5, curiosity: 0.5, depth: 0.5, playfulness: 0.5, questionBudget: 1, askQuestion: true,
-  });
+  const plan = { warmth: 0.3, curiosity: 0.3, depth: 0.3, playfulness: 0.3, questionBudget: 0, askQuestion: false };
+  const out = applyEgoBias(plan, directive, { stage: 'friend' });
+  assert.ok(out.curiosity > plan.curiosity, 'curiosity raised by the understanding drive');
+  assert.equal(out.questionBudget, 1, 'question budget raised 0->1 at friend stage');
+  assert.equal(out.askQuestion, true);
+  assert.notEqual(out, plan, 'returns a new object (real transform)');
+});
+
+test('applyEgoBias (P3): disclosure ceiling caps warmth upward but never below base', () => {
+  const dir = arbitrate({ driveState: driveStateWith('care', 0.8), egoState: defaultEgoState(NOW), stage: 'friend' });
+  // base warmth 0.75 + comfort bias 0.12 = 0.87, capped to the friend ceiling 0.80.
+  const capped = applyEgoBias(
+    { warmth: 0.75, curiosity: 0.5, depth: 0.5, playfulness: 0.5, questionBudget: 0, askQuestion: false },
+    dir,
+    { stage: 'friend' },
+  );
+  assert.ok(capped.warmth <= 0.8 + 1e-9, 'capped at the friend ceiling');
+  assert.ok(capped.warmth >= 0.75 - 1e-9, 'never below the base plan');
+
+  // A high base (0.9) above the ceiling is NOT suppressed.
+  const dirStranger = arbitrate({ driveState: driveStateWith('care', 0.8), egoState: defaultEgoState(NOW), stage: 'stranger' });
+  const high = applyEgoBias(
+    { warmth: 0.9, curiosity: 0.5, depth: 0.9, playfulness: 0.5, questionBudget: 0, askQuestion: false },
+    dirStranger,
+    { stage: 'stranger' },
+  );
+  assert.ok(Math.abs(high.warmth - 0.9) < 1e-9, 'high base preserved (ceiling only limits upward bias)');
+});
+
+test('applyEgoBias (P3): question budget NOT raised at a cold stage; give-space lowers it', () => {
+  const understandStranger = arbitrate({ driveState: driveStateWith('understanding', 0.8), egoState: defaultEgoState(NOW), stage: 'stranger' });
+  const cold = applyEgoBias(
+    { warmth: 0.5, curiosity: 0.5, depth: 0.5, playfulness: 0.5, questionBudget: 0, askQuestion: false },
+    understandStranger,
+    { stage: 'stranger' },
+  );
+  assert.equal(cold.questionBudget, 0, 'cold stage stays low-pressure (no 0->1 raise)');
+
+  const giveSpace = arbitrate({ driveState: driveStateWith('autonomySupport', 0.8), egoState: defaultEgoState(NOW), stage: 'friend' });
+  const lowered = applyEgoBias(
+    { warmth: 0.5, curiosity: 0.5, depth: 0.5, playfulness: 0.5, questionBudget: 1, askQuestion: true },
+    giveSpace,
+    { stage: 'friend' },
+  );
+  assert.equal(lowered.questionBudget, 0, 'give-space lowers the question budget');
+  assert.equal(lowered.askQuestion, false);
 });

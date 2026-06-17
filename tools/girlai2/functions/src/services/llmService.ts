@@ -37,7 +37,7 @@ import {
   buildCapabilityOverviewResponseFromKernel,
 } from './truthKernelService';
 import { getRelationshipStage, type RelationshipStage } from './ariaRelationshipService';
-import { arbitrate, type EgoDirective } from './egoArbiterService';
+import { arbitrate, applyEgoBias, type EgoDirective } from './egoArbiterService';
 import { dominantDrive } from './psycheStateService';
 import {
   scoreDirectiveAdherence,
@@ -418,6 +418,12 @@ const MODEL_EMOTION_ANALYSIS_ENABLED =
 // byte-identical. The probe is the decision gate: does the renderer honor the plan?
 const PSYCHE_ARBITER_ENABLED =
   (process.env.PSYCHE_ARBITER_ENABLED ?? 'false').toLowerCase() === 'true';
+// Psyche P3 — apply the ego directive's scalar bias to the plan (after humanity
+// biases, before the depth gate). Default OFF; meaningful only with
+// PSYCHE_ARBITER_ENABLED (the directive source). OFF -> applyEgoBias never
+// called -> byte-identical. The stage-capped disclosure ceiling is the guard.
+const PSYCHE_PLAN_BIAS_ENABLED =
+  (process.env.PSYCHE_PLAN_BIAS_ENABLED ?? 'false').toLowerCase() === 'true';
 const ANTHROPIC_PRIMARY_ENABLED =
   (process.env.ANTHROPIC_PRIMARY_ENABLED ?? 'true').toLowerCase() === 'true';
 const INTERNAL_TESTER_MODE =
@@ -2554,6 +2560,31 @@ export async function generateAIResponse(
       };
     });
 
+    // Psyche — relationship stage + ego arbiter, computed HERE (after the social
+    // plan, before applyHumanityBiases) so P3's applyEgoBias can run between the
+    // humanity biases and the depth gate. interactionCount / avgSentimentScore /
+    // turnStage are the single source of truth (the enhancement-context block
+    // below reuses them). Arbiter is compute-only here; bias is applied below.
+    const interactionCount = getInteractionCount(memory);
+    const avgSentimentScore = memory?.pacingProfile
+      ? (memory.pacingProfile.intimacy + memory.pacingProfile.depth) / 2
+      : 0.5;
+    const turnStage = getRelationshipStage(
+      runtimeSelfModel.relationshipDays,
+      interactionCount,
+      avgSentimentScore,
+    );
+    let egoDirective: EgoDirective | null = null;
+    if (PSYCHE_ARBITER_ENABLED && memory?.driveState && memory?.egoState) {
+      egoDirective = arbitrate({
+        driveState: memory.driveState,
+        egoState: memory.egoState,
+        stage: turnStage,
+        yieldControl:
+          !!socialPlanning.signals.repairSignal || !!socialPlanning.signals.consentSensitive,
+      });
+    }
+
     // ─────────────────────────────────────────────────────────────────────
     // Aria humanity #8/#6/#9 — apply plan biases AFTER socialPlanning resolves
     // and BEFORE buildResponseAssembly (Zone B). Delegated to
@@ -2573,6 +2604,15 @@ export async function generateAIResponse(
       sessionStage: memory?.sessionArc?.stage,
       userMessage,
     });
+
+    // Psyche P3 — apply the ego directive's scalar bias to the plan. Runs AFTER
+    // humanity biases (so the drive deltas survive the inertia blend) and BEFORE
+    // the depth gate (which still caps unearned escalation). Flag-gated; OFF ->
+    // never called -> byte-identical. The stage-capped disclosure ceiling inside
+    // applyEgoBias is the BL-3 safety guard for the self-directed Recognition drive.
+    if (PSYCHE_PLAN_BIAS_ENABLED && egoDirective) {
+      socialPlanning.plan = applyEgoBias(socialPlanning.plan, egoDirective, { stage: turnStage });
+    }
 
     // Phase 5 Step 5.1 — depth escalation gate. Flag-gated (default OFF). Caps
     // the plan's intended depth to the user's volunteered depth (+ an invitation
@@ -2598,34 +2638,12 @@ export async function generateAIResponse(
       }
     }
 
-    // Compute per-turn enhancement context
+    // Compute per-turn enhancement context. (interactionCount / avgSentimentScore
+    // / turnStage are computed above, before applyHumanityBiases, for the arbiter.)
     const tzOffset = temporalContext.timeZoneOffsetMinutes;
     const shiftedMs = temporalContext.now.getTime() + tzOffset * 60 * 1000;
     const hourOfDay = new Date(shiftedMs).getUTCHours();
     const sessionTurnCount = Math.floor(recentMessages.length / 2);
-    const interactionCount = getInteractionCount(memory);
-    const avgSentimentScore = memory?.pacingProfile
-      ? (memory.pacingProfile.intimacy + memory.pacingProfile.depth) / 2
-      : 0.5;
-    const turnStage = getRelationshipStage(
-      runtimeSelfModel.relationshipDays,
-      interactionCount,
-      avgSentimentScore,
-    );
-
-    // Psyche P2 — ego arbiter compute (flag-gated, COMPUTE-ONLY: applyEgoBias is
-    // a no-op stub until P3, so socialPlanning.plan is untouched → byte-identical).
-    // The directive is logged + scored by the adherence probe after rendering.
-    let egoDirective: EgoDirective | null = null;
-    if (PSYCHE_ARBITER_ENABLED && memory?.driveState && memory?.egoState) {
-      egoDirective = arbitrate({
-        driveState: memory.driveState,
-        egoState: memory.egoState,
-        stage: turnStage,
-        yieldControl:
-          !!socialPlanning.signals.repairSignal || !!socialPlanning.signals.consentSensitive,
-      });
-    }
 
     // Phase 3 Step 3.1 — consume side. Inject the cached history summary
     // (produced async-after-response on a prior turn) as ADDITIVE recall.
