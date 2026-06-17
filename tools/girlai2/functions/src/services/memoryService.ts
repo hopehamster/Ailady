@@ -9,6 +9,20 @@ import {
   openAiCompatBaseUrl,
   resolveOpenAiModel,
 } from './openaiCompat';
+import {
+  type DriveState,
+  type EgoState,
+  type DrivePerception,
+  defaultDriveState,
+  defaultEgoState,
+  stepPsyche,
+} from './psycheStateService';
+
+// Psyche foundation (Phase P1) — flag-gated, default OFF so production is
+// byte-identical: when OFF, driveState/egoState are never read, written, or
+// migrated, and the Aria-commitment open-loop hook never runs.
+const PSYCHE_FOUNDATION_ENABLED =
+  (process.env.PSYCHE_FOUNDATION_ENABLED ?? 'false').toLowerCase() === 'true';
 
 const openaiApiKey = openAiCompatApiKey();
 // OPENAI_BASE_URL env points this client at an OpenAI-compatible provider
@@ -90,6 +104,9 @@ export interface OpenLoop {
   freshnessScore: number; // 0.0 - 1.0
   resolvedAt?: FirebaseFirestore.Timestamp;
   expiresAt?: FirebaseFirestore.Timestamp;
+  /** Who opened this loop. Absent = legacy/user (byte-identical default).
+   * 'aria' marks a thread SHE committed to (the P1 G1 affect→loop hook). */
+  origin?: 'user' | 'aria';
 }
 
 export interface RelationalPacingProfile {
@@ -314,6 +331,10 @@ export interface IntelligentMemory {
   behaviorCounters: MemoryBehaviorCounters;
   openLoopHealth: OpenLoopHealthStats;
   chronology: ChronologyState;
+  /** Psyche foundation (P1) — present only when PSYCHE_FOUNDATION_ENABLED.
+   * Optional + never written when the flag is OFF (byte-identical). */
+  driveState?: DriveState;
+  egoState?: EgoState;
   lastUpdated: FirebaseFirestore.Timestamp;
 }
 
@@ -1871,6 +1892,159 @@ Respond with JSON:
 /**
  * Get intelligent memory for a user
  */
+// ── Psyche foundation helpers (Phase P1) ─────────────────────────────────────
+// All flag-gated by PSYCHE_FOUNDATION_ENABLED at the call sites. Deterministic,
+// model-free. When the flag is OFF none of this runs and no psyche field is ever
+// attached, so the persisted doc is byte-identical to pre-flag behavior.
+
+/** Attach default drive/ego state if absent. Never attaches `undefined`
+ * (ignoreUndefinedProperties is not set — a stray undefined reaching .set()
+ * would throw). Caller guards on the flag. */
+function migratePsycheFoundation(memory: IntelligentMemory, nowMs: number): void {
+  if (!memory.driveState) memory.driveState = defaultDriveState(nowMs);
+  if (!memory.egoState) memory.egoState = defaultEgoState(nowMs);
+}
+
+// Cheap, deterministic perception signals (regex/score proxies — no model call).
+const PSYCHE_NEGATIVE_SENTIMENT =
+  /\b(sad|hurt|upset|anxious|worried|scared|stressed|overwhelmed|lonely|alone|depressed|exhausted|struggling|can'?t cope|hate this|so tired|tired of)\b/i;
+const PSYCHE_ARIA_STEER =
+  /\?\s*$|\b(tell me|what about you|how about you|let'?s|why don'?t you|have you ever|did you|what'?s on your)\b/i;
+const PSYCHE_ARIA_EXIT =
+  /\b(get some rest|go enjoy|take your time|no pressure|whenever you'?re|talk later|i'?ll be here|go live your|get back to your|take care of yourself)\b/i;
+const PSYCHE_ARIA_SELF_EXPRESS = /\bi (feel|felt|think|believe|love|missed|wonder|hope|wish|really like|want)\b/i;
+const PSYCHE_ARIA_CARE =
+  /\b(i'?m here|i'?ve got you|that sounds (hard|tough|rough|heavy)|i'?m sorry|you don'?t have to|take a breath|that makes sense|i hear you)\b/i;
+const PSYCHE_USER_ENGAGED_HER = /\b(you|your|yourself|aria)\b/i;
+
+interface PsychePerceptionArgs {
+  nowMs: number;
+  userMessage: string;
+  aiResponse: string;
+  userImportance: number;
+  loopsBefore: OpenLoop[];
+  loopsAfter: OpenLoop[];
+  activeGoalLoopId: string | null;
+}
+
+function buildDrivePerception(args: PsychePerceptionArgs): DrivePerception {
+  const { nowMs, userMessage, aiResponse, userImportance, loopsBefore, loopsAfter, activeGoalLoopId } = args;
+  const userStruggling = PSYCHE_NEGATIVE_SENTIMENT.test(userMessage);
+
+  const openBefore = loopsBefore.filter((l) => l.status === 'open').length;
+  const openAfter = loopsAfter.filter((l) => l.status === 'open');
+  const openLoopOpened = openAfter.length > openBefore;
+  const resolvedBeforeIds = new Set(
+    loopsBefore.filter((l) => l.status === 'resolved').map((l) => l.id),
+  );
+  const openLoopClosed = loopsAfter.some(
+    (l) => l.status === 'resolved' && !resolvedBeforeIds.has(l.id),
+  );
+
+  // Focal loop for a NEW goal: freshest open loop, Aria-originated preferred.
+  const focal =
+    [...openAfter].sort((a, b) => {
+      const ao = a.origin === 'aria' ? 1 : 0;
+      const bo = b.origin === 'aria' ? 1 : 0;
+      if (ao !== bo) return bo - ao;
+      return (b.freshnessScore || 0) - (a.freshnessScore || 0);
+    })[0] || null;
+
+  // The CURRENT goal's loop resolving this turn (tied to the active goal, not the new focal).
+  const focalOpenLoopResolved =
+    activeGoalLoopId != null
+      ? loopsAfter.some((l) => l.id === activeGoalLoopId && l.status === 'resolved')
+      : false;
+
+  return {
+    nowMs,
+    userEngaged: userMessage.trim().length >= 8,
+    userDisclosed: userImportance >= 0.55,
+    userStruggling,
+    ariaSteered: PSYCHE_ARIA_STEER.test(aiResponse),
+    ariaCreatedExit: PSYCHE_ARIA_EXIT.test(aiResponse),
+    ariaSelfExpressed: PSYCHE_ARIA_SELF_EXPRESS.test(aiResponse),
+    ariaOfferedCare: userStruggling && PSYCHE_ARIA_CARE.test(aiResponse),
+    userEngagedHer: PSYCHE_USER_ENGAGED_HER.test(userMessage),
+    openLoopOpened,
+    openLoopClosed,
+    focalOpenLoopId: focal ? focal.id : null,
+    focalOpenLoopResolved,
+  };
+}
+
+// G1 affect→open-loop hook: stated affect/commitment in ARIA'S OWN output →
+// an Aria-originated open loop she must return to. This is what makes her
+// interiority load-bearing (a tracked obligation), not announced. Deterministic;
+// the function boundary leaves room to swap in a cheap classifier later
+// (pass-2 G-D) if telemetry shows the heuristic misses real commitments.
+const PSYCHE_ARIA_COMMITMENTS: { re: RegExp; prefix: string }[] = [
+  {
+    re: /\bi'?(?:ll| will) (?:remember|check|look into|think about|hold onto|come back to|follow up on)\b[^.!?]{0,64}/i,
+    prefix: 'Aria committed to',
+  },
+  {
+    re: /\b(?:i want to (?:hear|know) (?:more )?about|i'?m curious about|tell me (?:more )?about|remind me to ask you about)\b[^.!?]{0,64}/i,
+    prefix: 'Aria wants to revisit',
+  },
+  {
+    re: /\b(?:i can'?t stop thinking about|i keep thinking about|i'?ve been wondering about)\b[^.!?]{0,64}/i,
+    prefix: 'Aria is holding',
+  },
+];
+
+function extractAriaCommitmentLoops(
+  aiResponse: string,
+  current: OpenLoop[],
+  now: FirebaseFirestore.Timestamp,
+): OpenLoop[] {
+  const text = (aiResponse || '').trim();
+  if (!text) return current;
+  let next = current;
+  for (const { re, prefix } of PSYCHE_ARIA_COMMITMENTS) {
+    const match = text.match(re);
+    if (!match) continue;
+    const topic = extractOpenLoopTopic(match[0]);
+    if (!topic) continue;
+    const idx = next.findIndex(
+      (l) =>
+        l.status === 'open' &&
+        l.origin === 'aria' &&
+        (l.topic.toLowerCase().includes(topic.toLowerCase()) ||
+          topic.toLowerCase().includes(l.topic.toLowerCase())),
+    );
+    if (idx >= 0) {
+      next = next.map((l, i) =>
+        i === idx
+          ? {
+              ...l,
+              lastMentionedAt: now,
+              refreshCount: (l.refreshCount || 0) + 1,
+              freshnessScore: computeLoopFreshness(now, now),
+            }
+          : l,
+      );
+    } else {
+      next = [
+        ...next,
+        {
+          id: `loop_aria_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          topic,
+          summary: `${prefix}: ${topic}`,
+          status: 'open' as const,
+          priority: 0.6,
+          createdAt: now,
+          lastMentionedAt: now,
+          refreshCount: 0,
+          freshnessScore: computeLoopFreshness(now, now),
+          origin: 'aria' as const,
+        },
+      ];
+    }
+  }
+  return next.slice(-MAX_OPEN_LOOPS);
+}
+
 export async function getIntelligentMemory(userId: string): Promise<IntelligentMemory | null> {
   try {
     const db = admin.firestore();
@@ -1918,6 +2092,9 @@ export async function getIntelligentMemory(userId: string): Promise<IntelligentM
       if (!memory.chronology) {
         memory.chronology = defaultChronologyState();
       }
+      if (PSYCHE_FOUNDATION_ENABLED) {
+        migratePsycheFoundation(memory, Timestamp.now().toMillis());
+      }
       return memory;
     }
     
@@ -1943,7 +2120,11 @@ export async function getIntelligentMemory(userId: string): Promise<IntelligentM
       chronology: defaultChronologyState(),
       lastUpdated: Timestamp.now(),
     };
-    
+
+    if (PSYCHE_FOUNDATION_ENABLED) {
+      migratePsycheFoundation(emptyMemory, emptyMemory.lastUpdated.toMillis());
+    }
+
     await db.collection('intelligentMemory').doc(userId).set(emptyMemory);
     return emptyMemory;
   } catch (error) {
@@ -2023,7 +2204,33 @@ export async function updateIntelligentMemory(
       memory.sessionArc || defaultSessionArc(),
       userMessage,
     );
-    memory.openLoops = updateOpenLoops(memory.openLoops || [], userMessage);
+    const loopsBeforeTurn = memory.openLoops || [];
+    memory.openLoops = updateOpenLoops(loopsBeforeTurn, userMessage);
+
+    // Psyche foundation (P1) — flag-gated, SILENT (no behavior change): the
+    // G1 affect→loop hook on Aria's own output, then drive/ego accrual. Sits
+    // before both .set paths so state persists on the noise + full paths alike.
+    if (PSYCHE_FOUNDATION_ENABLED) {
+      const psycheNowMs = now.toMillis();
+      memory.openLoops = extractAriaCommitmentLoops(aiResponse, memory.openLoops, now);
+      migratePsycheFoundation(memory, psycheNowMs);
+      const perception = buildDrivePerception({
+        nowMs: psycheNowMs,
+        userMessage,
+        aiResponse,
+        userImportance: importance.userImportance,
+        loopsBefore: loopsBeforeTurn,
+        loopsAfter: memory.openLoops,
+        activeGoalLoopId: memory.egoState?.activeGoal?.openLoopId ?? null,
+      });
+      const stepped = stepPsyche(
+        { driveState: memory.driveState as DriveState, egoState: memory.egoState as EgoState },
+        perception,
+      );
+      memory.driveState = stepped.driveState;
+      memory.egoState = stepped.egoState;
+    }
+
     memory.chronology = updateChronologyState(memory.chronology, userMessage, {
       now: chronologyNow,
       timeZoneOffsetMinutes: meta?.timeZoneOffsetMinutes,
