@@ -68,6 +68,10 @@ export interface RunPostResponseOrchestrationArgs<TPlan, TSignals, TMemory, TRou
     emotionIntensity: number;
   };
   emotionTriggers: Record<string, string>;
+  /** P4 — when set (flag-gated by the caller), prefer this directive emotion over
+   * analyzeConversation / inferEmotionFallback for the avatar (and skip the model
+   * call). Undefined => existing behavior => byte-identical. */
+  intendedEmotion?: { emotion: string; emotionIntensity: number };
   runShadowBenchmarkEvaluationWithTimeout: (
     userId: string,
     userMessage: string,
@@ -127,13 +131,23 @@ export async function runPostResponseOrchestration<TPlan, TSignals, TMemory, TRo
   analyzeConversation,
   inferEmotionFallback,
   emotionTriggers,
+  intendedEmotion,
   runShadowBenchmarkEvaluationWithTimeout,
   updateMemoryInBackground,
   logInfo,
   logWarn,
   logError,
 }: RunPostResponseOrchestrationArgs<TPlan, TSignals, TMemory, TRouteDecision>): Promise<PostResponseOrchestrationResult> {
-  const emotionPromise: Promise<PostResponseEmotionResult> = (
+  const emotionPromise: Promise<PostResponseEmotionResult> = intendedEmotion
+    ? Promise.resolve((() => {
+        skippedAgents.push('avatar-voice-agent-emotion-intended');
+        return {
+          emotion: intendedEmotion.emotion,
+          emotionTrigger: emotionTriggers[intendedEmotion.emotion],
+          emotionIntensity: intendedEmotion.emotionIntensity,
+        };
+      })())
+    : (
     !modelEmotionAnalysisEnabled ||
     (signals as any).lowEffort ||
     (plan as any).responseLength !== 'deep'

@@ -47,6 +47,10 @@ export interface BuildResponseAssemblyArgs {
   policyPlan: ConversationPolicyPlanSource;
   policySignals: ConversationPolicySignalSource;
   policyContext: ConversationPolicyPromptContext;
+  /** P4 — optional intended-emotion (an EmotionKey). Empty/undefined => no hint
+   * => byte-identical. Adds a 1-line inner-tone hint to the working window so the
+   * rendered text matches the avatar emotion the ego intends this turn. */
+  intendedEmotion?: string;
 }
 
 export interface ResponseAssembly {
@@ -73,6 +77,7 @@ export function buildResponseAssembly({
   policyPlan,
   policySignals,
   policyContext,
+  intendedEmotion,
 }: BuildResponseAssemblyArgs): ResponseAssembly {
   const effectiveRecentMessages =
     route === 'fast' ? recentMessages.slice(-8) : recentMessages;
@@ -140,7 +145,15 @@ export function buildResponseAssembly({
     .filter((s) => s.length > 0)
     .join('\n\n');
 
-  const workingWindow = [chatModeBlock, policyDirectivesBlock, policyEnhancersBlock]
+  // P4 — intended-emotion hint (flag-gated by the caller; empty => filtered out
+  // => byte-identical). Placed last in the working window for max recency. The
+  // "never name the feeling" clause preserves the believability rule (drives show
+  // in behavior, never announced).
+  const intendedEmotionBlock = intendedEmotion
+    ? `[Inner tone for this turn: ${intendedEmotion}. Let it color your words naturally — never name the feeling, just let it show.]`
+    : '';
+
+  const workingWindow = [chatModeBlock, policyDirectivesBlock, policyEnhancersBlock, intendedEmotionBlock]
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .join('\n\n');

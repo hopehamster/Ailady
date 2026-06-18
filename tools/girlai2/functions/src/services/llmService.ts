@@ -424,6 +424,12 @@ const PSYCHE_ARBITER_ENABLED =
 // called -> byte-identical. The stage-capped disclosure ceiling is the guard.
 const PSYCHE_PLAN_BIAS_ENABLED =
   (process.env.PSYCHE_PLAN_BIAS_ENABLED ?? 'false').toLowerCase() === 'true';
+// Psyche P4 — thread the ego directive's intendedEmotion forward: a 1-line tone
+// hint in the text prompt (so the words match the felt tone) + the avatar emotion
+// (prefer it over the post-hoc model call). Default OFF; needs PSYCHE_ARBITER_ENABLED.
+// OFF -> intendedEmotion undefined at both call sites -> byte-identical.
+const PSYCHE_EMOTION_FORWARD_ENABLED =
+  (process.env.PSYCHE_EMOTION_FORWARD_ENABLED ?? 'false').toLowerCase() === 'true';
 const ANTHROPIC_PRIMARY_ENABLED =
   (process.env.ANTHROPIC_PRIMARY_ENABLED ?? 'true').toLowerCase() === 'true';
 const INTERNAL_TESTER_MODE =
@@ -2686,6 +2692,8 @@ export async function generateAIResponse(
         sessionTurnCount,
         stage: turnStage,
       },
+      intendedEmotion:
+        PSYCHE_EMOTION_FORWARD_ENABLED && egoDirective ? egoDirective.intendedEmotion : undefined,
     });
 
     const generationTokens = fastTurnPath
@@ -3089,6 +3097,10 @@ export async function generateAIResponse(
       usedGeminiFallback,
       skippedAgents,
       modelEmotionAnalysisEnabled: MODEL_EMOTION_ANALYSIS_ENABLED,
+      intendedEmotion:
+        PSYCHE_EMOTION_FORWARD_ENABLED && egoDirective
+          ? { emotion: egoDirective.intendedEmotion, emotionIntensity: egoDirective.intendedEmotionIntensity }
+          : undefined,
       shadowBenchmarkEnabled: SHADOW_BENCHMARK_ENABLED,
       shadowBenchmarkSampleRate: SHADOW_BENCHMARK_SAMPLE_RATE,
       latencyBudgets: {
