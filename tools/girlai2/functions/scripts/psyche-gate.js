@@ -16,20 +16,22 @@ const fs = require('fs');
 const path = require('node:path');
 
 // 1. Load .env.girlai2 into process.env (no echo).
-const envPath = path.join(__dirname, '.env.girlai2');
+const envPath = path.join(__dirname, '..', '.env.girlai2');
 for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m && !process.env[m[1]]) process.env[m[1]] = m[2];
 }
 const OpenAI = require('openai');
-const { scoreDirectiveAdherence } = require('./lib/services/psycheMetricsService.js');
+const { scoreDirectiveAdherence } = require('../lib/services/psycheMetricsService.js');
 const {
   openAiCompatBaseUrl,
   openAiCompatApiKey,
   resolveOpenAiModel,
-} = require('./lib/services/openaiCompat.js');
+} = require('../lib/services/openaiCompat.js');
 
 const MODEL = resolveOpenAiModel('gpt-4o');
+const BASE = openAiCompatBaseUrl() || 'https://api.openai.com/v1';
+const LABEL = process.env.GATE_LABEL || MODEL;
 const client = new OpenAI({ apiKey: openAiCompatApiKey(), baseURL: openAiCompatBaseUrl() });
 
 // The exact live post-history guidance (responseAssemblyService.postHistoryGuidance).
@@ -145,7 +147,7 @@ async function runConfig(label, withPostHistory) {
         qOk: score.questionBudgetHonored,
         lenOk: score.lengthBandHonored,
         overall: score.overall,
-        preview: output.replace(/\s+/g, ' ').slice(0, 90),
+        preview: output.replace(/\s+/g, ' ').slice(0, 170),
       });
     } catch (e) {
       rows.push({ i: i + 1, error: String(e.message || e).slice(0, 120) });
@@ -168,11 +170,14 @@ async function runConfig(label, withPostHistory) {
 }
 
 (async () => {
-  console.log(`Psyche P2 gate — renderer adherence to injected plan. model=${MODEL}`);
-  const a = await runConfig('A: directives only', false);
-  const b = await runConfig('B: directives + live post-history', true);
-  console.log('\n================= GATE VERDICT =================');
-  for (const r of [a, b]) {
+  console.log(`Psyche gate — renderer adherence. label=${LABEL} model=${MODEL}\n  base=${BASE}`);
+  const results = [];
+  results.push(await runConfig('A: directives only', false));
+  if (process.env.GATE_SKIP_B !== '1') {
+    results.push(await runConfig('B: directives + live post-history', true));
+  }
+  console.log(`\n================= GATE VERDICT (${LABEL}) =================`);
+  for (const r of results) {
     console.log(`${r.label}: questionBudget ${r.qHonored}/${r.n} (${(100 * r.qHonored / r.n).toFixed(0)}%), length ${r.lenHonored}/${r.n} (${(100 * r.lenHonored / r.n).toFixed(0)}%), mean overall ${r.meanOverall.toFixed(3)}`);
   }
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });
