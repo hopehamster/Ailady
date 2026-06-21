@@ -1,0 +1,24 @@
+{
+  "name": "@aria/aria-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@aria/shared-types": "workspace:*",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@google/genai": "^1.44.0",
+    "openai": "^4.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

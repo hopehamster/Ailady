@@ -20,3 +20,13 @@ deploy_out*.txt
 # Optional source-only Live2D files (not required for runtime)
 tools/girlai2/assets/live2d/**/*.cmo3
 tools/girlai2/assets/live2d/**/*.psd
+
+# Aria web-product monorepo (apps/ + packages/)
+node_modules/
+apps/*/dist/
+packages/*/dist/
+apps/web/dist/
+apps/worker/.wrangler/
+# wrangler local secrets (DeepSeek/openrouter keys for `wrangler dev`) — NEVER commit
+**/.dev.vars
+**/.dev.vars.*

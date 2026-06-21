@@ -1,0 +1,17 @@
+name = "aria-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Phase 0 is PRIVATE/LOCAL-ONLY. No public route, no real auth (that lands in Phase 3).
+# `wrangler dev` serves locally; do NOT `wrangler deploy` to a public URL in Phase 0.
+
+[vars]
+ENV = "dev"
+# Hosted open-model LLM (OpenAI-compatible). Configurable per the content-level decision.
+OPENAI_COMPAT_BASE_URL = "https://openrouter.ai/api/v1"
+OPENAI_COMPAT_MODEL = "deepseek/deepseek-chat-v3.1"
+
+# Secrets (set with `wrangler secret put <NAME>` — never commit):
+#   OPENAI_COMPAT_API_KEY  — the hosted-model API key
+#   DEV_SHARED_SECRET      — gates /api/chat in dev so the endpoint isn't open

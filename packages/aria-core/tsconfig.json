@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // Workers provides process.env (nodejs_compat) + console; @types/node types them.
+    "types": ["node"],
+    // Pass-6 call: the legacy brain was written WITHOUT noUncheckedIndexedAccess.
+    // Relax it for the initial port (it's the labor-dominant strict flag and orthogonal
+    // to the firebase decouple); tighten back tier-by-tier once modules land.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src"]
+}

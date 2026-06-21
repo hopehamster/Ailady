@@ -1,0 +1,6 @@
+# Aria web product workspace.
+# Scoped to apps/* + packages/* so the existing Flutter app (tools/girlai2)
+# and Firebase functions are NOT pulled into this workspace.
+packages:
+  - "apps/*"
+  - "packages/*"
