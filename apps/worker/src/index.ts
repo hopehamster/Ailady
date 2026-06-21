@@ -13,7 +13,12 @@ export interface Env {
   OPENAI_COMPAT_API_KEY: string;
   /** Phase-0 dev gate so /api/chat isn't open. Real auth lands in Phase 3. */
   DEV_SHARED_SECRET?: string;
+  /** HeyGen LiveAvatar key (server-side only). Phase 0.5 sandbox de-risk. */
+  LIVEAVATAR_API_KEY?: string;
 }
+
+// HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
+const AVATAR_SANDBOX_WAYNE = "dd73ea75-1218-4ef3-92ce-606d5f7fbc0a";
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -123,6 +128,56 @@ export default {
       } catch (err) {
         console.error("generateAIResponse failed", { error: String(err) });
         return json({ success: false, error: "brain_error", detail: String(err) }, 500);
+      }
+    }
+
+    // Phase 0.5 — LiveAvatar LITE sandbox session mint. Keeps X-API-KEY server-side;
+    // returns ONLY browser-safe tokens (viewer LiveKit token + room URL + control WS).
+    // The agent token + api key never reach the browser.
+    if (url.pathname === "/api/avatar/session" && request.method === "POST") {
+      if (env.DEV_SHARED_SECRET && request.headers.get("x-dev-secret") !== env.DEV_SHARED_SECRET) {
+        return json({ success: false, error: "forbidden" }, 403);
+      }
+      if (!env.LIVEAVATAR_API_KEY) return json({ success: false, error: "avatar_not_configured" }, 503);
+      try {
+        const tokRes = await fetch("https://api.liveavatar.com/v1/sessions/token", {
+          method: "POST",
+          headers: { "x-api-key": env.LIVEAVATAR_API_KEY, "content-type": "application/json" },
+          body: JSON.stringify({ mode: "LITE", avatar_id: AVATAR_SANDBOX_WAYNE, is_sandbox: true }),
+        });
+        const tok = (await tokRes.json()) as { data?: { session_token?: string } };
+        const sessionToken = tok?.data?.session_token;
+        if (!sessionToken) return json({ success: false, error: "token_mint_failed", detail: tok }, 502);
+
+        const startRes = await fetch("https://api.liveavatar.com/v1/sessions/start", {
+          method: "POST",
+          headers: { authorization: `Bearer ${sessionToken}`, "content-type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const start = (await startRes.json()) as {
+          data?: {
+            session_id?: string;
+            livekit_url?: string;
+            livekit_client_token?: string;
+            ws_url?: string;
+            max_session_duration?: number;
+          };
+        };
+        const d = start?.data;
+        if (!d?.livekit_url || !d?.livekit_client_token) {
+          return json({ success: false, error: "start_failed", detail: start }, 502);
+        }
+        return json({
+          success: true,
+          session_id: d.session_id,
+          livekit_url: d.livekit_url,
+          livekit_client_token: d.livekit_client_token,
+          ws_url: d.ws_url,
+          max_session_duration: d.max_session_duration,
+        });
+      } catch (err) {
+        console.error("avatar session failed", { error: String(err) });
+        return json({ success: false, error: "avatar_error", detail: String(err) }, 500);
       }
     }
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ChatRequest, ChatResponse } from "@aria/shared-types";
+import { LiveAvatar } from "./LiveAvatar";
 
 interface Msg {
   who: "you" | "aria";
@@ -10,6 +11,7 @@ export function App() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState<"chat" | "avatar">("chat");
 
   async function send() {
     const text = input.trim();
@@ -54,6 +56,13 @@ export function App() {
       }}
     >
       <h1 style={{ color: "#C9A84C", fontWeight: 800 }}>Aria</h1>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button onClick={() => setView("chat")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "chat" ? "#C9A84C" : "#111827", color: view === "chat" ? "#111827" : "white", fontWeight: 600 }}>Chat</button>
+        <button onClick={() => setView("avatar")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "avatar" ? "#C9A84C" : "#111827", color: view === "avatar" ? "#111827" : "white", fontWeight: 600 }}>Avatar (sandbox)</button>
+      </div>
+      {view === "avatar" && <LiveAvatar />}
+      {view === "chat" && (
+        <>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
         {msgs.map((m, i) => (
           <div
@@ -97,6 +106,8 @@ export function App() {
           {busy ? "…" : "Send"}
         </button>
       </div>
+        </>
+      )}
     </main>
   );
 }
