@@ -8,10 +8,15 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ENV = "dev"
-# Hosted open-model LLM (OpenAI-compatible). Configurable per the content-level decision.
-OPENAI_COMPAT_BASE_URL = "https://openrouter.ai/api/v1"
-OPENAI_COMPAT_MODEL = "deepseek/deepseek-chat-v3.1"
+# Hosted open-model LLM (OpenAI-compatible). Phase-0 testing uses DeepSeek direct
+# (has API balance). Swap to openrouter / Gemini-compat later per the LLM hierarchy:
+#   DeepSeek  -> https://api.deepseek.com         model deepseek-chat   (balance; testing)
+#   openrouter-> https://openrouter.ai/api/v1     model deepseek/...    (needs top-up)
+#   Gemini    -> .../v1beta/openai/               model gemini-2.5-...  (subscription; hourly-limited; strongest no-spend)
+OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
+OPENAI_COMPAT_MODEL = "deepseek-chat"
 
-# Secrets (set with `wrangler secret put <NAME>` — never commit):
+# Secrets — for `wrangler dev` put them in apps/worker/.dev.vars (gitignored);
+# for deploy use `wrangler secret put <NAME>`. NEVER commit:
 #   OPENAI_COMPAT_API_KEY  — the hosted-model API key
 #   DEV_SHARED_SECRET      — gates /api/chat in dev so the endpoint isn't open

@@ -407,8 +407,12 @@ function getGoogleGenAI(): GoogleGenAI | null {
 }
 
 // Model configuration tuned for stable availability in this project.
-const PRIMARY_MODEL = resolveOpenAiModel('gpt-4o');
-const FAST_TURN_MODEL = process.env.FAST_TURN_MODEL || resolveOpenAiModel('gpt-4o-mini');
+// PHASE-0 decouple: resolve at CALL TIME (not module-eval) so the Worker's env
+// shim (OPENAI_DEFAULT_MODEL) is honored. On Workers process.env is empty at
+// import, so a module-eval const would freeze to 'gpt-4o' and 404 on the
+// OPENAI_COMPAT provider (e.g. DeepSeek). These getters read the env per turn.
+function getPrimaryModel(): string { return resolveOpenAiModel('gpt-4o'); }
+function getFastTurnModel(): string { return process.env.FAST_TURN_MODEL || resolveOpenAiModel('gpt-4o-mini'); }
 // Fast-path provider preference. Default ON = production behavior (fast turns
 // take the Gemini shortcut for latency). Set FAST_PATH_GEMINI_ENABLED=false to
 // route fast turns through the OpenAI-compat primary instead (e.g. a permanent-
@@ -2068,7 +2072,7 @@ export async function generateProactiveCompanionMessage(
     });
 
     const completion = await getOpenAI().chat.completions.create({
-      model: PRIMARY_MODEL,
+      model: getPrimaryModel(),
       messages: [
         {
           role: 'system',
@@ -2108,7 +2112,7 @@ export async function generateProactiveCompanionMessage(
       emotion: analysis.emotion,
       emotionTrigger: EMOTION_TRIGGERS[analysis.emotion],
       emotionIntensity: analysis.emotionIntensity,
-      modelUsed: PRIMARY_MODEL,
+      modelUsed: getPrimaryModel(),
     };
   } catch (error: any) {
     console.error('Failed to generate proactive companion message', {
@@ -2139,7 +2143,7 @@ export async function generateAIResponse(
   featureSettings?: UserFeatureSettings,
   turnId?: string,
 ): Promise<AIResponse> {
-  let modelUsed = PRIMARY_MODEL;
+  let modelUsed = getPrimaryModel();
   let usedGeminiFallback = false;
   const stageTimingsMs: Record<string, number> = {};
 
@@ -2686,12 +2690,12 @@ export async function generateAIResponse(
       completionCandidates > 1 && MODEL_CANDIDATE_SCORING_ENABLED;
     const preferredOpenAiModel =
       routeDecision.route === 'fast'
-        ? FAST_TURN_MODEL
+        ? getFastTurnModel()
         : socialPlanning.plan.responseLength === 'deep'
-        ? PRIMARY_MODEL
-        : FAST_TURN_MODEL;
+        ? getPrimaryModel()
+        : getFastTurnModel();
     const primaryResponseModel =
-      routeDecision.route === 'quality' ? PRIMARY_MODEL : preferredOpenAiModel;
+      routeDecision.route === 'quality' ? getPrimaryModel() : preferredOpenAiModel;
 
     // Prefer the highest-intelligence path first (Claude Opus if configured),
     // then fallback to OpenAI models for availability resilience.
@@ -3419,13 +3423,13 @@ export function streamLlmTextDeltas(prep: StreamingTurnPrep): AsyncGenerator<str
     : streamAnthropicTextDeltas(prep);
 }
 
-/** Stream text deltas via the OpenAI-compatible client (PRIMARY_MODEL). */
+/** Stream text deltas via the OpenAI-compatible client (getPrimaryModel()). */
 export function streamOpenAICompatTextDeltas(
   prep: StreamingTurnPrep,
 ): AsyncGenerator<string> {
   async function* events(): AsyncGenerator<unknown> {
     const stream = await getOpenAI().chat.completions.create({
-      model: PRIMARY_MODEL,
+      model: getPrimaryModel(),
       max_tokens: prep.generationTokens,
       stream: true,
       messages: [
