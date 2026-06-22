@@ -16,16 +16,18 @@ ENV = "dev"
 OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
 OPENAI_COMPAT_MODEL = "deepseek-chat"
 
-# Phase 1e — psyche + safety toggles (default OFF; unset = off). The stage-capped
-# self-disclosure safety budget + manipulationGuard are verified by
-# packages/aria-core test/psyche-safety.test.ts and FIRE only when these are on.
-# Flip on (here for dev, or `wrangler secret put` for deploy) AFTER the P2 adherence
-# probe confirms the renderer honors injected intent. Set to "true" to enable:
-#   PSYCHE_FOUNDATION_ENABLED   — drive/ego state accrues in memory
-#   PSYCHE_ARBITER_ENABLED      — the ego arbiter computes the per-turn directive
-#   PSYCHE_PLAN_BIAS_ENABLED    — applyEgoBias biases the plan + the disclosure cap fires
-#   PSYCHE_EMOTION_FORWARD_ENABLED — intended-emotion forwarding to the avatar
-#   MANIPULATION_GUARD_ENABLED  — output veto on emotional dark patterns
+# Phase 1e + P2 — psyche + safety toggles. ENABLED 2026-06-21 after the P2 adherence
+# probe (renderer honors injected intent, adherence 1.0) AND the drive-dynamics
+# tuning + live re-eval: the tension arc builds care to a FOCAL comfort drive while a
+# content/happy arc stays quiet (peak ~0.08, no focal) — perceptible aliveness without
+# neediness. The stage-capped self-disclosure budget + manipulationGuard (verified by
+# packages/aria-core test/psyche-safety.test.ts) + drive tuning (drive-dynamics.test.ts,
+# struggle-detection.test.ts) all gate this. To roll back: set any to "false".
+PSYCHE_FOUNDATION_ENABLED = "true"       # drive/ego state accrues in memory
+PSYCHE_ARBITER_ENABLED = "true"          # the ego arbiter computes the per-turn directive
+PSYCHE_PLAN_BIAS_ENABLED = "true"        # applyEgoBias biases the plan + the disclosure cap fires
+PSYCHE_EMOTION_FORWARD_ENABLED = "true"  # intended-emotion forwarding to the avatar
+MANIPULATION_GUARD_ENABLED = "true"      # output veto on emotional dark patterns
 
 # Secrets — for `wrangler dev` put them in apps/worker/.dev.vars (gitignored);
 # for deploy use `wrangler secret put <NAME>`. NEVER commit:

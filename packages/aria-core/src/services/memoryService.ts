@@ -1747,8 +1747,46 @@ function migratePsycheFoundation(memory: IntelligentMemory, nowMs: number): void
 }
 
 // Cheap, deterministic perception signals (regex/score proxies — no model call).
+// Struggle-detection is THREE layers so the psyche perceives natural distress, not
+// just a fixed keyword list (2026-06-21: drive-dynamics tuning was correct but the
+// old single-regex missed "feels heavy" / "so off" / "this weight I can't put down",
+// so drives never accrued in real conversation). Layer 1 = unambiguous distress
+// words. Layer 2 = a feeling-verb anchor so ambiguous words (off/down/low/stuck)
+// only count as distress when emotionally framed ("feeling off", NOT "off to work").
+// Layer 3 = a few distress idioms ("this weight", "can't put it down") that no single
+// keyword captures.
+// NOTE (review fix): "so tired"/"tired of" removed — idiomatic impatience ("tired of
+// waiting for the bus", "so tired but slept great") false-positived constantly;
+// "exhausted" stays for genuine fatigue-distress.
 const PSYCHE_NEGATIVE_SENTIMENT =
-  /\b(sad|hurt|upset|anxious|worried|scared|stressed|overwhelmed|lonely|alone|depressed|exhausted|struggling|can'?t cope|hate this|so tired|tired of)\b/i;
+  /\b(sad|hurt|upset|anxious|worried|scared|terrified|afraid|stressed|overwhelmed|lonely|alone|depressed|exhausted|struggling|numb|drained|hopeless|miserable|drowning|burn(t|ed) ?out|falling apart|breaking (down|point)|hollow|can'?t cope|can'?t shake|hate this|going through the motions|crushing me|weighing on me|freak(ing)? out)\b/i;
+// NOTE (review fix): "off" and "flat" removed from the feel-verb layer — "this bug
+// feels off" / "the drink feels flat" false-positived (esp. in a coding session).
+// "I'm so off" still reads as distress via the IM layer (needs the I'm+intensifier).
+const PSYCHE_NEGATIVE_FEELING =
+  /\b(feel|feeling|feels|felt)\s+(so\s+|really\s+|kind of\s+|pretty\s+|a bit\s+|just\s+|quite\s+|kinda\s+){0,2}(heavy|empty|low|down|lost|stuck|hollow|numb|raw|fragile|worn out|on edge|terrible|awful|broken)\b/i;
+const PSYCHE_NEGATIVE_PHRASE =
+  /\b(a lot|too much) right now\b|\bthis weight\b|\bweight I (just )?can'?t\b|\b(heavy|hollow) (this week|lately|inside|right now)\b|\bventing into\b|\bcan'?t put (it|this) down\b/i;
+// "I'm <intensifier> <ambiguous-emotional-word>" — the intensifier is the
+// discriminator: distress says "I'm SO off" / "I'm REALLY down"; logistics says
+// "I'm off to work" / "I'm low on gas" (no intensifier → no match). The trailing
+// negative lookahead rejects "I'm so down FOR pizza" (a preposition = the word is
+// being used non-emotionally).
+const PSYCHE_NEGATIVE_IM =
+  /\b(i'?m|i am|im)\s+(so|really|just|kind of|kinda|pretty|a bit|quite)\s+(off|low|down|heavy|empty|lost|stuck|hollow|numb|drained|fragile|raw|on edge)\b(?!\s+(to|on|in|at|the|a|an|for|with|of|about|from|onto|into|up))/i;
+
+/** Does this user message read as emotional distress? Drives the psyche's `care`
+ * and `understanding` cue rise. Exported so the breadth of detection is regression-
+ * tested (a too-narrow detector keeps the psyche dormant; a too-broad one makes her
+ * needy on benign messages). Pure — no model call, no I/O. */
+export function detectUserStruggling(userMessage: string): boolean {
+  return (
+    PSYCHE_NEGATIVE_SENTIMENT.test(userMessage) ||
+    PSYCHE_NEGATIVE_FEELING.test(userMessage) ||
+    PSYCHE_NEGATIVE_PHRASE.test(userMessage) ||
+    PSYCHE_NEGATIVE_IM.test(userMessage)
+  );
+}
 const PSYCHE_ARIA_STEER =
   /\?\s*$|\b(tell me|what about you|how about you|let'?s|why don'?t you|have you ever|did you|what'?s on your)\b/i;
 const PSYCHE_ARIA_EXIT =
@@ -1770,7 +1808,7 @@ interface PsychePerceptionArgs {
 
 function buildDrivePerception(args: PsychePerceptionArgs): DrivePerception {
   const { nowMs, userMessage, aiResponse, userImportance, loopsBefore, loopsAfter, activeGoalLoopId } = args;
-  const userStruggling = PSYCHE_NEGATIVE_SENTIMENT.test(userMessage);
+  const userStruggling = detectUserStruggling(userMessage);
 
   const openBefore = loopsBefore.filter((l) => l.status === 'open').length;
   const openAfter = loopsAfter.filter((l) => l.status === 'open');

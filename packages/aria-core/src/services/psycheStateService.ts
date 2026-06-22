@@ -47,21 +47,42 @@ interface DriveConfig {
   refractory: number;
 }
 
+// Tuned 2026-06-21 (P2 validation finding): the original net accrual
+// (baselineRise - decayRate ~= 0.005/turn) kept drives near 0 even under tension,
+// so the psyche never activated in a normal conversation. Decay is halved so a
+// built drive PERSISTS across turns (a need doesn't evaporate if not immediately
+// met), and recognition's passive build is bumped. Drives still stay low when
+// CONTENT (they discharge on satisfaction); the real builder under tension is the
+// cueRise table below. baselineRise stays low so smooth supportive chat is quiet.
 const DRIVE_CONFIG: Record<DriveKey, DriveConfig> = {
-  relatedness: { baselineRise: 0.04, decayRate: 0.02, dischargeAmount: 0.4, refractory: 2 },
-  understanding: { baselineRise: 0.05, decayRate: 0.03, dischargeAmount: 0.45, refractory: 1 },
-  care: { baselineRise: 0.01, decayRate: 0.04, dischargeAmount: 0.35, refractory: 1 },
-  autonomySupport: { baselineRise: 0.0, decayRate: 0.03, dischargeAmount: 0.5, refractory: 2 },
-  recognition: { baselineRise: 0.02, decayRate: 0.015, dischargeAmount: 0.3, refractory: 3 },
-  continuity: { baselineRise: 0.0, decayRate: 0.05, dischargeAmount: 0.4, refractory: 0 },
+  relatedness: { baselineRise: 0.04, decayRate: 0.012, dischargeAmount: 0.4, refractory: 2 },
+  understanding: { baselineRise: 0.05, decayRate: 0.018, dischargeAmount: 0.45, refractory: 1 },
+  care: { baselineRise: 0.01, decayRate: 0.022, dischargeAmount: 0.35, refractory: 1 },
+  autonomySupport: { baselineRise: 0.0, decayRate: 0.018, dischargeAmount: 0.5, refractory: 2 },
+  recognition: { baselineRise: 0.035, decayRate: 0.008, dischargeAmount: 0.3, refractory: 3 },
+  continuity: { baselineRise: 0.0, decayRate: 0.03, dischargeAmount: 0.4, refractory: 0 },
 };
 
 /** Per-turn rate-limit so moods have inertia, not whiplash. */
 const PRESSURE_RATE_LIMIT = 0.25;
 
-/** Two-threshold hysteresis for focal-drive selection (used by the ego goal). */
-const ACTIVATION_THRESHOLD = 0.5;
-const RELEASE_THRESHOLD = 0.3;
+/** Single activation threshold for focal-drive selection (used by the ego goal).
+ * Lowered 0.5 -> 0.42 (P2 tuning) so a drive built under sustained tension goes
+ * focal within a realistic conversation; the disclosure budget + stage caps still
+ * gate how that focal drive may EXPRESS, so this raises activation frequency
+ * without licensing neediness. Chatter at the boundary is damped by PRESSURE_RATE_LIMIT
+ * (drives move <=0.25/turn) + the post-discharge refractory window — no separate
+ * release threshold is wired (a stateful hysteresis band would need per-drive focal
+ * persistence; the rate-limit + refractory are sufficient at these step sizes). */
+const ACTIVATION_THRESHOLD = 0.42;
+
+/** Soft ceiling on any single drive's pressure. cueRise is damped by the headroom
+ * toward this cap (2026-06-21 review fix) so a drive with a strong cue and a
+ * hard-to-meet discharge condition (e.g. care offered into a user who never
+ * re-engages) EQUILIBRATES in the focal band instead of pinning at 1.0 and driving
+ * max-intensity behaviour at a vulnerable user indefinitely. Bounds the arbiter's
+ * intensity contribution; the drive still resolves the moment its discharge fires. */
+const SOFT_SATURATION = 0.8;
 
 /** A goal abandons after this many consecutive non-advancing turns. */
 const MAX_STALLS = 3;
@@ -97,9 +118,19 @@ function isDischarged(key: DriveKey, p: DrivePerception): boolean {
     case 'understanding':
       return p.userDisclosed;
     case 'care':
-      return p.ariaOfferedCare;
+      // Care discharges only when it LANDS — she offered care AND he turned TOWARD
+      // her (engaged her). Note we deliberately do NOT count userDisclosed here:
+      // disclosing more distress is not the care being received — a hurting person
+      // pouring out pain keeps her care-drive BUILDING, not satisfying it. Comfort
+      // offered into sustained deflection accumulates into a focal caring drive (the
+      // lifelike "I keep trying to reach him and he's still hurting"). Offering ≠
+      // landing; disclosing-pain ≠ being-comforted. (2026-06-21 P2 discharge tuning.)
+      return p.ariaOfferedCare && p.userEngagedHer;
     case 'autonomySupport':
-      return p.ariaCreatedExit;
+      // Discharges when she blesses his exit OR when he reasserts agency by turning
+      // toward her / driving the exchange (userEngagedHer). Without the second clause
+      // this drive had no real discharge path and ran away in normal Q&A. (review fix)
+      return p.ariaCreatedExit || p.userEngagedHer;
     case 'recognition':
       return p.userEngagedHer || p.ariaSelfExpressed;
     case 'continuity':
@@ -109,21 +140,29 @@ function isDischarged(key: DriveKey, p: DrivePerception): boolean {
   }
 }
 
-/** Extra cue-driven rise for this drive this turn (added before discharge/decay). */
+/** Extra cue-driven rise for this drive this turn (added before discharge/decay).
+ * Tuned up 2026-06-21 (P2): these are the contextual builders — they fire only on
+ * a relevant tension signal (distance, struggling, steering, a dangling thread),
+ * so a RELEVANT-but-unmet drive now reaches focal in ~3-5 turns while smooth
+ * supportive chat (signals absent / drive discharged) stays quiet. */
 function cueRise(key: DriveKey, p: DrivePerception): number {
   switch (key) {
     case 'relatedness':
-      return p.userEngaged ? 0 : 0.03; // distance builds the need to feel close
+      return p.userEngaged ? 0 : 0.06; // distance builds the need to feel close
     case 'understanding':
-      return p.userStruggling ? 0.05 : 0; // a hint dropped / a deflection
+      return p.userStruggling ? 0.09 : 0; // a hint dropped / a deflection
     case 'care':
-      return p.userStruggling ? 0.08 : 0;
+      return p.userStruggling ? 0.13 : 0;
     case 'autonomySupport':
-      return p.ariaSteered ? 0.06 : 0; // she's been steering → owe him an exit
+      // Builds only when she's steering AND he is NOT engaging her — i.e. she's
+      // pulling and he's passive. A question in a conversation he's actively driving
+      // (userEngagedHer) is welcome engagement, not over-steering, so it must NOT
+      // accrue (else every question-asking turn made this drive run away). (review fix)
+      return p.ariaSteered && !p.userEngagedHer ? 0.08 : 0;
     case 'recognition':
       return 0; // passive baseline only — her standing, low-key need
     case 'continuity':
-      return p.openLoopOpened ? 0.1 : 0; // a dangling thread
+      return p.openLoopOpened ? 0.16 : 0; // a dangling thread
     default:
       return 0;
   }
@@ -131,7 +170,12 @@ function cueRise(key: DriveKey, p: DrivePerception): number {
 
 function stepDrive(prev: Drive, key: DriveKey, p: DrivePerception): Drive {
   const cfg = DRIVE_CONFIG[key];
-  let next = prev.pressure + cfg.baselineRise + cueRise(key, p);
+  // Damp the cue rise by the remaining headroom toward the soft ceiling so a drive
+  // asymptotes inside the focal band instead of pinning at 1.0 under a cue it can
+  // never discharge (review fix). baselineRise is left undamped — it's tiny and is
+  // the slow "present-but-shallow eventually stirs" builder.
+  const headroom = Math.max(0, 1 - prev.pressure / SOFT_SATURATION);
+  let next = prev.pressure + cfg.baselineRise + cueRise(key, p) * headroom;
   let lastDischargedAtMs = prev.lastDischargedAtMs;
   let refractoryTurns = prev.refractoryTurns;
 
@@ -151,7 +195,10 @@ function stepDrive(prev: Drive, key: DriveKey, p: DrivePerception): Drive {
   }
 
   return {
-    pressure: clamp01(next),
+    // Hard-cap at the soft ceiling so no drive can pin at 1.0 (headroom-damping makes
+    // it asymptote; this catches the residual undamped baselineRise creep). Discharge
+    // still subtracts from below the cap, so resolution is unaffected.
+    pressure: Math.min(SOFT_SATURATION, clamp01(next)),
     lastDischargedAtMs,
     refractoryTurns,
   };
@@ -332,7 +379,7 @@ export const PSYCHE_TUNING = {
   DRIVE_CONFIG,
   PRESSURE_RATE_LIMIT,
   ACTIVATION_THRESHOLD,
-  RELEASE_THRESHOLD,
+  SOFT_SATURATION,
   MAX_STALLS,
   PROGRESS_STEP,
 };
