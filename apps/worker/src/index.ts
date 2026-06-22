@@ -65,7 +65,14 @@ export default {
     if (url.pathname === "/healthz") return json({ ok: true, env: env.ENV });
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
-      // Phase 0: PRIVATE/LOCAL-ONLY. Dev shared-secret gate (real phone-OTP auth is Phase 3).
+      // SECURITY (Phase 0/1): this endpoint derives uid from the x-dev-uid header
+      // and defaults to a shared "dev-user" — an IDOR/cross-tenant pattern that is
+      // ONLY acceptable for local single-developer dev. Real phone-OTP auth +
+      // server-derived uid land in Phase 3. FAIL CLOSED outside dev so this can
+      // never ship to a real deploy before auth exists.
+      if (env.ENV !== "dev") {
+        return json({ success: false, error: "auth_required", detail: "real auth lands in Phase 3" }, 401);
+      }
       if (env.DEV_SHARED_SECRET && request.headers.get("x-dev-secret") !== env.DEV_SHARED_SECRET) {
         return json({ success: false, error: "forbidden" }, 403);
       }
@@ -157,6 +164,10 @@ export default {
     // returns ONLY browser-safe tokens (viewer LiveKit token + room URL + control WS).
     // The agent token + api key never reach the browser.
     if (url.pathname === "/api/avatar/session" && request.method === "POST") {
+      // Fail closed outside dev (this spends our LiveAvatar credits; not public).
+      if (env.ENV !== "dev") {
+        return json({ success: false, error: "auth_required", detail: "real auth lands in Phase 3" }, 401);
+      }
       if (env.DEV_SHARED_SECRET && request.headers.get("x-dev-secret") !== env.DEV_SHARED_SECRET) {
         return json({ success: false, error: "forbidden" }, 403);
       }
