@@ -2,10 +2,11 @@ import { useState, lazy, Suspense, type ComponentType } from "react";
 import type { ChatRequest, ChatResponse } from "@aria/shared-types";
 import { LiveAvatar } from "./LiveAvatar";
 
-// Dev-only avatar harness — lazy + DEV-gated (import.meta.env.DEV) so it's code-split
-// and its sample-avatar CDN URL is not reachable from a production bundle (review 2026-06-22).
-const AvatarDemo: ComponentType | null = import.meta.env.DEV
-  ? lazy(() => import("./avatar/AvatarDemo").then((m) => ({ default: m.AvatarDemo })))
+// Avatar character-maker (pick a preset face, no upload). Lazy + DEV-gated
+// (import.meta.env.DEV) for now so the dev sample-avatar CDN URLs aren't in the prod
+// bundle; un-gate once the avatars are self-hosted from R2 (security review 2026-06-22).
+const CharacterMaker: ComponentType | null = import.meta.env.DEV
+  ? lazy(() => import("./avatar/CharacterMaker").then((m) => ({ default: m.CharacterMaker })))
   : null;
 
 interface Msg {
@@ -66,13 +67,13 @@ export function App() {
         <button onClick={() => setView("chat")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "chat" ? "#C9A84C" : "#111827", color: view === "chat" ? "#111827" : "white", fontWeight: 600 }}>Chat</button>
         <button onClick={() => setView("avatar")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "avatar" ? "#C9A84C" : "#111827", color: view === "avatar" ? "#111827" : "white", fontWeight: 600 }}>Avatar (sandbox)</button>
         {import.meta.env.DEV && (
-          <button onClick={() => setView("avatar3d")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "avatar3d" ? "#C9A84C" : "#111827", color: view === "avatar3d" ? "#111827" : "white", fontWeight: 600 }}>Avatar (3D)</button>
+          <button onClick={() => setView("avatar3d")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "avatar3d" ? "#C9A84C" : "#111827", color: view === "avatar3d" ? "#111827" : "white", fontWeight: 600 }}>Create Aria</button>
         )}
       </div>
       {view === "avatar" && <LiveAvatar />}
-      {import.meta.env.DEV && AvatarDemo && view === "avatar3d" && (
+      {import.meta.env.DEV && CharacterMaker && view === "avatar3d" && (
         <Suspense fallback={null}>
-          <AvatarDemo />
+          <CharacterMaker />
         </Suspense>
       )}
       {view === "chat" && (
