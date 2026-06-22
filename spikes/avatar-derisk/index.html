@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Aria avatar render de-risk — Avaturn T2 + TalkingHead</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0A1628; color: #fff; font-family: Arial, sans-serif; }
+    #avatar { position: absolute; inset: 0; }
+    #hud { position: absolute; top: 14px; left: 14px; z-index: 10; font-size: 22px;
+           background: rgba(10,22,40,.6); padding: 8px 14px; border-radius: 10px; }
+    #hud b { color: #C9A84C; }
+    #status { position: absolute; bottom: 14px; left: 14px; z-index: 10; font-size: 16px; color: #9fb2c8; }
+  </style>
+
+  <!-- TalkingHead minimal API, verified from met4citizen/TalkingHead@1.7 examples/minimal.html.
+       three + talkinghead pulled from jsDelivr; avatar is the bundled AVATURN sample GLB
+       (the RPM demo URLs in the upstream examples are dead — RPM shut down 2026-01-31). -->
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+      "talkinghead": "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.7/modules/talkinghead.mjs"
+  } }
+  </script>
+
+  <script type="module">
+    import { TalkingHead } from "talkinghead";
+
+    // De-risk goals (Phase 2 body): prove (1) an AVATURN T2 GLB renders in-browser via
+    // TalkingHead, (2) the psyche's emotion drives the FACE (setMood), (3) the mouth
+    // lip-syncs. Final art = our hand-built Avaturn library; this proves the pipeline.
+    // Served locally (downloaded from the repo's @main avatars/ — the @1.7 tag predates it).
+    const AVATURN_SAMPLE = "./avaturn.glb";
+
+    // Psyche EmotionKey -> TalkingHead mood. The thin mapping layer the real AvatarDriver
+    // will own. TalkingHead moods: neutral|happy|angry|sad|fear|disgust|love|sleep.
+    const PSYCHE_TO_MOOD = {
+      neutral: "neutral", caring: "love", loving: "love", comforting: "love",
+      happy: "happy", proud: "happy", playful: "happy", curious: "happy",
+      sad: "sad", concerned: "sad", thoughtful: "neutral", shy: "neutral",
+    };
+
+    window.AVATAR_STATUS = "loading";
+    let head;
+    const hud = () => document.getElementById("hud");
+    const setStatus = (s) => { window.AVATAR_STATUS = s; const n = document.getElementById("status"); if (n) n.textContent = s; };
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      try {
+        head = new TalkingHead(document.getElementById("avatar"), {
+          // No ttsApikey: we drive emotion (key-free) now; Cartesia TTS lip-sync wires next.
+          ttsEndpoint: "https://eu-texttospeech.googleapis.com/v1beta1/text:synthesize",
+          lipsyncModules: ["en"],
+          cameraView: "upper",
+          modelPixelRatio: 1,
+        });
+
+        setStatus("loading avatar (Avaturn sample GLB) …");
+        await head.showAvatar({
+          url: AVATURN_SAMPLE,
+          body: "F",
+          avatarMood: "neutral",
+          lipsyncLang: "en",
+        }, (ev) => { if (ev.lengthComputable) setStatus("loading " + Math.round(ev.loaded / ev.total * 100) + "%"); });
+
+        document.getElementById("mood").textContent = "neutral";
+        setStatus("ready");
+        window.AVATAR_STATUS = "ready";
+
+        // Drive the FACE from a psyche emotion label (this is the whole point).
+        window.setAriaEmotion = (emotion) => {
+          const mood = PSYCHE_TO_MOOD[emotion] ?? "neutral";
+          head.setMood(mood);
+          document.getElementById("mood").textContent = `${emotion} → ${mood}`;
+          return mood;
+        };
+
+        // Mouth/lip-sync proof WITHOUT a TTS key: synthesize a short silent buffer +
+        // fake word timings; TalkingHead generates visemes from the words and animates
+        // the mouth in sync. Proves the viseme→blendshape→mouth path (real audio = Cartesia next).
+        window.testLipsync = () => {
+          const words = ["hi", "there", "how", "are", "you", "today"];
+          const dur = 320; // ms per word
+          const total = words.length * dur;
+          const buf = head.audioCtx.createBuffer(1, Math.ceil(head.audioCtx.sampleRate * total / 1000), head.audioCtx.sampleRate);
+          const audio = { audio: buf, words, wtimes: words.map((_, i) => i * dur), wdurations: words.map(() => dur * 0.9), markers: [], mtimes: [] };
+          head.speakAudio(audio);
+          return "speaking " + total + "ms";
+        };
+      } catch (err) {
+        console.error(err);
+        setStatus("error: " + (err && err.message ? err.message : String(err)));
+        window.AVATAR_STATUS = "error";
+      }
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (!head) return;
+      document.visibilityState === "visible" ? head.start() : head.stop();
+    });
+  </script>
+</head>
+<body>
+  <div id="avatar"></div>
+  <div id="hud">Aria de-risk · mood: <b id="mood">—</b></div>
+  <div id="status">init…</div>
+</body>
+</html>
