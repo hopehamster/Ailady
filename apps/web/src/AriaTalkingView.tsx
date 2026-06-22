@@ -29,6 +29,10 @@ export function AriaTalkingView() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [busy, setBusy] = useState(false);
   const [glbUrl, setGlbUrl] = useState<string | null>(null);
+  // Test hook: reflects the last reply's emotion in the DOM (head.setMood is otherwise
+  // DOM-invisible). Set UNCONDITIONALLY on reply so the emote assertion is independent of
+  // whether the avatar GLB loaded. Read via [data-aria-emotion].
+  const [lastEmotion, setLastEmotion] = useState<string>("neutral");
   const driverRef = useRef<AvatarDriver | null>(null);
 
   // Load the chosen face — the same preset "Create Aria" persists, so the face carries over.
@@ -83,11 +87,15 @@ export function AriaTalkingView() {
 
       const reply = data.response ?? "(no reply)";
       setMsgs((m) => [...m, { who: "aria", text: reply }]);
+      setLastEmotion(data.emotion ?? "neutral"); // test hook — independent of avatar load
 
       // Mind ↔ body: set the sustained mood first (persists during speech), then speak.
       const driver = driverRef.current;
       if (driver) {
         driver.setEmotion(data.emotion);
+        // Defensive: resume right before speak too (not only at gesture start) — the avatar
+        // may have loaded after the gesture, leaving the context suspended.
+        if (driver.audioContext?.state === "suspended") void driver.audioContext.resume();
         const timed = await synthesizeSpeech(reply, driver);
         if (timed) await driver.speak(timed);
       }
@@ -119,7 +127,7 @@ export function AriaTalkingView() {
         </div>
       )}
 
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+      <div data-aria-emotion={lastEmotion} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
         {msgs.map((m, i) => (
           <div
             key={i}

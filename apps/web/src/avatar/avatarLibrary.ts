@@ -9,12 +9,13 @@ export interface AvatarPreset {
   glbUrl: string;
 }
 
-// SHA-pinned (immutable) sample avatars from the TalkingHead repo — DEV placeholders to
-// prove the picker UX with distinct faces. PROD replaces these with our hand-built
-// Avaturn T2 library of preset AI-generated faces, served from R2 via loadAvatarLibrary().
-const SAMPLE_SHA = "eed58d198076a7e1e825f804802921c4d3804d46";
-const sample = (file: string) =>
-  `https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@${SAMPLE_SHA}/avatars/${file}.glb`;
+// Sample avatars SELF-HOSTED from apps/web/public/avatars/ (gitignored; downloaded once
+// from the TalkingHead repo via ~/.claude/tools/cloakbrowser/download-glbs.mjs). Local serve
+// = instant + reliable load (the 13.8MB jsDelivr fetch stalls on cold/headless profiles,
+// which flaked the avatar in tests). DEV placeholders; PROD replaces with our hand-built
+// Avaturn T2 library served from R2 via loadAvatarLibrary(). The avatar is DEV-gated in the
+// UI, so these local paths never ship to prod.
+const sample = (file: string) => `/avatars/${file}.glb`;
 
 const DEV_PRESETS: AvatarPreset[] = [
   { id: "ava", name: "Ava", glbUrl: sample("avaturn") },

@@ -5,9 +5,13 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Bind IPv4 explicitly. On this Windows host "localhost" resolved to ::1, so Vite
+    // bound IPv6-only and the headless browser (which tries 127.0.0.1 first) hung. Pin it.
+    host: "127.0.0.1",
     port: 5173,
+    strictPort: true,
     proxy: {
-      "/api": "http://localhost:8787",
+      "/api": "http://127.0.0.1:8787",
     },
   },
 });

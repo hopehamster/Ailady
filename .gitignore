@@ -26,6 +26,12 @@ node_modules/
 apps/*/dist/
 packages/*/dist/
 apps/web/dist/
+# self-hosted sample avatar GLBs (30MB; downloaded via cloakbrowser/download-glbs.mjs) — don't bloat git
+apps/web/public/avatars/
+# Playwright artifacts
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
 apps/worker/.wrangler/
 # wrangler local secrets (DeepSeek/openrouter keys for `wrangler dev`) — NEVER commit
 **/.dev.vars
