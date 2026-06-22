@@ -236,6 +236,7 @@ export default {
         ctx.waitUntil(
           indexSemanticMemoryForTurn(
             uid,
+            turnId,
             body.message,
             ai.content,
             extracted.scoring.topics,
@@ -256,7 +257,9 @@ export default {
         return json(res);
       } catch (err) {
         console.error("chat turn failed", { error: String(err) });
-        return json({ success: false, error: "brain_error", detail: String(err) }, 500);
+        // Don't echo the raw error to the client — it can carry internal URLs/keys.
+        // The full error is in the server log above.
+        return json({ success: false, error: "brain_error" }, 500);
       }
     }
 
@@ -306,7 +309,7 @@ export default {
         });
       } catch (err) {
         console.error("avatar session failed", { error: String(err) });
-        return json({ success: false, error: "avatar_error", detail: String(err) }, 500);
+        return json({ success: false, error: "avatar_error" }, 500);
       }
     }
 
