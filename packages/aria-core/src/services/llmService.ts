@@ -451,23 +451,22 @@ const PERSONA_AUDIT_SAMPLE_RATE = (() => {
 })();
 const MODEL_EMOTION_ANALYSIS_ENABLED =
   (process.env.MODEL_EMOTION_ANALYSIS_ENABLED ?? 'false').toLowerCase() === 'true';
-// Psyche P2 — ego arbiter compute + adherence probe. Default OFF; even when ON
-// it only computes + logs (applyEgoBias stays a no-op until P3), so the reply is
-// byte-identical. The probe is the decision gate: does the renderer honor the plan?
-const PSYCHE_ARBITER_ENABLED =
-  (process.env.PSYCHE_ARBITER_ENABLED ?? 'false').toLowerCase() === 'true';
-// Psyche P3 — apply the ego directive's scalar bias to the plan (after humanity
-// biases, before the depth gate). Default OFF; meaningful only with
-// PSYCHE_ARBITER_ENABLED (the directive source). OFF -> applyEgoBias never
-// called -> byte-identical. The stage-capped disclosure ceiling is the guard.
-const PSYCHE_PLAN_BIAS_ENABLED =
-  (process.env.PSYCHE_PLAN_BIAS_ENABLED ?? 'false').toLowerCase() === 'true';
-// Psyche P4 — thread the ego directive's intendedEmotion forward: a 1-line tone
-// hint in the text prompt (so the words match the felt tone) + the avatar emotion
-// (prefer it over the post-hoc model call). Default OFF; needs PSYCHE_ARBITER_ENABLED.
-// OFF -> intendedEmotion undefined at both call sites -> byte-identical.
-const PSYCHE_EMOTION_FORWARD_ENABLED =
-  (process.env.PSYCHE_EMOTION_FORWARD_ENABLED ?? 'false').toLowerCase() === 'true';
+// Psyche flags — read FUNCTION-TIME from process.env (NOT module-eval consts), so
+// the Worker's bridgeEnv (which runs per-request, before the brain logic) can flip
+// them. Default OFF -> the gated code never runs -> byte-identical reply.
+// P2 (arbiter compute + adherence probe): the decision gate — does the renderer
+// honor the plan? P3 (plan bias): apply the directive's scalar bias after humanity
+// biases, before the depth gate; the stage-capped disclosure ceiling is the guard.
+// P4 (emotion forward): thread intendedEmotion into the text + avatar.
+function psycheArbiterEnabled(): boolean {
+  return (process.env.PSYCHE_ARBITER_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+function psychePlanBiasEnabled(): boolean {
+  return (process.env.PSYCHE_PLAN_BIAS_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+function psycheEmotionForwardEnabled(): boolean {
+  return (process.env.PSYCHE_EMOTION_FORWARD_ENABLED ?? 'false').toLowerCase() === 'true';
+}
 const ANTHROPIC_PRIMARY_ENABLED =
   // PHASE-0 decouple: default OFF so the OPENAI_COMPAT provider is primary (not
   // Anthropic). Set env to 'true' once an Anthropic key is configured.
@@ -2577,7 +2576,7 @@ export async function generateAIResponse(
       avgSentimentScore,
     );
     let egoDirective: EgoDirective | null = null;
-    if (PSYCHE_ARBITER_ENABLED && memory?.driveState && memory?.egoState) {
+    if (psycheArbiterEnabled() && memory?.driveState && memory?.egoState) {
       egoDirective = arbitrate({
         driveState: memory.driveState,
         egoState: memory.egoState,
@@ -2612,7 +2611,7 @@ export async function generateAIResponse(
     // the depth gate (which still caps unearned escalation). Flag-gated; OFF ->
     // never called -> byte-identical. The stage-capped disclosure ceiling inside
     // applyEgoBias is the BL-3 safety guard for the self-directed Recognition drive.
-    if (PSYCHE_PLAN_BIAS_ENABLED && egoDirective) {
+    if (psychePlanBiasEnabled() && egoDirective) {
       socialPlanning.plan = applyEgoBias(socialPlanning.plan, egoDirective, { stage: turnStage });
     }
 
@@ -2689,7 +2688,7 @@ export async function generateAIResponse(
         stage: turnStage,
       },
       intendedEmotion:
-        PSYCHE_EMOTION_FORWARD_ENABLED && egoDirective ? egoDirective.intendedEmotion : undefined,
+        psycheEmotionForwardEnabled() && egoDirective ? egoDirective.intendedEmotion : undefined,
     });
 
     const generationTokens = fastTurnPath
@@ -3032,7 +3031,7 @@ export async function generateAIResponse(
     // Psyche P2 — adherence probe (the decision gate). Scores whether the
     // rendered reply honored the injected plan (question budget, length) + logs
     // the psyche trace. No behavior change; best-effort (never blocks the turn).
-    if (PSYCHE_ARBITER_ENABLED && egoDirective) {
+    if (psycheArbiterEnabled() && egoDirective) {
       try {
         const loopId = egoDirective.pursueOpenLoopId;
         const pursuedTopic = loopId
@@ -3095,7 +3094,7 @@ export async function generateAIResponse(
       skippedAgents,
       modelEmotionAnalysisEnabled: MODEL_EMOTION_ANALYSIS_ENABLED,
       intendedEmotion:
-        PSYCHE_EMOTION_FORWARD_ENABLED && egoDirective
+        psycheEmotionForwardEnabled() && egoDirective
           ? { emotion: egoDirective.intendedEmotion, emotionIntensity: egoDirective.intendedEmotionIntensity }
           : undefined,
       shadowBenchmarkEnabled: SHADOW_BENCHMARK_ENABLED,

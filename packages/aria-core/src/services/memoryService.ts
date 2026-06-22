@@ -44,8 +44,11 @@ import { scanUserInput, scanModelOutput, maxSeverity } from './promptInjectionGu
 // Psyche foundation (Phase P1) — flag-gated, default OFF so production is
 // byte-identical: when OFF, driveState/egoState are never read, written, or
 // migrated, and the Aria-commitment open-loop hook never runs.
-const PSYCHE_FOUNDATION_ENABLED =
-  (process.env.PSYCHE_FOUNDATION_ENABLED ?? 'false').toLowerCase() === 'true';
+// Read FUNCTION-TIME from process.env (not a module-eval const) so the Worker's
+// per-request bridgeEnv can flip it. Default OFF -> drive/ego state never accrues.
+function psycheFoundationEnabled(): boolean {
+  return (process.env.PSYCHE_FOUNDATION_ENABLED ?? 'false').toLowerCase() === 'true';
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 1d — semantic long-term memory: Gemini embeddings (3072-dim, normalized)
@@ -2024,7 +2027,7 @@ export function applyTurnToMemory(
 
   // Psyche foundation (P1) — flag-gated, silent. G1 affect→loop hook on Aria's
   // own output, then drive/ego accrual. Off in 1b unless the flag is flipped.
-  if (PSYCHE_FOUNDATION_ENABLED) {
+  if (psycheFoundationEnabled()) {
     memory.openLoops = extractAriaCommitmentLoops(aiResponse, memory.openLoops, nowMs);
     migratePsycheFoundation(memory, nowMs);
     const perception = buildDrivePerception({
@@ -2150,7 +2153,7 @@ export function createEmptyIntelligentMemory(
     chronology: defaultChronologyState(),
     lastUpdated: nowMs,
   };
-  if (PSYCHE_FOUNDATION_ENABLED) {
+  if (psycheFoundationEnabled()) {
     migratePsycheFoundation(memory, nowMs);
   }
   return memory;
