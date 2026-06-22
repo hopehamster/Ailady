@@ -1605,12 +1605,16 @@ async function bootstrapConversationRuntime(
   userId: string,
   userEnvCtx?: UserEnvironmentContext,
   featureSettings?: UserFeatureSettings,
+  injectedMemory?: IntelligentMemory | null,
 ): Promise<{
   memory: IntelligentMemory | null;
   runtimeSelfModel: CompanionRuntimeSelfModel;
 }> {
-  // PHASE-0 STUB: user-doc Firestore read removed; memory via stub-ported getIntelligentMemory (null in Phase 0).
-  const memory = await getIntelligentMemory(userId);
+  // Phase 1b: the Worker hydrates IntelligentMemory from D1 and injects it here.
+  // `undefined` (not passed) falls back to the getIntelligentMemory stub (null);
+  // `null` is an explicit "no stored memory yet" and skips the stub read.
+  const memory =
+    injectedMemory !== undefined ? injectedMemory : await getIntelligentMemory(userId);
   return {
     memory,
     runtimeSelfModel: buildDefaultRuntimeSelfModel(memory, userEnvCtx, featureSettings),
@@ -2142,6 +2146,12 @@ export async function generateAIResponse(
   userEnvCtx?: UserEnvironmentContext,
   featureSettings?: UserFeatureSettings,
   turnId?: string,
+  // Phase 1b — the single structured-memory READ seam. When the Worker hydrates
+  // a user's IntelligentMemory from D1 it passes it here; `bootstrapConversationRuntime`
+  // uses it instead of the (null) stub, un-stubbing the whole read path at once.
+  // `null` = a user with no stored memory yet (skips the stub); omitted = legacy
+  // behavior (falls back to the getIntelligentMemory stub → null).
+  injected?: { memory?: IntelligentMemory | null },
 ): Promise<AIResponse> {
   let modelUsed = getPrimaryModel();
   let usedGeminiFallback = false;
@@ -2198,7 +2208,7 @@ export async function generateAIResponse(
   try {
     const runtimeBootstrapStartedAt = Date.now();
     const runtimeBootstrap = userId
-      ? await bootstrapConversationRuntime(userId, userEnvCtx, featureSettings)
+      ? await bootstrapConversationRuntime(userId, userEnvCtx, featureSettings, injected?.memory)
       : {
           memory: null,
           runtimeSelfModel: buildDefaultRuntimeSelfModel(

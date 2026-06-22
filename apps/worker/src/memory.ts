@@ -4,8 +4,10 @@
 // recent history into the brain's `conversationHistory`. Richer structured
 // memory (facts/open-loops/drives) + Qdrant semantic recall land in 1b–1d.
 
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import type { ConversationMessage } from "@aria/aria-core";
+import { createEmptyIntelligentMemory } from "@aria/aria-core";
+import type { IntelligentMemory, ScoredMessage } from "@aria/shared-types";
 
 export interface TurnMeta {
   emotion?: string;
@@ -48,23 +50,29 @@ export async function getRecentTurns(
     .map((r) => ({ role: r.role === "assistant" ? "assistant" : "user", content: r.content }));
 }
 
-/** Append one turn to the conversation log. */
-export async function persistTurn(
+/**
+ * Build one chat_turns INSERT as a prepared statement (not run). `id` is the
+ * row id — pass a deterministic id (e.g. `${turnId}_user`) so a retried turn is
+ * idempotent (ON CONFLICT(id) DO NOTHING). Returned so callers can batch it
+ * atomically with the memory write.
+ */
+function chatTurnStatement(
   db: D1Database,
+  id: string,
   uid: string,
   role: "user" | "assistant",
   content: string,
   nowMs: number,
   meta: TurnMeta = {},
-): Promise<void> {
-  await db
+): D1PreparedStatement {
+  return db
     .prepare(
       "INSERT INTO chat_turns " +
         "(id, uid, role, content, emotion, emotion_trigger, emotion_intensity, model_used, importance, created_at_ms) " +
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
     )
     .bind(
-      crypto.randomUUID(),
+      id,
       uid,
       role,
       content,
@@ -74,6 +82,282 @@ export async function persistTurn(
       meta.modelUsed ?? null,
       meta.importance ?? 0.4,
       nowMs,
+    );
+}
+
+/** Append one turn to the conversation log. `id` defaults to a fresh uuid; pass
+ * a deterministic id for idempotency. Used by the crisis short-circuit path
+ * (which doesn't touch structured memory). */
+export async function persistTurn(
+  db: D1Database,
+  uid: string,
+  role: "user" | "assistant",
+  content: string,
+  nowMs: number,
+  meta: TurnMeta = {},
+  id: string = crypto.randomUUID(),
+): Promise<void> {
+  await chatTurnStatement(db, id, uid, role, content, nowMs, meta).run();
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 1b — structured long-term memory (the IntelligentMemory fat-doc).
+// The Worker owns D1 I/O; aria-core owns the pure per-turn transform
+// (applyTurnToMemory) + the empty-memory builder. Schema: one intelligent_memory
+// row of JSON columns per uid (read/written whole) + a scored_messages child
+// table (append-only). Vectors are NOT here — semantic embeddings go to Qdrant
+// (Phase 1d). See migrations/0002_intelligent_memory.sql.
+// ───────────────────────────────────────────────────────────────────────────
+
+// Hydrate budgets. The scored-message pool blends RECENT (continuity) with
+// HIGH-IMPORTANCE (salient/safety recall) — per RAG Ch.7 importance-weighted
+// retention, so an old salient fact is not lost below a recency window. The
+// in-memory retrieval (getRecentContextMessages: "last N + top-K by importance")
+// then re-ranks this pool. STORE_CAP bounds the append-only child table.
+const HYDRATE_RECENT = 1500;
+const HYDRATE_IMPORTANT = 1500;
+const SCORED_MESSAGE_STORE_CAP = 6000;
+
+/** Lenient JSON column parse — malformed/empty -> undefined. */
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string" || value.length === 0) return undefined;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Parse an object column, returning it only if it is a POPULATED plain object.
+ * Guards the `obj || default()` pattern in applyTurnToMemory: an empty `{}` is
+ * truthy and would slip past that guard into NaN math, so empty/array/scalar ->
+ * undefined and the caller substitutes a shape-valid default. */
+function parseObject(value: unknown): Record<string, unknown> | undefined {
+  const parsed = parseJson(value);
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    Object.keys(parsed as object).length > 0
+  ) {
+    return parsed as Record<string, unknown>;
+  }
+  return undefined;
+}
+
+/**
+ * Hydrate the IntelligentMemory for a user from D1 (fat-doc row + scored-message
+ * child rows), in one batched read. Returns null when the user has no stored
+ * memory yet — the brain tolerates null, and the Worker bases the first turn's
+ * update on createEmptyIntelligentMemory(). Object columns fall back to canonical
+ * shape-valid defaults (never bare `{}`) so a malformed column can't corrupt the
+ * relational state into NaN.
+ */
+export async function compileIntelligentMemory(
+  db: D1Database,
+  uid: string,
+): Promise<IntelligentMemory | null> {
+  const rowStmt = db
+    .prepare(
+      "SELECT core_facts_json, emotional_moments_json, conversation_summaries_json, " +
+        "recent_context_json, open_loops_json, pacing_profile_json, session_arc_json, " +
+        "proactive_config_json, style_profile_json, persona_consistency_json, " +
+        "quality_snapshots_json, weekly_tuning_reports_json, shadow_benchmark_json, " +
+        "behavior_counters_json, open_loop_health_json, chronology_json, " +
+        "drive_state_json, ego_state_json, last_updated " +
+        "FROM intelligent_memory WHERE uid = ?",
     )
-    .run();
+    .bind(uid);
+  // RECENT ∪ TOP-IMPORTANCE pool (uses idx_scored_messages_uid_importance), newest-first.
+  const scoredStmt = db
+    .prepare(
+      "SELECT id, role, content, timestamp, importance, topics_json " +
+        "FROM scored_messages WHERE uid = ? AND (" +
+        "  id IN (SELECT id FROM scored_messages WHERE uid = ? ORDER BY timestamp DESC LIMIT ?) OR " +
+        "  id IN (SELECT id FROM scored_messages WHERE uid = ? ORDER BY importance DESC, timestamp DESC LIMIT ?)" +
+        ") ORDER BY timestamp DESC",
+    )
+    .bind(uid, uid, HYDRATE_RECENT, uid, HYDRATE_IMPORTANT);
+
+  const [rowRes, scoredRes] = await db.batch<Record<string, unknown>>([rowStmt, scoredStmt]);
+  const row = (rowRes.results ?? [])[0];
+  if (!row) return null;
+
+  // DESC from D1 -> reverse to oldest-first (matches the in-memory append order).
+  const scoredMessages: ScoredMessage[] = (scoredRes.results ?? [])
+    .map((r): ScoredMessage => ({
+      id: String(r.id),
+      role: r.role === "assistant" ? "assistant" : "user",
+      content: String(r.content),
+      timestamp: Number(r.timestamp),
+      importance: Number(r.importance),
+      topics: (parseJson(r.topics_json) as string[] | undefined) ?? [],
+    }))
+    .reverse();
+
+  // Canonical defaults for any object column that is malformed/empty.
+  const fb = createEmptyIntelligentMemory(uid, Number(row.last_updated) || 0);
+  const obj = <K extends keyof IntelligentMemory>(value: unknown, key: K): IntelligentMemory[K] =>
+    (parseObject(value) as IntelligentMemory[K] | undefined) ?? fb[key];
+
+  const memory = {
+    userId: uid,
+    coreFacts: parseJson(row.core_facts_json) ?? [],
+    emotionalMoments: parseJson(row.emotional_moments_json) ?? [],
+    conversationSummaries: parseJson(row.conversation_summaries_json) ?? [],
+    recentContext: parseJson(row.recent_context_json) ?? [],
+    scoredMessages,
+    openLoops: parseJson(row.open_loops_json) ?? [],
+    pacingProfile: obj(row.pacing_profile_json, "pacingProfile"),
+    sessionArc: obj(row.session_arc_json, "sessionArc"),
+    proactiveConfig: obj(row.proactive_config_json, "proactiveConfig"),
+    styleProfile: obj(row.style_profile_json, "styleProfile"),
+    personaConsistency: obj(row.persona_consistency_json, "personaConsistency"),
+    qualitySnapshots: parseJson(row.quality_snapshots_json) ?? [],
+    weeklyTuningReports: parseJson(row.weekly_tuning_reports_json) ?? [],
+    shadowBenchmarkStats: obj(row.shadow_benchmark_json, "shadowBenchmarkStats"),
+    behaviorCounters: obj(row.behavior_counters_json, "behaviorCounters"),
+    openLoopHealth: obj(row.open_loop_health_json, "openLoopHealth"),
+    chronology: obj(row.chronology_json, "chronology"),
+    lastUpdated: Number(row.last_updated),
+  } as IntelligentMemory;
+
+  const driveState = parseJson(row.drive_state_json);
+  const egoState = parseJson(row.ego_state_json);
+  if (driveState) memory.driveState = driveState as IntelligentMemory["driveState"];
+  if (egoState) memory.egoState = egoState as IntelligentMemory["egoState"];
+  return memory;
+}
+
+/**
+ * Build the IntelligentMemory write as prepared statements (not run): the fat-doc
+ * UPSERT (last-write-wins, full-document) + an append of ONLY this turn's new
+ * scored messages (never the ~3000-row rewrite) + a capping DELETE that bounds
+ * the append-only child table to the top SCORED_MESSAGE_STORE_CAP by
+ * (importance, recency). Returned so the caller batches them atomically with the
+ * chat_turns inserts (one D1 batch = one transaction → no torn write).
+ */
+function buildMemoryStatements(
+  db: D1Database,
+  uid: string,
+  memory: IntelligentMemory,
+  newScored: ScoredMessage[],
+): D1PreparedStatement[] {
+  const j = (v: unknown): string => JSON.stringify(v ?? null);
+  const upsert = db
+    .prepare(
+      "INSERT INTO intelligent_memory (uid, core_facts_json, emotional_moments_json, " +
+        "conversation_summaries_json, recent_context_json, open_loops_json, " +
+        "pacing_profile_json, session_arc_json, proactive_config_json, style_profile_json, " +
+        "persona_consistency_json, quality_snapshots_json, weekly_tuning_reports_json, " +
+        "shadow_benchmark_json, behavior_counters_json, open_loop_health_json, " +
+        "chronology_json, drive_state_json, ego_state_json, last_updated) " +
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) " +
+        "ON CONFLICT(uid) DO UPDATE SET " +
+        "core_facts_json=excluded.core_facts_json, " +
+        "emotional_moments_json=excluded.emotional_moments_json, " +
+        "conversation_summaries_json=excluded.conversation_summaries_json, " +
+        "recent_context_json=excluded.recent_context_json, " +
+        "open_loops_json=excluded.open_loops_json, " +
+        "pacing_profile_json=excluded.pacing_profile_json, " +
+        "session_arc_json=excluded.session_arc_json, " +
+        "proactive_config_json=excluded.proactive_config_json, " +
+        "style_profile_json=excluded.style_profile_json, " +
+        "persona_consistency_json=excluded.persona_consistency_json, " +
+        "quality_snapshots_json=excluded.quality_snapshots_json, " +
+        "weekly_tuning_reports_json=excluded.weekly_tuning_reports_json, " +
+        "shadow_benchmark_json=excluded.shadow_benchmark_json, " +
+        "behavior_counters_json=excluded.behavior_counters_json, " +
+        "open_loop_health_json=excluded.open_loop_health_json, " +
+        "chronology_json=excluded.chronology_json, " +
+        "drive_state_json=excluded.drive_state_json, " +
+        "ego_state_json=excluded.ego_state_json, " +
+        "last_updated=excluded.last_updated",
+    )
+    .bind(
+      uid,
+      j(memory.coreFacts),
+      j(memory.emotionalMoments),
+      j(memory.conversationSummaries),
+      j(memory.recentContext),
+      j(memory.openLoops),
+      j(memory.pacingProfile),
+      j(memory.sessionArc),
+      j(memory.proactiveConfig),
+      j(memory.styleProfile),
+      j(memory.personaConsistency),
+      j(memory.qualitySnapshots),
+      j(memory.weeklyTuningReports),
+      j(memory.shadowBenchmarkStats),
+      j(memory.behaviorCounters),
+      j(memory.openLoopHealth),
+      j(memory.chronology),
+      memory.driveState ? JSON.stringify(memory.driveState) : null,
+      memory.egoState ? JSON.stringify(memory.egoState) : null,
+      memory.lastUpdated,
+    );
+
+  const statements: D1PreparedStatement[] = [upsert];
+  for (const m of newScored) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO scored_messages (id, uid, role, content, timestamp, importance, topics_json) " +
+            "VALUES (?,?,?,?,?,?,?) " +
+            "ON CONFLICT(id) DO UPDATE SET importance=excluded.importance, topics_json=excluded.topics_json",
+        )
+        .bind(m.id, uid, m.role, m.content, m.timestamp, m.importance, JSON.stringify(m.topics ?? [])),
+    );
+  }
+  // Bound the append-only store (runs AFTER the appends so this turn's rows count).
+  statements.push(
+    db
+      .prepare(
+        "DELETE FROM scored_messages WHERE uid = ? AND id NOT IN (" +
+          "SELECT id FROM scored_messages WHERE uid = ? ORDER BY importance DESC, timestamp DESC LIMIT ?)",
+      )
+      .bind(uid, uid, SCORED_MESSAGE_STORE_CAP),
+  );
+  return statements;
+}
+
+export interface TurnPersistInput {
+  /** Per-turn id — seeds the chat_turns + scored_messages ids for idempotency. */
+  turnId: string;
+  userMessage: string;
+  aiResponse: string;
+  nowMs: number;
+  userMeta?: TurnMeta;
+  assistantMeta?: TurnMeta;
+  memory: IntelligentMemory;
+  /** This turn's new scored messages (from applyTurnToMemory). */
+  newScored: ScoredMessage[];
+}
+
+/**
+ * Persist a whole turn ATOMICALLY: both chat_turns rows + the intelligent_memory
+ * upsert + scored-message appends + the capping DELETE run in ONE D1 batch (a
+ * single transaction). Either the whole turn commits or none of it does — the
+ * authoritative log and the memory projection can never desync. Deterministic
+ * ids (`${turnId}_user` / `${turnId}_assistant`) make a retried turn idempotent.
+ */
+export async function persistTurnAndMemory(
+  db: D1Database,
+  uid: string,
+  input: TurnPersistInput,
+): Promise<void> {
+  const statements: D1PreparedStatement[] = [
+    chatTurnStatement(db, `${input.turnId}_user`, uid, "user", input.userMessage, input.nowMs, input.userMeta),
+    chatTurnStatement(
+      db,
+      `${input.turnId}_assistant`,
+      uid,
+      "assistant",
+      input.aiResponse,
+      input.nowMs + 1,
+      input.assistantMeta,
+    ),
+    ...buildMemoryStatements(db, uid, input.memory, input.newScored),
+  ];
+  await db.batch(statements);
 }

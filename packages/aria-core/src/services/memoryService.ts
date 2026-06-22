@@ -1281,9 +1281,10 @@ async function scoreMessageImportance(
  */
 function applyImportanceDecay(
   baseImportance: number,
-  timestamp: number
+  timestamp: number,
+  nowMs: number = Date.now(),
 ): number {
-  const now = Date.now();
+  const now = nowMs;
   const messageTime = timestamp;
   const daysSinceMessage = (now - messageTime) / (1000 * 60 * 60 * 24);
 
@@ -1523,14 +1524,260 @@ export async function updateIntelligentMemory(
   return;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 1b — structured long-term memory: the PURE per-turn update + the
+// empty-memory builder. The Worker owns load/save (compile/persist against D1);
+// these two pure functions are aria-core's contribution. No Firestore, no model
+// calls, no embeddings — the legacy `updateIntelligentMemory` minus its I/O.
+// Canon: Huyen §5.3 (long-term store, separate from short-term history) + the
+// 4-type memory note (this is the deterministic procedural/episodic accrual;
+// the semantic-vector half is Phase 1d).
+// ───────────────────────────────────────────────────────────────────────────
+
+/** Importance scoring for a turn. Phase 1c injects real values; 1b uses defaults. */
+export interface TurnScoring {
+  userImportance: number;
+  aiImportance: number;
+  topics: string[];
+}
+
+/** Model-extracted memory for a turn. Phase 1c fills these; 1b passes none. */
+export interface TurnExtraction {
+  coreFacts?: CoreFact[];
+  emotionalMoment?: EmotionalMoment | null;
+}
+
+export interface ApplyTurnInput {
+  /** Per-turn id (the Worker's turn uuid) — seeds the two ScoredMessage ids. */
+  turnId: string;
+  userMessage: string;
+  aiResponse: string;
+  /** Single clock for the whole turn (epoch-ms). */
+  nowMs: number;
+  meta?: MemoryUpdateMeta;
+  scoring?: TurnScoring;
+  extraction?: TurnExtraction;
+}
+
+// Neutral importance until Phase 1c wires the scoring model: mid-low so the turn
+// is retained but never outranks genuinely-salient facts in importance recall
+// (RAG Ch.7 — importance-weighted retention; safety facts must outrank trivia).
+const DEFAULT_TURN_SCORING: TurnScoring = {
+  userImportance: 0.4,
+  aiImportance: 0.4,
+  topics: [],
+};
+
+/**
+ * Apply one conversational turn to the structured memory. PURE: clones `base`,
+ * never mutates it; returns the updated memory. Mirrors the legacy
+ * `updateIntelligentMemory` chain (pacing → session arc → open loops → psyche →
+ * chronology → open-loop health → style → persona → quality → recent context →
+ * injected extraction), minus: the persistence/model/embedding steps, AND the
+ * legacy weekly-tuning block (which only fired on a qualitySnapshot the web build
+ * does not yet supply — a no-op here; port it explicitly if web ever wants it).
+ */
+export function applyTurnToMemory(
+  base: IntelligentMemory,
+  turn: ApplyTurnInput,
+): IntelligentMemory {
+  const { turnId, userMessage, aiResponse, nowMs, meta } = turn;
+
+  // Idempotent replay guard: if this turn's scored messages already exist in the
+  // base (a retried request with the same turnId after the first attempt already
+  // committed + was re-hydrated), the turn was applied — return it unchanged
+  // rather than double-stepping pacing / session-arc / psyche / recentContext.
+  if ((base.scoredMessages || []).some((m) => m.id === `${turnId}_user`)) {
+    return structuredClone(base);
+  }
+
+  const memory: IntelligentMemory = structuredClone(base);
+  const scoring = turn.scoring ?? DEFAULT_TURN_SCORING;
+
+  // 1–2 — scored messages (the importance-ranked retrieval pool). Deterministic
+  // ids from turnId so D1's append-only child table never duplicates a turn.
+  const userScoredMessage: ScoredMessage = {
+    id: `${turnId}_user`,
+    role: 'user',
+    content: userMessage,
+    timestamp: nowMs,
+    importance: scoring.userImportance,
+    topics: scoring.topics,
+  };
+  const aiScoredMessage: ScoredMessage = {
+    id: `${turnId}_ai`,
+    role: 'assistant',
+    content: aiResponse,
+    timestamp: nowMs,
+    importance: scoring.aiImportance,
+    topics: scoring.topics,
+  };
+  memory.scoredMessages = [
+    ...(memory.scoredMessages || []),
+    userScoredMessage,
+    aiScoredMessage,
+  ];
+  if (memory.scoredMessages.length > MAX_SCORED_MESSAGES) {
+    memory.scoredMessages = pruneAndDecayMessages(memory.scoredMessages, nowMs);
+  }
+
+  // 3 — layered social memory, every turn.
+  memory.pacingProfile = updatePacingProfile(
+    memory.pacingProfile || defaultPacingProfile(),
+    userMessage,
+  );
+  memory.sessionArc = updateSessionArcState(
+    memory.sessionArc || defaultSessionArc(),
+    userMessage,
+  );
+  const loopsBeforeTurn = memory.openLoops || [];
+  memory.openLoops = updateOpenLoops(loopsBeforeTurn, userMessage);
+
+  // Psyche foundation (P1) — flag-gated, silent. G1 affect→loop hook on Aria's
+  // own output, then drive/ego accrual. Off in 1b unless the flag is flipped.
+  if (PSYCHE_FOUNDATION_ENABLED) {
+    memory.openLoops = extractAriaCommitmentLoops(aiResponse, memory.openLoops, nowMs);
+    migratePsycheFoundation(memory, nowMs);
+    const perception = buildDrivePerception({
+      nowMs,
+      userMessage,
+      aiResponse,
+      userImportance: scoring.userImportance,
+      loopsBefore: loopsBeforeTurn,
+      loopsAfter: memory.openLoops,
+      activeGoalLoopId: memory.egoState?.activeGoal?.openLoopId ?? null,
+    });
+    const stepped = stepPsyche(
+      { driveState: memory.driveState as DriveState, egoState: memory.egoState as EgoState },
+      perception,
+    );
+    memory.driveState = stepped.driveState;
+    memory.egoState = stepped.egoState;
+  }
+
+  // Chronology.
+  memory.chronology = updateChronologyState(memory.chronology, userMessage, {
+    now: new Date(nowMs),
+    timeZoneOffsetMinutes: meta?.timeZoneOffsetMinutes,
+    timeZoneName: meta?.timeZoneName,
+  });
+
+  // Open-loop health (telemetry; staleness threshold = 14 days, per legacy).
+  const STALE_DAYS = 14;
+  const liveLoops = (memory.openLoops || []).filter((loop) => loop.status === 'open');
+  const staleCount = liveLoops.filter(
+    (loop) => nowMs - loop.lastMentionedAt > STALE_DAYS * 24 * 60 * 60 * 1000,
+  ).length;
+  const avgFreshness = liveLoops.length
+    ? liveLoops.reduce((sum, loop) => sum + (loop.freshnessScore || 0), 0) / liveLoops.length
+    : 0;
+  memory.openLoopHealth = {
+    openCount: liveLoops.length,
+    staleCount,
+    avgFreshness: clamp01(avgFreshness),
+  };
+
+  // Style + persona consistency.
+  memory.styleProfile = updateStyleProfileImplicit(
+    memory.styleProfile || defaultStyleProfile(),
+    userMessage,
+  );
+  memory.personaConsistency = updatePersonaConsistencyState(
+    memory.personaConsistency || defaultPersonaConsistency(),
+    meta,
+  );
+
+  // Quality snapshot (last 60).
+  if (meta?.qualitySnapshot) {
+    memory.qualitySnapshots = [
+      ...(memory.qualitySnapshots || []),
+      {
+        timestamp: nowMs,
+        engagement: clamp01(meta.qualitySnapshot.engagement),
+        empathy: clamp01(meta.qualitySnapshot.empathy),
+        safety: clamp01(meta.qualitySnapshot.safety),
+        novelty: clamp01(meta.qualitySnapshot.novelty),
+      },
+    ].slice(-60);
+  }
+  if (!memory.shadowBenchmarkStats) {
+    memory.shadowBenchmarkStats = defaultShadowBenchmarkStats();
+  }
+
+  // Rolling recent context (last 100 = 50 exchanges).
+  memory.recentContext = [
+    ...(memory.recentContext || []),
+    { role: 'user' as const, content: userMessage },
+    { role: 'assistant' as const, content: aiResponse },
+  ].slice(-100);
+
+  // Phase 1c — INJECTED extraction. 1b passes none; 1c fills these from the
+  // importance-gated model calls (core facts kept ≤100, emotional moments ≤50).
+  if (turn.extraction?.coreFacts && turn.extraction.coreFacts.length) {
+    memory.coreFacts = [
+      ...(memory.coreFacts || []),
+      ...turn.extraction.coreFacts,
+    ].slice(-100);
+  }
+  if (turn.extraction?.emotionalMoment) {
+    memory.emotionalMoments = [
+      ...(memory.emotionalMoments || []),
+      turn.extraction.emotionalMoment,
+    ].slice(-50);
+  }
+
+  memory.lastUpdated = nowMs;
+  return memory;
+}
+
+/**
+ * A fresh IntelligentMemory for a user with no stored row yet — the base the
+ * Worker hands to applyTurnToMemory on a user's first turn. Mirrors the legacy
+ * getIntelligentMemory first-use initializer (epoch-ms). Psyche fields stay
+ * absent unless PSYCHE_FOUNDATION_ENABLED, exactly as the legacy did.
+ */
+export function createEmptyIntelligentMemory(
+  userId: string,
+  nowMs: number,
+): IntelligentMemory {
+  const memory: IntelligentMemory = {
+    userId,
+    coreFacts: [],
+    emotionalMoments: [],
+    conversationSummaries: [],
+    recentContext: [],
+    scoredMessages: [],
+    openLoops: [],
+    pacingProfile: defaultPacingProfile(),
+    sessionArc: defaultSessionArc(),
+    proactiveConfig: defaultProactiveConfig(),
+    styleProfile: defaultStyleProfile(),
+    personaConsistency: defaultPersonaConsistency(),
+    qualitySnapshots: [],
+    weeklyTuningReports: [],
+    shadowBenchmarkStats: defaultShadowBenchmarkStats(),
+    behaviorCounters: defaultBehaviorCounters(),
+    openLoopHealth: defaultOpenLoopHealth(),
+    chronology: defaultChronologyState(),
+    lastUpdated: nowMs,
+  };
+  if (PSYCHE_FOUNDATION_ENABLED) {
+    migratePsycheFoundation(memory, nowMs);
+  }
+  return memory;
+}
+
 /**
  * Prune and decay messages - remove lowest importance messages when over limit
  */
-function pruneAndDecayMessages(messages: ScoredMessage[]): ScoredMessage[] {
-  // Apply decay to all messages
+function pruneAndDecayMessages(
+  messages: ScoredMessage[],
+  nowMs: number = Date.now(),
+): ScoredMessage[] {
+  // Apply decay to all messages (single-clock: caller threads the turn's nowMs).
   const decayedMessages = messages.map(msg => ({
     ...msg,
-    decayedImportance: applyImportanceDecay(msg.importance, msg.timestamp),
+    decayedImportance: applyImportanceDecay(msg.importance, msg.timestamp, nowMs),
   }));
 
   // Sort by decayed importance (keep highest)
@@ -1539,7 +1786,7 @@ function pruneAndDecayMessages(messages: ScoredMessage[]): ScoredMessage[] {
   );
 
   // Keep top messages up to limit, but always keep recent messages (last 100)
-  const recentCutoff = Date.now() - (7 * 24 * 60 * 60 * 1000); // Last 7 days
+  const recentCutoff = nowMs - (7 * 24 * 60 * 60 * 1000); // Last 7 days
   const recentMessages = decayedMessages.filter(
     m => m.timestamp > recentCutoff
   );

@@ -5,8 +5,16 @@ import {
   detectCrisis,
   CRISIS_RESOURCES,
   ARIA_CRISIS_REPLY,
+  applyTurnToMemory,
+  createEmptyIntelligentMemory,
 } from "@aria/aria-core";
-import { ensureUser, getRecentTurns, persistTurn } from "./memory";
+import {
+  ensureUser,
+  getRecentTurns,
+  persistTurn,
+  compileIntelligentMemory,
+  persistTurnAndMemory,
+} from "./memory";
 
 export interface Env {
   ENV: string;
@@ -35,6 +43,28 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json", ...CORS },
   });
+}
+
+/**
+ * Dev gate for the private endpoints. FAILS CLOSED: not dev -> 401 (real auth is
+ * Phase 3); DEV_SHARED_SECRET unset -> 503 (an unset secret must fail closed, not
+ * leave a zero-auth endpoint open); wrong/missing secret -> 403. Returns a
+ * Response when blocked, or null to proceed.
+ */
+function devGate(request: Request, env: Env): Response | null {
+  if (env.ENV !== "dev") {
+    return json({ success: false, error: "auth_required", detail: "real auth lands in Phase 3" }, 401);
+  }
+  if (!env.DEV_SHARED_SECRET) {
+    return json(
+      { success: false, error: "dev_secret_unset", detail: "set DEV_SHARED_SECRET so dev fails closed" },
+      503,
+    );
+  }
+  if (request.headers.get("x-dev-secret") !== env.DEV_SHARED_SECRET) {
+    return json({ success: false, error: "forbidden" }, 403);
+  }
+  return null;
 }
 
 /**
@@ -68,14 +98,9 @@ export default {
       // SECURITY (Phase 0/1): this endpoint derives uid from the x-dev-uid header
       // and defaults to a shared "dev-user" — an IDOR/cross-tenant pattern that is
       // ONLY acceptable for local single-developer dev. Real phone-OTP auth +
-      // server-derived uid land in Phase 3. FAIL CLOSED outside dev so this can
-      // never ship to a real deploy before auth exists.
-      if (env.ENV !== "dev") {
-        return json({ success: false, error: "auth_required", detail: "real auth lands in Phase 3" }, 401);
-      }
-      if (env.DEV_SHARED_SECRET && request.headers.get("x-dev-secret") !== env.DEV_SHARED_SECRET) {
-        return json({ success: false, error: "forbidden" }, 403);
-      }
+      // server-derived uid land in Phase 3. devGate fails closed before any work.
+      const blocked = devGate(request, env);
+      if (blocked) return blocked;
 
       let body: ChatRequest;
       try {
@@ -87,7 +112,10 @@ export default {
         return json({ success: false, error: "message_required" }, 400);
       }
 
-      const turnId = crypto.randomUUID();
+      // Accept a client idempotency key so a retried turn reuses the same id:
+      // chat_turns + scored_messages are ON CONFLICT idempotent and
+      // applyTurnToMemory replay-guards the fat-doc on the same turnId.
+      const turnId = request.headers.get("x-turn-id") || crypto.randomUUID();
       const nowMs = Date.now();
       // Phase 1a: per-user conversation memory. Real phone-OTP auth is Phase 3;
       // for dev the client may set x-dev-uid to keep separate conversations.
@@ -100,10 +128,11 @@ export default {
         const crisis = detectCrisis(body.message);
         if (crisis.severity !== "none" && crisis.category) {
           const resources = CRISIS_RESOURCES[crisis.category] ?? CRISIS_RESOURCES.severe_distress;
-          await persistTurn(env.DB, uid, "user", body.message, nowMs);
+          // Deterministic ids so a retried crisis turn is idempotent (no dup log rows).
+          await persistTurn(env.DB, uid, "user", body.message, nowMs, {}, `${turnId}_user`);
           await persistTurn(env.DB, uid, "assistant", ARIA_CRISIS_REPLY, nowMs + 1, {
             emotion: "concerned", emotionTrigger: "concerned", emotionIntensity: 0.6, modelUsed: "crisis-gate",
-          });
+          }, `${turnId}_assistant`);
           const res: ChatResponse = {
             success: true,
             messageId: turnId,
@@ -122,10 +151,12 @@ export default {
         }
 
         // 2) Real Aria turn. Hydrate recent conversation from D1 as the brain's
-        //    `conversationHistory` (read BEFORE persisting the current message).
-        //    memory stays null until 1b (the structured-memory hydration seam).
+        //    short-term `conversationHistory` (read BEFORE persisting the current
+        //    message), AND hydrate the structured long-term memory (Phase 1b) to
+        //    inject at the brain's single read seam (bootstrapConversationRuntime).
         bridgeEnv(env);
         const history = await getRecentTurns(env.DB, uid, 20);
+        const memory = await compileIntelligentMemory(env.DB, uid);
         const ai = await generateAIResponse(
           body.message,
           history,
@@ -136,13 +167,41 @@ export default {
           undefined, // userEnvCtx
           undefined, // featureSettings
           turnId,
+          { memory }, // Phase 1b — inject the hydrated long-term memory
         );
-        await persistTurn(env.DB, uid, "user", body.message, nowMs);
-        await persistTurn(env.DB, uid, "assistant", ai.content, nowMs + 1, {
-          emotion: ai.emotion,
-          emotionTrigger: ai.emotionTrigger,
-          emotionIntensity: ai.emotionIntensity,
-          modelUsed: ai.modelUsed,
+        // Phase 1b — apply this turn to structured memory (pure aria-core
+        // transform: pacing / open loops / chronology / style / persona / psyche;
+        // importance scoring + fact/emotion extraction land in Phase 1c), then
+        // persist the WHOLE turn atomically: both chat_turns rows + the memory
+        // upsert + scored append + capping DELETE in ONE D1 batch, so the
+        // conversation log and the memory projection can never desync.
+        const memoryBase = memory ?? createEmptyIntelligentMemory(uid, nowMs);
+        const updatedMemory = applyTurnToMemory(memoryBase, {
+          turnId,
+          userMessage: body.message,
+          aiResponse: ai.content,
+          nowMs,
+          meta: {
+            timeZoneOffsetMinutes: body.clientTime?.timeZoneOffsetMinutes,
+            timeZoneName: body.clientTime?.timeZoneName,
+          },
+        });
+        const newScored = updatedMemory.scoredMessages.filter(
+          (m) => m.id === `${turnId}_user` || m.id === `${turnId}_ai`,
+        );
+        await persistTurnAndMemory(env.DB, uid, {
+          turnId,
+          userMessage: body.message,
+          aiResponse: ai.content,
+          nowMs,
+          assistantMeta: {
+            emotion: ai.emotion,
+            emotionTrigger: ai.emotionTrigger,
+            emotionIntensity: ai.emotionIntensity,
+            modelUsed: ai.modelUsed,
+          },
+          memory: updatedMemory,
+          newScored,
         });
         const res: ChatResponse = {
           success: true,
@@ -164,13 +223,9 @@ export default {
     // returns ONLY browser-safe tokens (viewer LiveKit token + room URL + control WS).
     // The agent token + api key never reach the browser.
     if (url.pathname === "/api/avatar/session" && request.method === "POST") {
-      // Fail closed outside dev (this spends our LiveAvatar credits; not public).
-      if (env.ENV !== "dev") {
-        return json({ success: false, error: "auth_required", detail: "real auth lands in Phase 3" }, 401);
-      }
-      if (env.DEV_SHARED_SECRET && request.headers.get("x-dev-secret") !== env.DEV_SHARED_SECRET) {
-        return json({ success: false, error: "forbidden" }, 403);
-      }
+      // Fail closed (this spends our LiveAvatar credits; not public).
+      const blocked = devGate(request, env);
+      if (blocked) return blocked;
       if (!env.LIVEAVATAR_API_KEY) return json({ success: false, error: "avatar_not_configured" }, 503);
       try {
         const tokRes = await fetch("https://api.liveavatar.com/v1/sessions/token", {

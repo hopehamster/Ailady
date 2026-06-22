@@ -63,3 +63,15 @@ export type {
   CrisisSeverity,
   CrisisResource,
 } from "./crisis";
+
+// Phase 1b — structured long-term memory. aria-core owns the PURE per-turn
+// update + empty-memory builder; the Worker owns D1 load/save (compile/persist).
+export {
+  applyTurnToMemory,
+  createEmptyIntelligentMemory,
+} from "./services/memoryService";
+export type {
+  ApplyTurnInput,
+  TurnScoring,
+  TurnExtraction,
+} from "./services/memoryService";
