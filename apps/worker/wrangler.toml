@@ -16,6 +16,17 @@ ENV = "dev"
 OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
 OPENAI_COMPAT_MODEL = "deepseek-chat"
 
+# Phase 1e — psyche + safety toggles (default OFF; unset = off). The stage-capped
+# self-disclosure safety budget + manipulationGuard are verified by
+# packages/aria-core test/psyche-safety.test.ts and FIRE only when these are on.
+# Flip on (here for dev, or `wrangler secret put` for deploy) AFTER the P2 adherence
+# probe confirms the renderer honors injected intent. Set to "true" to enable:
+#   PSYCHE_FOUNDATION_ENABLED   — drive/ego state accrues in memory
+#   PSYCHE_ARBITER_ENABLED      — the ego arbiter computes the per-turn directive
+#   PSYCHE_PLAN_BIAS_ENABLED    — applyEgoBias biases the plan + the disclosure cap fires
+#   PSYCHE_EMOTION_FORWARD_ENABLED — intended-emotion forwarding to the avatar
+#   MANIPULATION_GUARD_ENABLED  — output veto on emotional dark patterns
+
 # Secrets — for `wrangler dev` put them in apps/worker/.dev.vars (gitignored);
 # for deploy use `wrangler secret put <NAME>`. NEVER commit:
 #   OPENAI_COMPAT_API_KEY  — the hosted-model API key

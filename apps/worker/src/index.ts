@@ -34,6 +34,15 @@ export interface Env {
   GEMINI_API_KEY?: string;
   QDRANT_URL?: string;
   QDRANT_API_KEY?: string;
+  /** Phase 1e — psyche + safety toggles (default OFF; the psyche budget is
+   * verified by test/psyche-safety.test.ts and fires only when these are on.
+   * Flip on after the P2 adherence probe validates the renderer honors intent.
+   * Read function-time by aria-core; bridged to process.env below. */
+  PSYCHE_FOUNDATION_ENABLED?: string;
+  PSYCHE_ARBITER_ENABLED?: string;
+  PSYCHE_PLAN_BIAS_ENABLED?: string;
+  PSYCHE_EMOTION_FORWARD_ENABLED?: string;
+  MANIPULATION_GUARD_ENABLED?: string;
 }
 
 // HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
@@ -97,6 +106,40 @@ function bridgeEnv(env: Env): void {
   if (env.GEMINI_API_KEY) p.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
   if (env.QDRANT_URL) p.env.QDRANT_URL = env.QDRANT_URL;
   if (env.QDRANT_API_KEY) p.env.QDRANT_API_KEY = env.QDRANT_API_KEY;
+  // Phase 1e — psyche + safety toggles (only passed through when explicitly set,
+  // so unset stays default-OFF and production is byte-identical).
+  for (const k of [
+    "PSYCHE_FOUNDATION_ENABLED",
+    "PSYCHE_ARBITER_ENABLED",
+    "PSYCHE_PLAN_BIAS_ENABLED",
+    "PSYCHE_EMOTION_FORWARD_ENABLED",
+    "MANIPULATION_GUARD_ENABLED",
+  ] as const) {
+    const v = env[k];
+    if (v !== undefined) p.env[k] = v;
+  }
+}
+
+// ── Phase 1e — minimal spend/trace. Rough per-1M-token USD rates by model. The
+// brain's RICH per-turn log (model/route/quality/timings) lives in aria-core's
+// "AI response generated" logInfo; this adds the missing cost signal so dev isn't
+// flying blind. NOTE: it's a deliberate ESTIMATE — it counts the visible turn
+// text only (the brain's internal system prompt + its helper calls — extraction,
+// critic, persona-audit, recall-embed — are NOT itemized), so it's a LOWER BOUND.
+// Exact provider-usage cost (completion.usage threaded to qualityMeta) is tracked
+// as a follow-up for when spend matters at scale.
+const COST_PER_M: Array<{ match: RegExp; in: number; out: number }> = [
+  { match: /deepseek/i, in: 0.27, out: 1.1 },
+  { match: /gpt-4o-mini/i, in: 0.15, out: 0.6 },
+  { match: /gpt-4o/i, in: 2.5, out: 10 },
+  { match: /gemini.*flash/i, in: 0.075, out: 0.3 },
+];
+function estTokens(s: string): number {
+  return Math.ceil((s?.length ?? 0) / 4); // ~chars/4 (English)
+}
+function estCostUsd(model: string, tokIn: number, tokOut: number): number {
+  const row = COST_PER_M.find((r) => r.match.test(model)) ?? { in: 1, out: 3 };
+  return (tokIn * row.in + tokOut * row.out) / 1e6;
 }
 
 export default {
@@ -169,6 +212,7 @@ export default {
         bridgeEnv(env);
         const history = await getRecentTurns(env.DB, uid, 20);
         const memory = await compileIntelligentMemory(env.DB, uid);
+        const genStart = Date.now();
         const ai = await generateAIResponse(
           body.message,
           history,
@@ -244,6 +288,24 @@ export default {
             extracted.scoring.aiImportance,
           ).catch((err) => console.error("semantic index failed", { uid, turnId, error: String(err) })),
         );
+
+        // Phase 1e — minimal per-turn spend trace (estimate; see COST_PER_M note).
+        const estTokensIn =
+          estTokens(body.message) + history.reduce((n, m) => n + estTokens(m.content), 0);
+        const estTokensOut = estTokens(ai.content);
+        const meta = (ai.qualityMeta ?? {}) as Record<string, unknown>;
+        console.info("turn.spend", {
+          uid,
+          turnId,
+          model: ai.modelUsed,
+          route: meta.route,
+          genMs: Date.now() - genStart,
+          estTokensIn,
+          estTokensOut,
+          estCostUsd: Number(estCostUsd(ai.modelUsed ?? "", estTokensIn, estTokensOut).toFixed(6)),
+          memoryRecalled: !!(env.QDRANT_URL && env.GEMINI_API_KEY),
+          turnTopics: extracted.scoring.topics.length,
+        });
 
         const res: ChatResponse = {
           success: true,
