@@ -2727,6 +2727,29 @@ export async function indexSemanticMemoryForTurn(
 }
 
 /**
+ * Erase ALL semantic-memory points for a user from Qdrant (GDPR / CCPA right-to-
+ * erasure, audit 2026-06-22 M2). uid-filtered delete-by-filter. Idempotent +
+ * best-effort: returns true when the delete succeeds OR Qdrant isn't configured
+ * (nothing stored there); false only on a reachable-but-failed delete so the
+ * caller can surface a partial-deletion error.
+ */
+export async function deleteSemanticMemoryForUser(userId: string): Promise<boolean> {
+  const cfg = getQdrantConfig();
+  if (!cfg) return true; // semantic memory not configured -> nothing to erase here
+  try {
+    const res = await qdrantFetch(
+      cfg,
+      `/collections/${QDRANT_COLLECTION}/points/delete?wait=true`,
+      'POST',
+      { filter: { must: [{ key: 'uid', match: { value: userId } }] } },
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Recall semantically-relevant memories for the query over the FULL corpus
  * (Qdrant HNSW, uid-filtered), then access-time-recency rerank to the top `keep`.
  * Two-stage: Qdrant returns `candidates` by cosine (favor recall), then we fuse

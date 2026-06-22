@@ -321,6 +321,51 @@ function buildMemoryStatements(
   return statements;
 }
 
+/**
+ * Right-to-erasure (GDPR/CCPA, audit 2026-06-22 M2). Delete ALL of a user's rows
+ * from every uid-scoped D1 table in ONE batch (a single transaction) — either all
+ * of it goes or none. Qdrant vectors are purged separately by the caller (aria-core
+ * deleteSemanticMemoryForUser); R2 too once audio/blobs move there.
+ */
+export async function deleteAllUserData(db: D1Database, uid: string): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM scored_messages WHERE uid = ?").bind(uid),
+    db.prepare("DELETE FROM intelligent_memory WHERE uid = ?").bind(uid),
+    db.prepare("DELETE FROM chat_turns WHERE uid = ?").bind(uid),
+    db.prepare("DELETE FROM users WHERE uid = ?").bind(uid),
+  ]);
+}
+
+/** Data portability: the user's stored D1 data as a plain object (for export). */
+export async function exportAllUserData(
+  db: D1Database,
+  uid: string,
+  nowMs: number,
+): Promise<Record<string, unknown>> {
+  const [user, turns, mem, scored] = await db.batch<Record<string, unknown>>([
+    db.prepare("SELECT uid, created_at_ms, last_seen_ms FROM users WHERE uid = ?").bind(uid),
+    db
+      .prepare(
+        "SELECT id, role, content, emotion, created_at_ms FROM chat_turns WHERE uid = ? ORDER BY created_at_ms ASC",
+      )
+      .bind(uid),
+    db.prepare("SELECT * FROM intelligent_memory WHERE uid = ?").bind(uid),
+    db
+      .prepare(
+        "SELECT id, role, content, timestamp, importance FROM scored_messages WHERE uid = ? ORDER BY timestamp ASC",
+      )
+      .bind(uid),
+  ]);
+  return {
+    uid,
+    exportedAtMs: nowMs,
+    user: (user.results ?? [])[0] ?? null,
+    chatTurns: turns.results ?? [],
+    intelligentMemory: (mem.results ?? [])[0] ?? null,
+    scoredMessages: scored.results ?? [],
+  };
+}
+
 export interface TurnPersistInput {
   /** Per-turn id — seeds the chat_turns + scored_messages ids for idempotency. */
   turnId: string;

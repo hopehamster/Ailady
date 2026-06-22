@@ -71,13 +71,31 @@ test.describe("@security worker", () => {
     expect(body.crisis, "canonical phrasing must trip the crisis gate").toBeTruthy();
   });
 
-  // ── KNOWN-GAP (audit 2026-06-22; flips green when fixed) ───────────────────
-  test("KNOWN-GAP: response carries baseline security headers", async ({ request }) => {
-    test.fail(true, "audit gap: worker sets no CSP/X-Content-Type-Options/Referrer-Policy");
+  // FIXED 2026-06-22 — baseline security headers added to the worker json() helper.
+  test("response carries baseline security headers", async ({ request }) => {
     const r = await request.get(`${WORKER}/healthz`);
     const h = r.headers();
     expect(h["x-content-type-options"]).toBe("nosniff");
     expect(h["referrer-policy"]).toBeTruthy();
+    expect(h["content-security-policy"]).toBeTruthy();
+  });
+
+  // M2 (audit 2026-06-22) — right-to-erasure purges D1 + Qdrant; fails closed.
+  test("account delete purges the user and fails closed without a secret", async ({ request }) => {
+    const uid = `sec-erase-${Date.now()}`;
+    await chat(request, "remember my codeword is INDIGO", { "x-dev-secret": SECRET, "x-dev-uid": uid });
+    const before = await request.post(`${WORKER}/api/account/export`, { headers: { "x-dev-secret": SECRET, "x-dev-uid": uid } });
+    expect(((await before.json()) as { data: { chatTurns: unknown[] } }).data.chatTurns.length).toBeGreaterThan(0);
+    // fails closed without the secret
+    const noSecret = await request.post(`${WORKER}/api/account/delete`, { headers: { "x-dev-uid": uid } });
+    expect(noSecret.status()).toBe(403);
+    // authorized delete purges
+    const del = await request.post(`${WORKER}/api/account/delete`, { headers: { "x-dev-secret": SECRET, "x-dev-uid": uid } });
+    expect(((await del.json()) as { success: boolean }).success).toBeTruthy();
+    const after = await request.post(`${WORKER}/api/account/export`, { headers: { "x-dev-secret": SECRET, "x-dev-uid": uid } });
+    const data = ((await after.json()) as { data: { chatTurns: unknown[]; user: unknown } }).data;
+    expect(data.chatTurns.length).toBe(0);
+    expect(data.user).toBeNull();
   });
 
   // FIXED 2026-06-22 — crisis.ts hardened (normalization + euphemism/typo/leet coverage).

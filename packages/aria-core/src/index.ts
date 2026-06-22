@@ -77,6 +77,8 @@ export {
   // index the turn into Qdrant. recallSemanticMemories is called inside the brain
   // (promptAugmentService) so it isn't re-exported here.
   indexSemanticMemoryForTurn,
+  // M2 (audit 2026-06-22) — right-to-erasure: purge a user's Qdrant vectors.
+  deleteSemanticMemoryForUser,
 } from "./services/memoryService";
 export type {
   ApplyTurnInput,

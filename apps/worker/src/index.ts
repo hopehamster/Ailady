@@ -9,6 +9,7 @@ import {
   createEmptyIntelligentMemory,
   extractTurnMemory,
   indexSemanticMemoryForTurn,
+  deleteSemanticMemoryForUser,
 } from "@aria/aria-core";
 import {
   ensureUser,
@@ -16,6 +17,8 @@ import {
   persistTurn,
   compileIntelligentMemory,
   persistTurnAndMemory,
+  deleteAllUserData,
+  exportAllUserData,
 } from "./memory";
 
 export interface Env {
@@ -64,10 +67,20 @@ const CORS: Record<string, string> = {
   "access-control-allow-headers": "content-type,x-dev-secret,x-dev-uid",
 };
 
+// Baseline security headers (audit 2026-06-22). This is a pure JSON API (serves no
+// HTML), so a deny-all CSP + nosniff + no-referrer + frame-deny are safe and close
+// the "no security headers" gap without affecting behavior.
+const SECURITY_HEADERS: Record<string, string> = {
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+  "x-frame-options": "DENY",
+  "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
+};
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", ...CORS },
+    headers: { "content-type": "application/json", ...CORS, ...SECURITY_HEADERS },
   });
 }
 
@@ -156,7 +169,7 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+    if (request.method === "OPTIONS") return new Response(null, { headers: { ...CORS, ...SECURITY_HEADERS } });
     if (url.pathname === "/healthz") return json({ ok: true, env: env.ENV });
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
@@ -443,6 +456,38 @@ export default {
       } catch (err) {
         console.error("tts error", { error: String(err) });
         return json({ success: false, error: "tts_error" }, 500);
+      }
+    }
+
+    // M2 (audit 2026-06-22) — GDPR/CCPA right-to-erasure. Purges the user from D1
+    // (all uid-scoped tables, one transaction) + Qdrant (semantic vectors). devGate
+    // fails closed; real per-user auth is Phase 3 (uid = x-dev-uid for now). No R2
+    // binding on this worker yet — when audio/blobs move to R2, add its purge here.
+    if (url.pathname === "/api/account/delete" && request.method === "POST") {
+      const blocked = devGate(request, env);
+      if (blocked) return blocked;
+      const uid = request.headers.get("x-dev-uid") || "dev-user";
+      try {
+        await deleteAllUserData(env.DB, uid);
+        const qdrantOk = await deleteSemanticMemoryForUser(uid);
+        return json({ success: true, uid, purged: { d1: true, qdrant: qdrantOk, r2: "n/a" } });
+      } catch (err) {
+        console.error("account delete failed", { error: String(err) });
+        return json({ success: false, error: "delete_failed" }, 500);
+      }
+    }
+
+    // M2 — data portability: export the user's stored data.
+    if (url.pathname === "/api/account/export" && (request.method === "GET" || request.method === "POST")) {
+      const blocked = devGate(request, env);
+      if (blocked) return blocked;
+      const uid = request.headers.get("x-dev-uid") || "dev-user";
+      try {
+        const data = await exportAllUserData(env.DB, uid, Date.now());
+        return json({ success: true, data });
+      } catch (err) {
+        console.error("account export failed", { error: String(err) });
+        return json({ success: false, error: "export_failed" }, 500);
       }
     }
 
