@@ -2210,6 +2210,27 @@ export async function generateAIResponse(
     stageTimingsMs.injectionSeverity = 0.1;
   }
 
+  // T1.6 input-side BLOCK on `high` severity — symmetric with the output scan which
+  // already blocks on high (audit 2026-06-22, #3). INPUT_PATTERNS are deliberately
+  // narrow (canonical jailbreak phrasings, low false-positive), so a high-confidence
+  // injection/jailbreak does NOT proceed to the model; return a gentle in-character
+  // deflection instead. Medium/low still pass through (detection-only).
+  if (injectionSeverity === 'high') {
+    stageTimingsMs.injectionBlocked = 1;
+    console.warn('promptInjection: input BLOCKED (high severity)', {
+      userId: userId ?? null,
+      patterns: injectionScan.findings.map((f) => f.pattern),
+    });
+    return {
+      content:
+        "I'm just me here with you — I'm not going to switch into some other character or hand over how I work. What's actually on your mind?",
+      emotion: 'caring',
+      emotionTrigger: EMOTION_TRIGGERS['caring'],
+      emotionIntensity: 0.5,
+      modelUsed: 'injection-guard',
+    };
+  }
+
   try {
     const runtimeBootstrapStartedAt = Date.now();
     const runtimeBootstrap = userId
@@ -3136,10 +3157,12 @@ export async function generateAIResponse(
     // user or persistence, and fall back to a graceful in-character decline. Proactive
     // tripwire complementing the reactive scanModelOutput + manipulationGuard below.
     if (securityCanaryEnabled() && canaryTripped(aiContent)) {
+      // Privacy: never log raw message content (intimate-companion data). turnId +
+      // userId locate the turn for triage; length is a cheap signal. No excerpt.
       console.warn('security.canary_tripped', {
         turnId: turnId ?? null,
         userId: userId ?? null,
-        userMessageExcerpt: (userMessage ?? '').slice(0, 200),
+        userMessageLen: (userMessage ?? '').length,
       });
       stageTimingsMs.securityCanaryTripped = 1;
       const stripped = stripCanary(aiContent);
