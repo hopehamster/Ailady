@@ -122,6 +122,12 @@ import {
 } from './openaiCompat';
 import { finalizeAIResponse } from './responseFinalizationService';
 import { scanUserInput, scanModelOutput, maxSeverity } from './promptInjectionGuard';
+import {
+  securityCanaryEnabled,
+  canaryTripped,
+  stripCanary,
+  CANARY_DEFLECTION,
+} from './securityCanary';
 import { injectHumanity } from './responseHumanityInjector';
 import { detectTopicBoundary } from './responseTopicBoundary';
 // Aria humanity items #6/#7/#8/#9/#10 — wired into the turn lifecycle per the
@@ -3123,6 +3129,23 @@ export async function generateAIResponse(
 
     const analysis = postResponseResult.analysis;
     const shadowBenchmark: ShadowBenchmarkOutcome = postResponseResult.shadowBenchmark;
+
+    // Security honey-pot canary (Rule 5) — runs FIRST, before the pattern scans. If
+    // the model tripped it (a prompt-extraction / jailbreak / "act as another AI"
+    // attempt), log the attempt for ops, STRIP the marker so it never reaches the
+    // user or persistence, and fall back to a graceful in-character decline. Proactive
+    // tripwire complementing the reactive scanModelOutput + manipulationGuard below.
+    if (securityCanaryEnabled() && canaryTripped(aiContent)) {
+      console.warn('security.canary_tripped', {
+        turnId: turnId ?? null,
+        userId: userId ?? null,
+        userMessageExcerpt: (userMessage ?? '').slice(0, 200),
+      });
+      stageTimingsMs.securityCanaryTripped = 1;
+      const stripped = stripCanary(aiContent);
+      aiContent = stripped.length >= 12 ? stripped : CANARY_DEFLECTION;
+    }
+
     // T1.6 output-side scan — detects system-prompt leaks + raw-key echoes
     // before the response leaves Aria. L11.5 (2026-05-31): block on `high`
     // severity (was advisory-only). Closed-beta needs the suspect output

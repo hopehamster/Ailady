@@ -10,6 +10,7 @@ import type {
   IntelligentMemory,
   CompanionRuntimeSelfModel,
 } from '@aria/shared-types';
+import { CANARY_DIRECTIVE, securityCanaryEnabled } from './securityCanary';
 
 interface PromptShellEnvironmentContext {
   city?: string;
@@ -185,7 +186,11 @@ ${runtimeTruthBlock}
 
 ${buildUserWorldBlock(userEnvCtx)}`;
 
-  return STABLE_PREFIX + VOLATILE_TAIL;
+  // Honey-pot canary FIRST (Rule 5): it must precede the persona so an injection
+  // attempt can't countermand it by appearing "earlier". It's part of the stable
+  // prefix (cache-friendly). Detection + strip happens in llmService output scan.
+  const securityHeader = securityCanaryEnabled() ? CANARY_DIRECTIVE : '';
+  return securityHeader + STABLE_PREFIX + VOLATILE_TAIL;
 }
 
 function buildUserWorldBlock(ctx?: PromptShellEnvironmentContext): string {
