@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ChatRequest, ChatResponse } from "@aria/shared-types";
 import { LiveAvatar } from "./LiveAvatar";
+import { AvatarDemo } from "./avatar/AvatarDemo";
 
 interface Msg {
   who: "you" | "aria";
@@ -11,7 +12,7 @@ export function App() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [busy, setBusy] = useState(false);
-  const [view, setView] = useState<"chat" | "avatar">("chat");
+  const [view, setView] = useState<"chat" | "avatar" | "avatar3d">("chat");
 
   async function send() {
     const text = input.trim();
@@ -59,8 +60,10 @@ export function App() {
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <button onClick={() => setView("chat")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "chat" ? "#C9A84C" : "#111827", color: view === "chat" ? "#111827" : "white", fontWeight: 600 }}>Chat</button>
         <button onClick={() => setView("avatar")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "avatar" ? "#C9A84C" : "#111827", color: view === "avatar" ? "#111827" : "white", fontWeight: 600 }}>Avatar (sandbox)</button>
+        <button onClick={() => setView("avatar3d")} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #374151", background: view === "avatar3d" ? "#C9A84C" : "#111827", color: view === "avatar3d" ? "#111827" : "white", fontWeight: 600 }}>Avatar (3D)</button>
       </div>
       {view === "avatar" && <LiveAvatar />}
+      {view === "avatar3d" && <AvatarDemo />}
       {view === "chat" && (
         <>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
