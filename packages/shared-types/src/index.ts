@@ -45,6 +45,26 @@ export interface ChatResponse {
   crisis?: CrisisInfo;
 }
 
+/** Text-to-speech (Cartesia) request: Aria's reply text → her voice. */
+export interface TtsRequest {
+  text: string;
+}
+
+/**
+ * TTS response. `audio` is base64-encoded RAW PCM (the worker proxies Cartesia's
+ * /tts/bytes so the key stays server-side). The web decodes it into an AudioBuffer
+ * via `copyToChannel` and derives lip-sync timing scaled to the audio's duration.
+ * 503 + tts_not_configured when CARTESIA_API_KEY is unset (web falls back to the
+ * silent stub).
+ */
+export interface TtsResponse {
+  success: boolean;
+  audio?: string;
+  encoding?: 'pcm_s16le' | 'pcm_f32le';
+  sampleRate?: number;
+  error?: string;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Psyche types (from psycheStateService.ts) — already epoch-ms numbers, firebase-free.
 // psycheStateService LOGIC ports to aria-core and imports these back from here.

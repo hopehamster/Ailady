@@ -59,6 +59,10 @@ export function AvatarStage({ avatarUrl, emotion, onReady }: AvatarStageProps) {
         await driver.loadAvatar(avatarUrl);
         if (cancelled) return;
         setStatus("ready");
+        // Ensure the render loop is running after load — the visibilitychange handler
+        // only toggles it on later tab show/hide, so without this the canvas can stay
+        // blank until the first visibility change. start() is idempotent.
+        driver.start();
         onReady?.(driver);
       } catch (err) {
         if (!cancelled) setStatus("error");

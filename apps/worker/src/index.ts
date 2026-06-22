@@ -1,4 +1,4 @@
-import type { ChatRequest, ChatResponse } from "@aria/shared-types";
+import type { ChatRequest, ChatResponse, TtsRequest, TtsResponse } from "@aria/shared-types";
 import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
 import {
   generateAIResponse,
@@ -43,10 +43,20 @@ export interface Env {
   PSYCHE_PLAN_BIAS_ENABLED?: string;
   PSYCHE_EMOTION_FORWARD_ENABLED?: string;
   MANIPULATION_GUARD_ENABLED?: string;
+  /** Slice B — Cartesia TTS (server-side only). Absent => /api/tts returns 503 and
+   * the web falls back to the silent lip-sync stub. Pick a warm female voice from the
+   * Cartesia library and set CARTESIA_VOICE_ID to its UUID. */
+  CARTESIA_API_KEY?: string;
+  CARTESIA_VOICE_ID?: string;
 }
 
 // HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
 const AVATAR_SANDBOX_WAYNE = "dd73ea75-1218-4ef3-92ce-606d5f7fbc0a";
+
+// Default Cartesia voice — override per deployment via CARTESIA_VOICE_ID (the UUID of
+// the warm female voice picked from the Cartesia voice library).
+const DEFAULT_CARTESIA_VOICE = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b";
+const CARTESIA_SAMPLE_RATE = 44100;
 
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -372,6 +382,67 @@ export default {
       } catch (err) {
         console.error("avatar session failed", { error: String(err) });
         return json({ success: false, error: "avatar_error" }, 500);
+      }
+    }
+
+    // Slice B — TTS proxy. Aria's reply text → her voice via Cartesia. Keeps the API
+    // key server-side; returns base64 RAW PCM the web decodes into an AudioBuffer.
+    // 503 when unconfigured so the web falls back to the silent lip-sync stub.
+    if (url.pathname === "/api/tts" && request.method === "POST") {
+      const blocked = devGate(request, env);
+      if (blocked) return blocked;
+      if (!env.CARTESIA_API_KEY) return json({ success: false, error: "tts_not_configured" }, 503);
+
+      let body: TtsRequest;
+      try {
+        body = (await request.json()) as TtsRequest;
+      } catch {
+        return json({ success: false, error: "bad_request" }, 400);
+      }
+      const text = (body?.text ?? "").trim();
+      if (!text) return json({ success: false, error: "text_required" }, 400);
+      const capped = text.slice(0, 1200); // bound payload + cost
+
+      try {
+        const ct = await fetch("https://api.cartesia.ai/tts/bytes", {
+          method: "POST",
+          headers: {
+            "X-API-Key": env.CARTESIA_API_KEY,
+            "Cartesia-Version": "2025-04-16",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model_id: "sonic-2",
+            transcript: capped,
+            voice: { mode: "id", id: env.CARTESIA_VOICE_ID || DEFAULT_CARTESIA_VOICE },
+            output_format: { container: "raw", encoding: "pcm_s16le", sample_rate: CARTESIA_SAMPLE_RATE },
+            language: "en",
+          }),
+        });
+        if (!ct.ok) {
+          // Log detail server-side only; the client gets a generic error (no upstream
+          // status/body leak — Cartesia's error semantics stay private).
+          const detail = (await ct.text().catch(() => "")).slice(0, 200);
+          console.error("cartesia tts failed", { status: ct.status, detail });
+          return json({ success: false, error: "tts_upstream" }, 502);
+        }
+        const bytes = new Uint8Array(await ct.arrayBuffer());
+        if (bytes.byteLength === 0) return json({ success: false, error: "tts_empty" }, 502);
+        // nodejs_compat provides Buffer; base64 without the btoa(String.fromCharCode(...))
+        // overflow on large PCM.
+        const audio = Buffer.from(bytes).toString("base64");
+        // /tts/bytes with container:"raw" returns HEADERLESS PCM — there's no format to
+        // parse back, so we echo the format we REQUESTED (Cartesia honors output_format).
+        const res: TtsResponse = {
+          success: true,
+          audio,
+          encoding: "pcm_s16le",
+          sampleRate: CARTESIA_SAMPLE_RATE,
+        };
+        return json(res);
+      } catch (err) {
+        console.error("tts error", { error: String(err) });
+        return json({ success: false, error: "tts_error" }, 500);
       }
     }
 
