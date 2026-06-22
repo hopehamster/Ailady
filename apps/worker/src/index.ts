@@ -1,5 +1,5 @@
 import type { ChatRequest, ChatResponse } from "@aria/shared-types";
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, ExecutionContext } from "@cloudflare/workers-types";
 import {
   generateAIResponse,
   detectCrisis,
@@ -8,6 +8,7 @@ import {
   applyTurnToMemory,
   createEmptyIntelligentMemory,
   extractTurnMemory,
+  indexSemanticMemoryForTurn,
 } from "@aria/aria-core";
 import {
   ensureUser,
@@ -28,6 +29,11 @@ export interface Env {
   LIVEAVATAR_API_KEY?: string;
   /** Phase 1 — shared D1 memory database. */
   DB: D1Database;
+  /** Phase 1d — semantic memory: Gemini embeddings + Qdrant Cloud (optional;
+   * absence = semantic recall gracefully off). */
+  GEMINI_API_KEY?: string;
+  QDRANT_URL?: string;
+  QDRANT_API_KEY?: string;
 }
 
 // HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
@@ -86,10 +92,15 @@ function bridgeEnv(env: Env): void {
   p.env.OPENAI_COMPAT_API_KEY = env.OPENAI_COMPAT_API_KEY;
   p.env.OPENAI_API_KEY = env.OPENAI_COMPAT_API_KEY; // fallback path
   p.env.OPENAI_DEFAULT_MODEL = env.OPENAI_COMPAT_MODEL;
+  // Phase 1d — semantic memory (aria-core reads these at call time for Gemini
+  // embeddings + Qdrant). Absent => semantic recall/index gracefully no-op.
+  if (env.GEMINI_API_KEY) p.env.GEMINI_API_KEY = env.GEMINI_API_KEY;
+  if (env.QDRANT_URL) p.env.QDRANT_URL = env.QDRANT_URL;
+  if (env.QDRANT_API_KEY) p.env.QDRANT_API_KEY = env.QDRANT_API_KEY;
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -215,6 +226,24 @@ export default {
           memory: updatedMemory,
           newScored,
         });
+
+        // Phase 1d — index this turn into Qdrant for future semantic recall. This
+        // is best-effort ENRICHMENT (not the authoritative memory: chat_turns +
+        // intelligent_memory already committed synchronously above), so unlike the
+        // persist it correctly runs in ctx.waitUntil — no response latency, and a
+        // failed index just means this turn isn't semantically searchable, never a
+        // forgotten turn. No-ops gracefully when Qdrant/Gemini aren't configured.
+        ctx.waitUntil(
+          indexSemanticMemoryForTurn(
+            uid,
+            body.message,
+            ai.content,
+            extracted.scoring.topics,
+            extracted.scoring.userImportance,
+            extracted.scoring.aiImportance,
+          ).catch((err) => console.error("semantic index failed", { uid, turnId, error: String(err) })),
+        );
+
         const res: ChatResponse = {
           success: true,
           messageId: turnId,

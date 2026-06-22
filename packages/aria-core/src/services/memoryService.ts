@@ -47,13 +47,62 @@ import { scanUserInput, maxSeverity } from './promptInjectionGuard';
 const PSYCHE_FOUNDATION_ENABLED =
   (process.env.PSYCHE_FOUNDATION_ENABLED ?? 'false').toLowerCase() === 'true';
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// The semantic-embedding provider (OpenAI / Gemini) and its module-scope clients
-// have been removed. In Phase 0 there are no embeddings; every function that
-// produced or consumed them is stubbed to return null/[].
-async function createSemanticEmbedding(_text: string): Promise<number[] | null> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
-  return null;
+// ───────────────────────────────────────────────────────────────────────────
+// Phase 1d — semantic long-term memory: Gemini embeddings (3072-dim, normalized)
+// + Qdrant Cloud HNSW recall over the FULL corpus (replaces brute-force-recent-200).
+// Canon: RAG Ch.4 HNSW / Ch.3 normalized-vectors (IP==Cosine) / Ch.7 access-time
+// recency rerank. aria-core makes the Gemini + Qdrant HTTP calls directly (the
+// brain already calls models); config is threaded via process.env (bridged by the
+// Worker). All paths are BEST-EFFORT + graceful no-ops when unconfigured.
+// gemini-embedding-001 returns a normalized 3072-dim vector (verified: L2 norm 1.0).
+// ───────────────────────────────────────────────────────────────────────────
+
+const SEMANTIC_EMBED_DIM = 3072;
+const GEMINI_EMBED_MODEL = 'gemini-embedding-001';
+
+function l2normalize(v: number[]): number[] {
+  let s = 0;
+  for (const x of v) s += x * x;
+  const n = Math.sqrt(s);
+  return n > 0 ? v.map((x) => x / n) : v;
+}
+
+/** Embed text via the Gemini REST embedContent endpoint -> normalized 3072-dim
+ * vector, or null on any failure / missing key. taskType (RETRIEVAL_DOCUMENT for
+ * indexing, RETRIEVAL_QUERY for search) improves RAG alignment. */
+async function geminiEmbed(
+  text: string,
+  taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY',
+): Promise<number[] | null> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key || !text.trim()) return null;
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_EMBED_MODEL}:embedContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model: `models/${GEMINI_EMBED_MODEL}`,
+          content: { parts: [{ text: text.slice(0, 8000) }] },
+          taskType,
+          outputDimensionality: SEMANTIC_EMBED_DIM,
+        }),
+      },
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as { embedding?: { values?: number[] } };
+    const values = data.embedding?.values;
+    if (!Array.isArray(values) || values.length !== SEMANTIC_EMBED_DIM) return null;
+    return l2normalize(values);
+  } catch {
+    return null;
+  }
+}
+
+/** Document-side embedding (kept name for any legacy call site). */
+async function createSemanticEmbedding(text: string): Promise<number[] | null> {
+  return geminiEmbed(text, 'RETRIEVAL_DOCUMENT');
 }
 
 // Memory structure interfaces (CoreFact, EmotionalMoment, ConversationSummary,
@@ -2463,40 +2512,171 @@ export function buildSemanticRecallContext(
   return ['## Semantic Long-Term Recalls', ...lines].join('\n');
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally embedded each turn's user/assistant chunks (via OpenAI/Gemini),
-// gated user writes through memoryWriteGate, wrote them to the
-// `memoryEmbeddings` Firestore collection, and ran retention cleanup. Phase 0
-// has no embeddings provider and no store; this is a no-op.
-export async function indexSemanticMemoryForTurn(
-  _userId: string,
-  _userMessage: string,
-  _aiResponse: string,
-  _topics: string[],
-  _userImportance: number,
-  _aiImportance: number,
-): Promise<void> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
-  return;
+// ── Phase 1d — Qdrant Cloud (HNSW, Cosine, 3072-dim). Config from env; graceful
+// no-op when unset so the app still runs (just without semantic recall).
+const QDRANT_COLLECTION = 'aria_semantic_memory';
+const SEMANTIC_RETENTION_MS = 2 * 365 * 24 * 60 * 60 * 1000; // ~2 years
+const SEMANTIC_RECALL_ALPHA = 0.7; // weighted = a*semantic + (1-a)*recency (canon ~0.7)
+
+function getQdrantConfig(): { url: string; apiKey: string } | null {
+  const url = process.env.QDRANT_URL;
+  const apiKey = process.env.QDRANT_API_KEY;
+  if (!url || !apiKey) return null;
+  return { url: url.replace(/\/+$/, ''), apiKey };
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally embedded the query, queried the `memoryEmbeddings` Firestore
-// collection for candidates, scored them by cosine similarity + recency, and
-// returned the diverse top recalls. Phase 0 has no embeddings provider and no
-// store; this returns no recalls. The pure scoring helpers (cosineSimilarity,
-// recencyDecayScore, tokenizeSemanticText) are kept for the Phase-1 rewire.
+async function qdrantFetch(
+  cfg: { url: string; apiKey: string },
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<Response> {
+  return fetch(`${cfg.url}${path}`, {
+    method,
+    headers: { 'api-key': cfg.apiKey, 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+let _qdrantCollectionReady = false;
+/** Idempotent: create the collection (3072-dim Cosine) if missing AND ensure the
+ * `uid` keyword payload index. Qdrant REQUIRES that index to filter recall by user
+ * — without it the uid-filtered search 400s and recall silently returns nothing. */
+async function ensureQdrantCollection(cfg: { url: string; apiKey: string }): Promise<boolean> {
+  if (_qdrantCollectionReady) return true;
+  try {
+    const head = await qdrantFetch(cfg, `/collections/${QDRANT_COLLECTION}`, 'GET');
+    if (!head.ok) {
+      const create = await qdrantFetch(cfg, `/collections/${QDRANT_COLLECTION}`, 'PUT', {
+        vectors: { size: SEMANTIC_EMBED_DIM, distance: 'Cosine' },
+      });
+      if (!create.ok) return false;
+    }
+    // Payload index on uid (keyword) — idempotent, required for the recall filter.
+    await qdrantFetch(cfg, `/collections/${QDRANT_COLLECTION}/index?wait=true`, 'PUT', {
+      field_name: 'uid',
+      field_schema: 'keyword',
+    });
+    _qdrantCollectionReady = true;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Index this turn's user + assistant text into Qdrant (full-corpus semantic
+ * memory). The user message is write-gated (a flagged injection is not indexed —
+ * retrieved memory is re-fed to the renderer, so poisoning it is a real vector).
+ * Best-effort: an embedding/Qdrant failure never breaks the turn.
+ */
+export async function indexSemanticMemoryForTurn(
+  userId: string,
+  userMessage: string,
+  aiResponse: string,
+  topics: string[],
+  userImportance: number,
+  aiImportance: number,
+): Promise<void> {
+  const cfg = getQdrantConfig();
+  if (!cfg) return; // semantic memory not configured -> no-op
+  if (!(await ensureQdrantCollection(cfg))) return;
+
+  const nowMs = Date.now();
+  const candidates: Array<{ source: 'user' | 'assistant'; text: string; importance: number }> = [];
+  if (isMemoryWriteSafe(userMessage) && userMessage.trim()) {
+    candidates.push({ source: 'user', text: userMessage, importance: userImportance });
+  }
+  if (aiResponse.trim()) {
+    candidates.push({ source: 'assistant', text: aiResponse, importance: aiImportance });
+  }
+  if (candidates.length === 0) return;
+
+  try {
+    const vectors = await Promise.all(
+      candidates.map((c) => geminiEmbed(c.text, 'RETRIEVAL_DOCUMENT')),
+    );
+    const points = candidates
+      .map((c, i) => ({ c, vec: vectors[i] }))
+      .filter((p): p is { c: (typeof candidates)[number]; vec: number[] } => Array.isArray(p.vec))
+      .map(({ c, vec }) => ({
+        id: crypto.randomUUID(),
+        vector: vec,
+        payload: {
+          uid: userId,
+          sourceType: c.source,
+          text: c.text.slice(0, 2000),
+          topics,
+          importance: clamp01(c.importance),
+          createdAt: nowMs,
+          expiresAt: nowMs + SEMANTIC_RETENTION_MS,
+        },
+      }));
+    if (points.length === 0) return;
+    await qdrantFetch(cfg, `/collections/${QDRANT_COLLECTION}/points`, 'PUT', { points });
+  } catch {
+    // best-effort: indexing failure never breaks the turn.
+  }
+}
+
+/**
+ * Recall semantically-relevant memories for the query over the FULL corpus
+ * (Qdrant HNSW, uid-filtered), then access-time-recency rerank to the top `keep`.
+ * Two-stage: Qdrant returns `candidates` by cosine (favor recall), then we fuse
+ * semantic + recency (RAG Ch.7). Best-effort: any failure -> []. Graceful no-op
+ * when Qdrant is unconfigured.
+ */
 export async function recallSemanticMemories(
-  _userId: string,
-  _query: string,
-  _options?: {
-    topK?: number;
-    keep?: number;
-    candidates?: number;
-  },
+  userId: string,
+  query: string,
+  options?: { topK?: number; keep?: number; candidates?: number },
 ): Promise<SemanticMemoryRecall[]> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
-  return [];
+  const cfg = getQdrantConfig();
+  if (!cfg || !query.trim()) return [];
+  const candidates = options?.candidates ?? 200;
+  const keep = options?.keep ?? 4;
+  try {
+    const qvec = await geminiEmbed(query, 'RETRIEVAL_QUERY');
+    if (!qvec) return [];
+    const res = await qdrantFetch(
+      cfg,
+      `/collections/${QDRANT_COLLECTION}/points/search`,
+      'POST',
+      {
+        vector: qvec,
+        limit: candidates,
+        with_payload: true,
+        filter: { must: [{ key: 'uid', match: { value: userId } }] },
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      result?: Array<{ id: string | number; score: number; payload?: Record<string, unknown> }>;
+    };
+    const now = new Date();
+    const recalls: SemanticMemoryRecall[] = (data.result ?? []).map((r) => {
+      const p = r.payload ?? {};
+      const createdAt = typeof p.createdAt === 'number' ? p.createdAt : now.getTime();
+      const semanticScore = clamp01(r.score); // Qdrant Cosine on normalized vectors
+      const recencyScore = recencyDecayScore(createdAt, now);
+      const sourceType: SemanticMemoryRecall['sourceType'] =
+        p.sourceType === 'assistant' || p.sourceType === 'summary' ? p.sourceType : 'user';
+      return {
+        id: String(r.id),
+        text: typeof p.text === 'string' ? p.text : '',
+        sourceType,
+        topics: Array.isArray(p.topics) ? (p.topics as string[]) : [],
+        createdAt,
+        semanticScore,
+        recencyScore,
+        weightedScore: SEMANTIC_RECALL_ALPHA * semanticScore + (1 - SEMANTIC_RECALL_ALPHA) * recencyScore,
+      };
+    });
+    recalls.sort((a, b) => b.weightedScore - a.weightedScore);
+    return recalls.slice(0, keep);
+  } catch {
+    return [];
+  }
 }
 
 export function getStyleProfile(memory: IntelligentMemory): UserStyleProfile {

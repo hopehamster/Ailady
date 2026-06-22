@@ -21,6 +21,11 @@ OPENAI_COMPAT_MODEL = "deepseek-chat"
 #   OPENAI_COMPAT_API_KEY  — the hosted-model API key
 #   DEV_SHARED_SECRET      — gates /api/chat in dev so the endpoint isn't open
 #   LIVEAVATAR_API_KEY     — HeyGen LiveAvatar key (Phase 0.5 sandbox + later live avatar)
+#   GEMINI_API_KEY         — Phase 1d: Gemini gemini-embedding-001 (3072-dim) embeddings
+#   QDRANT_URL             — Phase 1d: Qdrant Cloud cluster endpoint (semantic memory)
+#   QDRANT_API_KEY         — Phase 1d: Qdrant Cloud cluster api-key
+# Phase 1d is graceful: with GEMINI_API_KEY/QDRANT_* absent, semantic recall + index
+# simply no-op (the rest of the app runs unchanged).
 
 # Phase 1 — memory. Single shared D1 DB with a `uid` column (shard later per the
 # d1-schema spike). `wrangler dev --local` uses a local SQLite in .wrangler/ — no

@@ -73,6 +73,10 @@ export {
   applyTurnToMemory,
   createEmptyIntelligentMemory,
   extractTurnMemory,
+  // Phase 1d — semantic memory: the Worker calls this post-turn (best-effort) to
+  // index the turn into Qdrant. recallSemanticMemories is called inside the brain
+  // (promptAugmentService) so it isn't re-exported here.
+  indexSemanticMemoryForTurn,
 } from "./services/memoryService";
 export type {
   ApplyTurnInput,
