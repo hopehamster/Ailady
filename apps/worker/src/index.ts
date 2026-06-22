@@ -1,10 +1,12 @@
 import type { ChatRequest, ChatResponse } from "@aria/shared-types";
+import type { D1Database } from "@cloudflare/workers-types";
 import {
   generateAIResponse,
   detectCrisis,
   CRISIS_RESOURCES,
   ARIA_CRISIS_REPLY,
 } from "@aria/aria-core";
+import { ensureUser, getRecentTurns, persistTurn } from "./memory";
 
 export interface Env {
   ENV: string;
@@ -15,6 +17,8 @@ export interface Env {
   DEV_SHARED_SECRET?: string;
   /** HeyGen LiveAvatar key (server-side only). Phase 0.5 sandbox de-risk. */
   LIVEAVATAR_API_KEY?: string;
+  /** Phase 1 — shared D1 memory database. */
+  DB: D1Database;
 }
 
 // HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
@@ -23,7 +27,7 @@ const AVATAR_SANDBOX_WAYNE = "dd73ea75-1218-4ef3-92ce-606d5f7fbc0a";
 const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,OPTIONS",
-  "access-control-allow-headers": "content-type,x-dev-secret",
+  "access-control-allow-headers": "content-type,x-dev-secret,x-dev-uid",
 };
 
 function json(body: unknown, status = 200): Response {
@@ -77,37 +81,48 @@ export default {
       }
 
       const turnId = crypto.randomUUID();
+      const nowMs = Date.now();
+      // Phase 1a: per-user conversation memory. Real phone-OTP auth is Phase 3;
+      // for dev the client may set x-dev-uid to keep separate conversations.
+      const uid = request.headers.get("x-dev-uid") || "dev-user";
 
-      // 1) Crisis HARD GATE — runs BEFORE the brain. Pure regex; short-circuits.
-      const crisis = detectCrisis(body.message);
-      if (crisis.severity !== "none" && crisis.category) {
-        const resources = CRISIS_RESOURCES[crisis.category] ?? CRISIS_RESOURCES.severe_distress;
-        const res: ChatResponse = {
-          success: true,
-          messageId: turnId,
-          response: ARIA_CRISIS_REPLY,
-          emotion: "concerned",
-          emotionTrigger: "concerned",
-          emotionIntensity: 0.6,
-          crisis: {
-            severity: crisis.severity,
-            category: crisis.category,
-            resources: { items: resources },
-            ariaReply: ARIA_CRISIS_REPLY,
-          },
-        };
-        return json(res);
-      }
-
-      // 2) Real Aria turn via the decoupled brain. Phase-0: userId omitted ->
-      //    memory:null + default runtime self-model (no Firestore). History is
-      //    empty until persistence lands (Phase 1).
       try {
+        await ensureUser(env.DB, uid, nowMs);
+
+        // 1) Crisis HARD GATE — runs BEFORE the brain. Pure regex; short-circuits.
+        const crisis = detectCrisis(body.message);
+        if (crisis.severity !== "none" && crisis.category) {
+          const resources = CRISIS_RESOURCES[crisis.category] ?? CRISIS_RESOURCES.severe_distress;
+          await persistTurn(env.DB, uid, "user", body.message, nowMs);
+          await persistTurn(env.DB, uid, "assistant", ARIA_CRISIS_REPLY, nowMs + 1, {
+            emotion: "concerned", emotionTrigger: "concerned", emotionIntensity: 0.6, modelUsed: "crisis-gate",
+          });
+          const res: ChatResponse = {
+            success: true,
+            messageId: turnId,
+            response: ARIA_CRISIS_REPLY,
+            emotion: "concerned",
+            emotionTrigger: "concerned",
+            emotionIntensity: 0.6,
+            crisis: {
+              severity: crisis.severity,
+              category: crisis.category,
+              resources: { items: resources },
+              ariaReply: ARIA_CRISIS_REPLY,
+            },
+          };
+          return json(res);
+        }
+
+        // 2) Real Aria turn. Hydrate recent conversation from D1 as the brain's
+        //    `conversationHistory` (read BEFORE persisting the current message).
+        //    memory stays null until 1b (the structured-memory hydration seam).
         bridgeEnv(env);
+        const history = await getRecentTurns(env.DB, uid, 20);
         const ai = await generateAIResponse(
           body.message,
-          [], // conversationHistory (Phase 0: none)
-          undefined, // userId -> null-memory path
+          history,
+          uid,
           undefined, // temporalContextInput
           undefined, // chatMode
           undefined, // datesContextBlock
@@ -115,6 +130,13 @@ export default {
           undefined, // featureSettings
           turnId,
         );
+        await persistTurn(env.DB, uid, "user", body.message, nowMs);
+        await persistTurn(env.DB, uid, "assistant", ai.content, nowMs + 1, {
+          emotion: ai.emotion,
+          emotionTrigger: ai.emotionTrigger,
+          emotionIntensity: ai.emotionIntensity,
+          modelUsed: ai.modelUsed,
+        });
         const res: ChatResponse = {
           success: true,
           messageId: turnId,
@@ -126,7 +148,7 @@ export default {
         };
         return json(res);
       } catch (err) {
-        console.error("generateAIResponse failed", { error: String(err) });
+        console.error("chat turn failed", { error: String(err) });
         return json({ success: false, error: "brain_error", detail: String(err) }, 500);
       }
     }

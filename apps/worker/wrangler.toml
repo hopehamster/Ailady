@@ -21,3 +21,13 @@ OPENAI_COMPAT_MODEL = "deepseek-chat"
 #   OPENAI_COMPAT_API_KEY  — the hosted-model API key
 #   DEV_SHARED_SECRET      — gates /api/chat in dev so the endpoint isn't open
 #   LIVEAVATAR_API_KEY     — HeyGen LiveAvatar key (Phase 0.5 sandbox + later live avatar)
+
+# Phase 1 — memory. Single shared D1 DB with a `uid` column (shard later per the
+# d1-schema spike). `wrangler dev --local` uses a local SQLite in .wrangler/ — no
+# Cloudflare account needed for dev. The real database_id is filled by
+# `wrangler d1 create aria-dev` when we provision the cloud DB.
+[[d1_databases]]
+binding = "DB"
+database_name = "aria-dev"
+database_id = "local-dev-placeholder"
+migrations_dir = "migrations"
