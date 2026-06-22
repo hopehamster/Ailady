@@ -9,7 +9,8 @@
     "dev:worker": "pnpm -C apps/worker dev",
     "dev:web": "pnpm -C apps/web dev",
     "test:e2e": "pnpm -C apps/web test:e2e",
-    "test:e2e:ci": "pnpm -C apps/web test:e2e:ci"
+    "test:e2e:ci": "pnpm -C apps/web test:e2e:ci",
+    "test:security": "pnpm -C packages/aria-core test:security"
   },
   "devDependencies": {
     "@types/node-fetch": "^2.6.13",
