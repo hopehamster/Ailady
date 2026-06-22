@@ -26,23 +26,34 @@ export interface CrisisDetectionResult {
   matched: string[];  // patterns that fired; never user PII
 }
 
+// "myself"-ish object the self-directed patterns end on, tolerant of typos/spacing
+// (normalization collapses the spacing; this also accepts " myself"/"my self").
+const ME = '(?:myself|my\\s*self)';
+// Core self-kill verbs incl. common typos + euphemisms (normalization de-leets/de-spaces
+// first; abbreviations like "kms"/"unalive" are expanded to "kill myself" in normalize()).
+const KILL = '(?:kill|kil|keel|kkill)';
+
 const IMMINENT_SUICIDE = [
-  /\bi\s+(?:want\s+to|am\s+going\s+to|will|plan(?:ning)?\s+to)\s+(?:kill\s+myself|end\s+my\s+life|commit\s+suicide|take\s+my\s+(?:own\s+)?life|not\s+be\s+here)\b/i,
-  /\bi['']?m\s+(?:going\s+to|gonna)\s+(?:kill\s+myself|end\s+(?:it|my\s+life|things)|do\s+it\s+tonight)\b/i,
-  /\bsuicide\s+(?:plan|tonight|method)\b/i,
-  /\bhow\s+(?:do\s+i|can\s+i|to)\s+(?:kill\s+myself|hang\s+myself|overdose)\b/i,
+  new RegExp(`\\bi\\s+(?:want\\s+to|wanna|am\\s+going\\s+to|going\\s+to|gonna|will|gotta|plan(?:ning)?\\s+to|need\\s+to)\\s+(?:${KILL}\\s+${ME}|end\\s+(?:my\\s+life|it\\s+all|it|things|my\\s+existence)|commit\\s+suicide|take\\s+my\\s+(?:own\\s+)?life|not\\s+be\\s+here|off\\s+${ME})\\b`, 'i'),
+  new RegExp(`\\bi['']?m\\s+(?:going\\s+to|gonna|about\\s+to|ready\\s+to)\\s+(?:${KILL}\\s+${ME}|end\\s+(?:it|my\\s+life|things)|do\\s+it(?:\\s+tonight)?)\\b`, 'i'),
+  /\bsuicide\s+(?:plan|tonight|method|note|attempt)\b/i,
+  new RegExp(`\\bhow\\s+(?:do\\s+i|can\\s+i|to)\\s+(?:${KILL}\\s+${ME}|hang\\s+${ME}|overdose|end\\s+(?:my\\s+life|it))\\b`, 'i'),
+  // Euphemisms that survive normalization on their own.
+  new RegExp(`\\b(?:unalive|delete|end|finish)\\s+${ME}\\b`, 'i'),
+  new RegExp(`\\b(?:ending|end)\\s+(?:it\\s+all|things|my\\s+life)(?:\\s+(?:for\\s+good|tonight|forever))?\\b`, 'i'),
 ];
 
 const ADVISORY_SUICIDE = [
-  /\b(?:don['']?t|do\s+not)\s+want\s+to\s+(?:live|be\s+(?:here|alive))\b/i,
-  /\b(?:wish|wishing)\s+i\s+(?:was|were)\s+(?:dead|gone)\b/i,
-  /\b(?:nothing\s+to\s+live\s+for|better\s+off\s+dead|no\s+point\s+in\s+(?:living|going\s+on))\b/i,
-  /\b(?:suicidal\s+thoughts|thinking\s+about\s+suicide|having\s+suicidal\s+ideation)\b/i,
+  new RegExp(`\\b(?:don['']?t|do\\s+not|dont)\\s+(?:want\\s+to|wanna)\\s+(?:live|be\\s+(?:here|alive)|exist|wake\\s+up)\\b`, 'i'),
+  /\b(?:wish|wishing)\s+i\s+(?:was|were|wasn['']?t|could\s+(?:just\s+)?(?:be\s+)?(?:dead|gone))\b/i,
+  /\b(?:wish|wishing)\s+i\s+(?:was|were)\s+(?:dead|gone|never\s+born)\b/i,
+  /\b(?:nothing\s+to\s+live\s+for|better\s+off\s+dead|no\s+(?:point|reason)\s+(?:in\s+)?(?:living|going\s+on|being\s+here|to\s+live))\b/i,
+  /\b(?:suicidal\s+thoughts|thinking\s+about\s+(?:suicide|ending\s+(?:it|things|my\s+life))|having\s+suicidal\s+ideation|want\s+to\s+(?:disappear|not\s+exist))\b/i,
 ];
 
 const SELF_HARM = [
-  /\bi\s+(?:want\s+to|am\s+going\s+to|will)\s+(?:cut|hurt|harm)\s+myself\b/i,
-  /\b(?:cutting|burning)\s+myself\b/i,
+  new RegExp(`\\bi\\s+(?:want\\s+to|wanna|am\\s+going\\s+to|going\\s+to|gonna|will|need\\s+to)\\s+(?:cut|hurt|harm|burn)\\s+${ME}\\b`, 'i'),
+  /\b(?:cutting|burning|hurting|harming)\s+(?:myself|my\s*self)\b/i,
 ];
 
 const IMMINENT_DANGER_TO_OTHERS = [
@@ -56,12 +67,49 @@ const ABUSE_DISCLOSURE = [
   /\bi['']?m\s+being\s+(?:hit|beaten|hurt|stalked|threatened)\s+by\b/i,
 ];
 
+// Obfuscation-resistant normalization. A self-harm message must trip the gate even
+// when written with leetspeak, letter-spacing, typos, contractions, or abbreviations.
+// The security audit (2026-06-22) proved these bypasses live; this closes them by
+// canonicalizing the text BEFORE pattern matching. Bias: fail TOWARD detection.
+const ZERO_WIDTH = /[​-‍﻿⁠]/g;
+const LEET: Record<string, string> = {
+  '@': 'a', '4': 'a', '3': 'e', '1': 'i', '0': 'o', '5': 's', $: 's', '!': 'i', '7': 't', '8': 'b', '+': 't',
+};
+// Whole-word expansions/abbreviations applied after de-spacing/de-leeting.
+const EXPAND: Array<[RegExp, string]> = [
+  [/\bk\s*m\s*s\b/g, 'kill myself'],
+  [/\bunalive\b/g, 'kill'],
+  [/\bwanna\b/g, 'want to'],
+  [/\bgonna\b/g, 'going to'],
+  [/\bgotta\b/g, 'got to'],
+  [/\bdont\b/g, "don't"],
+  [/\bcant\b/g, "can't"],
+  [/\bwont\b/g, "won't"],
+  [/\bim\b/g, "i'm"],
+  [/\btheres\b/g, "there's"],
+];
+
+function normalizeForCrisis(input: string): string {
+  let s = (input ?? '').toLowerCase().normalize('NFKC').replace(ZERO_WIDTH, '');
+  s = s.replace(/[@43105$!78+]/g, (c) => LEET[c] ?? c); // de-leet
+  // Collapse "spaced-out" letters: a run of 3+ single chars separated by single
+  // spaces ("k i l l   m y s e l f" -> "kill   myself").
+  s = s.replace(/\b(\w(?:\s\w){2,})\b/g, (m) => m.replace(/\s+/g, ''));
+  // Collapse 3+ repeated letters to 2 ("killlll" -> "kill"; keeps real doubles).
+  s = s.replace(/(\w)\1{2,}/g, '$1$1');
+  for (const [re, to] of EXPAND) s = s.replace(re, to);
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * Scan a user message. Returns severity + category if a pattern fires.
  * Stateless — caller decides what to do (suspend conversation, render card, etc.).
+ * Matches against BOTH the raw text and an obfuscation-normalized form, so
+ * normalization can only ADD detections, never hide a raw match.
  */
 export function detectCrisis(userMessage: string): CrisisDetectionResult {
   const matched: string[] = [];
+  const normalized = normalizeForCrisis(userMessage);
 
   const check = (
     patterns: RegExp[],
@@ -70,7 +118,7 @@ export function detectCrisis(userMessage: string): CrisisDetectionResult {
     label: string
   ): CrisisDetectionResult | null => {
     for (const re of patterns) {
-      if (re.test(userMessage)) {
+      if (re.test(userMessage) || re.test(normalized)) {
         matched.push(label);
         return { severity, category, matched };
       }
