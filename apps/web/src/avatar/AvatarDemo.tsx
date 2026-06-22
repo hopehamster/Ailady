@@ -5,8 +5,11 @@ import type { AvatarDriver } from "./AvatarDriver";
 // Dev harness: proves the swappable AvatarDriver works inside the real React/Vite app —
 // her face emotes from a psyche EmotionKey and her mouth lip-syncs. Sample Avaturn T2
 // avatar; production swaps to our hand-built library (R2) + Cartesia audio.
+// Pinned to an IMMUTABLE commit SHA (not @main) — supply-chain hardening (review
+// 2026-06-22). This harness is DEV-only (lazy + import.meta.env.DEV gated in App.tsx),
+// so this URL is not in the production bundle.
 const SAMPLE_AVATAR =
-  "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@main/avatars/avaturn.glb";
+  "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@eed58d198076a7e1e825f804802921c4d3804d46/avatars/avaturn.glb";
 
 // A representative spread of the 15 psyche EmotionKeys.
 const EMOTIONS = [

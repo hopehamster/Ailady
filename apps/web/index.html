@@ -4,16 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Aria</title>
-    <!-- Avatar runtime deps. TalkingHead (+ its `three` peer) load from the CDN at
-         runtime; TalkingHeadDriver does import(/* @vite-ignore */ "talkinghead"), which
-         the browser resolves here. Verified in spikes/avatar-derisk/.
-         TODO(prod): self-host three + talkinghead + our own GLBs instead of the CDN. -->
+    <!-- `three` is the runtime peer of TalkingHead (which TalkingHeadDriver loads by a
+         SHA-pinned CDN URL). These npm specifiers are pinned to the IMMUTABLE version
+         three@0.180.0 (npm versions can't be republished). Verified in spikes/avatar-derisk/.
+         TODO(prod, pre-launch): self-host three + talkinghead from our own origin/R2,
+         drop this importmap, and add a strict CSP `script-src`. Tracked in the security gate. -->
     <script type="importmap">
       {
         "imports": {
           "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
-          "talkinghead": "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.7/modules/talkinghead.mjs"
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
         }
       }
     </script>

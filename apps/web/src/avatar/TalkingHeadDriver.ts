@@ -6,8 +6,12 @@ import { emotionToMood } from "./emotionMap";
 // FULL URL (via a variable, so neither Vite's dep scanner nor TS tries to resolve it as a
 // bundled module). Its internal `import ... from "three"` resolves through the document
 // importmap in index.html. TODO(prod): self-host this instead of the CDN.
+// Pinned to the immutable v1.7.0 COMMIT SHA (not the movable @1.7 tag) so the upstream
+// can't be force-moved under us — supply-chain hardening (security review 2026-06-22).
+// TODO(prod, pre-launch): self-host this + three from our own origin/R2 and add a strict
+// CSP; a CDN module is a remote-code-execution surface for an intimate-companion app.
 const TALKINGHEAD_URL =
-  "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@1.7/modules/talkinghead.mjs";
+  "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@67a210b91486a42e58d38fd5682fbfc6754f67bd/modules/talkinghead.mjs";
 
 export class TalkingHeadDriver implements AvatarDriver {
   private head: any = null;
