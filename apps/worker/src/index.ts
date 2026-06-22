@@ -7,6 +7,7 @@ import {
   ARIA_CRISIS_REPLY,
   applyTurnToMemory,
   createEmptyIntelligentMemory,
+  extractTurnMemory,
 } from "@aria/aria-core";
 import {
   ensureUser,
@@ -169,12 +170,21 @@ export default {
           turnId,
           { memory }, // Phase 1b — inject the hydrated long-term memory
         );
-        // Phase 1b — apply this turn to structured memory (pure aria-core
-        // transform: pacing / open loops / chronology / style / persona / psyche;
-        // importance scoring + fact/emotion extraction land in Phase 1c), then
-        // persist the WHOLE turn atomically: both chat_turns rows + the memory
-        // upsert + scored append + capping DELETE in ONE D1 batch, so the
-        // conversation log and the memory projection can never desync.
+        // Phase 1c — the per-turn memory extraction (importance scoring + fact/
+        // emotion extraction, gated by the write-gate) runs SYNCHRONOUSLY before the
+        // response. This keeps the turn's atomic persist FAILURE-VISIBLE (a D1 error
+        // -> the outer catch -> 500 -> the client retries against the idempotent
+        // ids) and guarantees turn N is committed before turn N+1 can hydrate (no
+        // same-uid lost-update). It costs extraction latency on the response; moving
+        // extraction off the response path (with per-uid serialization + a retry/
+        // dead-letter) is a Phase-3 item once the realtime Durable Object provides
+        // per-uid ordering.
+        const extracted = await extractTurnMemory({
+          userMessage: body.message,
+          aiResponse: ai.content,
+          existingCoreFacts: memory?.coreFacts ?? [],
+          nowMs,
+        });
         const memoryBase = memory ?? createEmptyIntelligentMemory(uid, nowMs);
         const updatedMemory = applyTurnToMemory(memoryBase, {
           turnId,
@@ -185,6 +195,8 @@ export default {
             timeZoneOffsetMinutes: body.clientTime?.timeZoneOffsetMinutes,
             timeZoneName: body.clientTime?.timeZoneName,
           },
+          scoring: extracted.scoring,
+          extraction: extracted.extraction,
         });
         const newScored = updatedMemory.scoredMessages.filter(
           (m) => m.id === `${turnId}_user` || m.id === `${turnId}_ai`,

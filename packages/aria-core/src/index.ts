@@ -66,12 +66,17 @@ export type {
 
 // Phase 1b — structured long-term memory. aria-core owns the PURE per-turn
 // update + empty-memory builder; the Worker owns D1 load/save (compile/persist).
+// Phase 1c — extractTurnMemory: the per-turn LLM extraction (importance scoring +
+// fact/emotion extraction + write-gate) that produces the {scoring, extraction}
+// applyTurnToMemory consumes. Run it post-response (ctx.waitUntil).
 export {
   applyTurnToMemory,
   createEmptyIntelligentMemory,
+  extractTurnMemory,
 } from "./services/memoryService";
 export type {
   ApplyTurnInput,
   TurnScoring,
   TurnExtraction,
+  TurnMemoryExtractionInput,
 } from "./services/memoryService";
