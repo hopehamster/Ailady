@@ -1,0 +1,106 @@
+# Aria Auth Spike A — Cloudflare Workers + D1 + Plivo Verify
+# wrangler 4.95.0+ required (rate limit binding GA in 4.36.0+).
+
+name = "aria-auth-spike"
+main = "src/worker.ts"
+compatibility_date = "2025-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# ----------------------------------------------------------------------------
+# D1 — primary identity store. uid is the PK.
+# Schema: migrations/0001_init.sql + migrations/0002_abuse_counters.sql
+#   0002 adds otp_send_ip_daily (#6) + otp_verify_phone_failures (#7).
+# ----------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "aria_auth"
+database_id = "REPLACE_WITH_REAL_D1_ID_FROM_wrangler_d1_create"
+migrations_dir = "migrations"
+
+# ----------------------------------------------------------------------------
+# Rate limit bindings (GA since 2025-09-19). period must be 10 or 60.
+# limit/period semantics: at most LIMIT calls per PERIOD seconds per key.
+# Real abuse defense layers MULTIPLE windows. We model: short-burst (10s) +
+# medium-burst (60s) + daily-ceiling (which we enforce with D1 counters since
+# the binding only supports 10/60).
+# ----------------------------------------------------------------------------
+[[ratelimits]]
+name = "OTP_SEND_BURST"
+namespace_id = "1001"
+  [ratelimits.simple]
+  limit = 1
+  period = 10
+
+[[ratelimits]]
+name = "OTP_SEND_PER_MINUTE"
+namespace_id = "1002"
+  [ratelimits.simple]
+  limit = 3
+  period = 60
+
+# Per-IP short-window OTP-send limit (#6) — one host can't blast many distinct
+# numbers within a burst window. Pairs with the OTP_SEND_IP_DAILY_MAX D1 ceiling.
+[[ratelimits]]
+name = "OTP_SEND_IP_BURST"
+namespace_id = "1004"
+  [ratelimits.simple]
+  limit = 3
+  period = 60
+
+[[ratelimits]]
+name = "VERIFY_BURST"
+namespace_id = "1003"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# Per-IP short-window OTP-verify limit (#7) — caps verify guesses per source IP
+# regardless of how many distinct sessions the attacker mints.
+[[ratelimits]]
+name = "VERIFY_IP_BURST"
+namespace_id = "1005"
+  [ratelimits.simple]
+  limit = 10
+  period = 60
+
+# ----------------------------------------------------------------------------
+# Secrets (set via `wrangler secret put NAME` — never in this file).
+#
+#   PLIVO_AUTH_ID
+#   PLIVO_AUTH_TOKEN
+#   PLIVO_VERIFY_APP_UUID
+#   TURNSTILE_SECRET_KEY        (server-side, paired with TURNSTILE_SITE_KEY on the client)
+#                               REQUIRED in prod: OTP-send validates the client
+#                               Turnstile token via siteverify before vendor.send()
+#                               and FAILS CLOSED if this is unset (#5).
+#
+# Plain vars (env-specific, OK to commit):
+# ----------------------------------------------------------------------------
+[vars]
+ENV = "dev"
+ACCESS_TOKEN_TTL_SEC = "900"          # 15 min
+REFRESH_TOKEN_TTL_SEC = "2592000"     # 30 days
+OTP_TTL_SEC = "300"                   # 5 min
+# OTP_VENDOR: 'mock' is ONLY honored when ENV=dev. getVendor() FAILS CLOSED when
+# ENV != 'dev' and OTP_VENDOR is not an explicit real vendor (e.g. 'plivo') —
+# a misconfigured prod deploy 503s instead of bypassing auth via the Mock (M1).
+OTP_VENDOR = "mock"                   # 'mock' (dev only), 'plivo' for prod
+JWT_ISSUER = "https://auth.aria.app"
+JWT_AUDIENCE = "aria-client"
+# Per-IP daily OTP-send ceiling (#6), enforced via the otp_send_ip_daily D1
+# counter (migration 0002). The RateLimit binding can't express a day window.
+OTP_SEND_IP_DAILY_MAX = "20"
+# Cross-session OTP-verify brute-force lock (#7): lock a phone for
+# OTP_VERIFY_PHONE_LOCK_SEC after OTP_VERIFY_PHONE_MAX_FAILS failed verifies
+# within OTP_VERIFY_PHONE_WINDOW_SEC, independent of session count
+# (otp_verify_phone_failures table, migration 0002).
+OTP_VERIFY_PHONE_MAX_FAILS = "10"
+OTP_VERIFY_PHONE_WINDOW_SEC = "900"   # 15 min rolling window
+OTP_VERIFY_PHONE_LOCK_SEC = "900"     # 15 min lockout
+
+# ----------------------------------------------------------------------------
+# Observability — workers logs + tail. Production should also enable Logpush
+# of audit_events to R2 for SIEM ingest.
+# ----------------------------------------------------------------------------
+[observability]
+enabled = true
