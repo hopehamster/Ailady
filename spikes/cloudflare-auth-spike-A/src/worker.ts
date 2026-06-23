@@ -64,6 +64,7 @@ interface Env {
   OTP_SEND_IP_BURST: RateLimit; // per-IP short-window send limit (#6)
   VERIFY_BURST: RateLimit;
   VERIFY_IP_BURST: RateLimit; // per-IP short-window verify limit (#7)
+  REFRESH_IP_BURST: RateLimit; // per-IP refresh limit (audit 2026-06-22 F1)
   ENV: string;
   ACCESS_TOKEN_TTL_SEC: string;
   REFRESH_TOKEN_TTL_SEC: string;
@@ -101,12 +102,29 @@ function json(body: unknown, status = 200): Response {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      // Baseline security headers (audit 2026-06-22 F5) — JSON API → deny-all CSP is safe.
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "x-frame-options": "DENY",
+      "content-security-policy": "default-src 'none'; frame-ancestors 'none'",
     },
   });
 }
 
 function err(status: number, code: string, message?: string): Response {
   return json({ ok: false, error: { code, message: message ?? code } }, status);
+}
+
+// Constant-time string compare (audit 2026-06-22 F2) — removes the timing side-channel
+// on the admin token. Web Crypto has no string variant, so compare bytes manually.
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= (ab[i] ?? 0) ^ (bb[i] ?? 0);
+  return diff === 0;
 }
 
 function clientIp(req: Request): string {
@@ -418,6 +436,11 @@ async function handleVerifyOtp(req: Request, env: Env): Promise<Response> {
 }
 
 async function handleRefresh(req: Request, env: Env): Promise<Response> {
+  // Per-IP rate limit (audit 2026-06-22 F1) — refresh was the one unthrottled auth
+  // endpoint. Caps rotation velocity / stolen-token access-minting / endpoint DoS.
+  if (!(await env.REFRESH_IP_BURST.limit({ key: "refresh_ip:" + clientIp(req) })).success) {
+    return err(429, "rate_limited");
+  }
   const body = await readJson<{ refreshToken?: string }>(req);
   if (!body?.refreshToken) return err(400, "missing_refresh_token");
   const idx = body.refreshToken.indexOf(".");
@@ -546,7 +569,7 @@ async function handleJwks(_req: Request, env: Env): Promise<Response> {
 
 async function handleAdminRotate(req: Request, env: Env): Promise<Response> {
   if (!env.ADMIN_TOKEN) return err(503, "admin_disabled");
-  if (req.headers.get("x-admin-token") !== env.ADMIN_TOKEN) return err(403, "forbidden");
+  if (!timingSafeEqual(req.headers.get("x-admin-token") ?? "", env.ADMIN_TOKEN)) return err(403, "forbidden");
   const fresh = await generateEs256KeyPair();
   // Retire current active key.
   await env.DB.prepare("UPDATE signing_keys SET status='retired', retired_at=? WHERE status='active'")

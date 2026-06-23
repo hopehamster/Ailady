@@ -63,6 +63,16 @@ namespace_id = "1005"
   limit = 10
   period = 60
 
+# Per-IP refresh rate limit (audit 2026-06-22 F1) — refresh was the one unthrottled
+# auth endpoint; cap rotation velocity (DoS + stolen-token access-minting). 20/min is
+# generous vs legit cadence (~1 per 15 min) but blocks abuse.
+[[ratelimits]]
+name = "REFRESH_IP_BURST"
+namespace_id = "1006"
+  [ratelimits.simple]
+  limit = 20
+  period = 60
+
 # ----------------------------------------------------------------------------
 # Secrets (set via `wrangler secret put NAME` — never in this file).
 #

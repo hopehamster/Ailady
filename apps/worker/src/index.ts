@@ -205,6 +205,11 @@ export default {
       if (!body || typeof body.message !== "string" || body.message.length === 0) {
         return json({ success: false, error: "message_required" }, 400);
       }
+      // Length cap (audit 2026-06-22 F4) — bounds token-flood cost-DoS against the LLM.
+      // 4000 chars is generous for chat; longer is an abuse signal, not a real turn.
+      if (body.message.length > 4000) {
+        return json({ success: false, error: "message_too_long" }, 413);
+      }
 
       // Accept a client idempotency key so a retried turn reuses the same id:
       // chat_turns + scored_messages are ON CONFLICT idempotent and

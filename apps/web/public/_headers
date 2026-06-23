@@ -1,0 +1,14 @@
+# Cloudflare Pages response headers for the deployed web app (PROD only — Vite dev
+# does not serve this, so HMR is unaffected). Audit 2026-06-22 F3/F5.
+#
+# CSP bounds the script surface to our own origin + the pinned jsDelivr CDN (where
+# three + TalkingHead currently load from), and locks down everything else. The
+# 'unsafe-inline' on script-src is the interim cost of the inline <importmap>;
+# the FULL fix is to self-host three + TalkingHead, drop the importmap, and tighten
+# script-src to 'self' (no unsafe-inline, no CDN) — tracked as the F3 pre-launch item.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
