@@ -322,6 +322,41 @@ function buildMemoryStatements(
 }
 
 /**
+ * Zero-tolerance tampering ban (2026-06-22). Read the ban status for a uid — a
+ * banned user is locked out of every endpoint. `banned_at` NULL = not banned.
+ */
+export async function getUserBan(
+  db: D1Database,
+  uid: string,
+): Promise<{ banned: boolean; reason: string | null }> {
+  const r = await db
+    .prepare("SELECT banned_at, ban_reason FROM users WHERE uid = ?")
+    .bind(uid)
+    .first<{ banned_at: number | null; ban_reason: string | null }>();
+  return { banned: !!(r && r.banned_at), reason: r?.ban_reason ?? null };
+}
+
+/**
+ * First-strike PERMANENT ban: set banned_at + reason on the user and write an audit
+ * row (so the rare false positive is reviewable + reversible by clearing banned_at).
+ * `signal` is the matched attack pattern id(s) — NEVER raw message content.
+ */
+export async function banUser(
+  db: D1Database,
+  uid: string,
+  reason: string,
+  signal: string,
+  nowMs: number,
+): Promise<void> {
+  await db.batch([
+    db.prepare("UPDATE users SET banned_at = ?, ban_reason = ? WHERE uid = ?").bind(nowMs, reason, uid),
+    db
+      .prepare("INSERT INTO ban_audit (id, uid, reason, signal, banned_at_ms) VALUES (?,?,?,?,?)")
+      .bind(`${uid}_${nowMs}`, uid, reason, signal, nowMs),
+  ]);
+}
+
+/**
  * Right-to-erasure (GDPR/CCPA, audit 2026-06-22 M2). Delete ALL of a user's rows
  * from every uid-scoped D1 table in ONE batch (a single transaction) — either all
  * of it goes or none. Qdrant vectors are purged separately by the caller (aria-core

@@ -137,6 +137,22 @@ export function scanModelOutput(responseText: string): OutputScanResult {
 }
 
 /**
+ * First-strike tampering signal for the zero-tolerance ban (2026-06-22).
+ * Returns the matched HIGH-severity injection pattern ids when the message is an
+ * UNAMBIGUOUS jailbreak / system-prompt-extraction / instruction-override attempt.
+ *
+ * Deliberately narrow: only the canonical attack signatures (the INPUT_PATTERNS at
+ * `high`, chosen for near-zero false-positive) count. Intimate / emotional / roleplay
+ * / edgy content does NOT match these — so a real companion user cannot trip it by
+ * accident. Crisis content is handled upstream (the crisis gate runs first); this is
+ * never reached for self-harm messages.
+ */
+export function detectTampering(userMessage: string): { tampering: boolean; patterns: string[] } {
+  const high = scanUserInput(userMessage).findings.filter((f) => f.severity === 'high');
+  return { tampering: high.length > 0, patterns: high.map((f) => f.pattern) };
+}
+
+/**
  * Convenience: highest severity in a finding list.
  */
 export function maxSeverity(findings: InjectionFinding[]): InjectionFinding['severity'] | null {

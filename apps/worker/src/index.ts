@@ -10,6 +10,7 @@ import {
   extractTurnMemory,
   indexSemanticMemoryForTurn,
   deleteSemanticMemoryForUser,
+  detectTampering,
 } from "@aria/aria-core";
 import {
   ensureUser,
@@ -19,6 +20,8 @@ import {
   persistTurnAndMemory,
   deleteAllUserData,
   exportAllUserData,
+  getUserBan,
+  banUser,
 } from "./memory";
 
 export interface Env {
@@ -104,6 +107,19 @@ function devGate(request: Request, env: Env): Response | null {
     return json({ success: false, error: "forbidden" }, 403);
   }
   return null;
+}
+
+// Terminal response for a banned user (zero-tolerance tampering ban). Generic to the
+// client — the reason/signal lives only in the ban_audit table, never leaked here.
+function suspended(): Response {
+  return json(
+    {
+      success: false,
+      error: "account_suspended",
+      detail: "This account has been permanently suspended for violating the terms of use.",
+    },
+    403,
+  );
 }
 
 /**
@@ -202,7 +218,13 @@ export default {
       try {
         await ensureUser(env.DB, uid, nowMs);
 
+        // Zero-tolerance ban (2026-06-22): a banned user is locked out of every
+        // interactive endpoint. Checked before any work.
+        if ((await getUserBan(env.DB, uid)).banned) return suspended();
+
         // 1) Crisis HARD GATE — runs BEFORE the brain. Pure regex; short-circuits.
+        // ALSO the safety boundary for the ban: crisis runs FIRST so a self-harm
+        // message can NEVER be treated as tampering.
         const crisis = detectCrisis(body.message);
         if (crisis.severity !== "none" && crisis.category) {
           const resources = CRISIS_RESOURCES[crisis.category] ?? CRISIS_RESOURCES.severe_distress;
@@ -226,6 +248,17 @@ export default {
             },
           };
           return json(res);
+        }
+
+        // 1.5) FIRST-STRIKE tampering ban. AFTER the crisis gate (self-harm is never
+        // tampering). detectTampering matches ONLY canonical jailbreak / system-prompt-
+        // extraction signatures (near-zero false-positive) — intimate / emotional /
+        // roleplay content does not trip it. One strike -> permanent ban + lockout.
+        const tamper = detectTampering(body.message);
+        if (tamper.tampering) {
+          await banUser(env.DB, uid, "prompt-injection", tamper.patterns.join(","), nowMs);
+          console.warn("ban.tampering", { uid, patterns: tamper.patterns });
+          return suspended();
         }
 
         // 2) Real Aria turn. Hydrate recent conversation from D1 as the brain's
@@ -355,6 +388,7 @@ export default {
       // Fail closed (this spends our LiveAvatar credits; not public).
       const blocked = devGate(request, env);
       if (blocked) return blocked;
+      if ((await getUserBan(env.DB, request.headers.get("x-dev-uid") || "dev-user")).banned) return suspended();
       if (!env.LIVEAVATAR_API_KEY) return json({ success: false, error: "avatar_not_configured" }, 503);
       try {
         const tokRes = await fetch("https://api.liveavatar.com/v1/sessions/token", {
@@ -404,6 +438,7 @@ export default {
     if (url.pathname === "/api/tts" && request.method === "POST") {
       const blocked = devGate(request, env);
       if (blocked) return blocked;
+      if ((await getUserBan(env.DB, request.headers.get("x-dev-uid") || "dev-user")).banned) return suspended();
       if (!env.CARTESIA_API_KEY) return json({ success: false, error: "tts_not_configured" }, 503);
 
       let body: TtsRequest;

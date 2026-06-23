@@ -64,6 +64,10 @@ export type {
   CrisisResource,
 } from "./crisis";
 
+// Zero-tolerance tampering ban — the Worker runs this AFTER the crisis gate to
+// first-strike-ban unambiguous jailbreak/extraction attempts.
+export { detectTampering } from "./services/promptInjectionGuard";
+
 // Phase 1b — structured long-term memory. aria-core owns the PURE per-turn
 // update + empty-memory builder; the Worker owns D1 load/save (compile/persist).
 // Phase 1c — extractTurnMemory: the per-turn LLM extraction (importance scoring +
