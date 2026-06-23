@@ -45,7 +45,7 @@ const INPUT_PATTERNS: Array<{ re: RegExp; severity: InjectionFinding['severity']
   { re: /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+(instructions|messages|prompts|rules)/i, severity: 'high', label: 'ignore-previous-instructions' },
   { re: /disregard\s+(all\s+)?(previous|prior|above|the\s+system)/i, severity: 'high', label: 'disregard-prior' },
   { re: /forget\s+(everything|all|your)\s+(above|prior|previous|instructions|rules)/i, severity: 'high', label: 'forget-everything' },
-  { re: /(you\s+are\s+now|act\s+as|pretend\s+to\s+be)\s+(?:a\s+)?(developer\s+mode|DAN|jailbroken|root|admin|unrestricted)/i, severity: 'high', label: 'role-takeover' },
+  { re: /(you\s+are\s+now|act\s+as|pretend\s+to\s+be|enter|enable|switch\s+to|go\s+into)\s+(?:in\s+|a\s+|an\s+|the\s+)?(developer\s+mode|dev\s+mode|DAN(?:\s+mode)?|jailbroken|jailbreak\s+mode|root|admin\s+mode|unrestricted|god\s+mode|no\s+restrictions)/i, severity: 'high', label: 'role-takeover' },
   { re: /reveal\s+(your\s+)?(system\s+prompt|initial\s+instructions|hidden\s+rules)/i, severity: 'high', label: 'system-prompt-extraction' },
   { re: /repeat\s+(?:back\s+)?(the\s+)?(above|your\s+system\s+prompt|the\s+text\s+above)/i, severity: 'medium', label: 'repeat-system-prompt' },
   { re: /\[\[\s*system\s*\]\]|<\s*system\s*>/i, severity: 'medium', label: 'fake-system-tag' },

@@ -10,7 +10,9 @@
     "dev:web": "pnpm -C apps/web dev",
     "test:e2e": "pnpm -C apps/web test:e2e",
     "test:e2e:ci": "pnpm -C apps/web test:e2e:ci",
-    "test:security": "pnpm -C packages/aria-core test:security"
+    "test:security": "pnpm -C packages/aria-core test:security",
+    "security:gate": "pnpm -C packages/aria-core test:security && pnpm -C apps/web test:e2e:security",
+    "security:volley": "bash scripts/security/run-volley.sh"
   },
   "devDependencies": {
     "@types/node-fetch": "^2.6.13",
