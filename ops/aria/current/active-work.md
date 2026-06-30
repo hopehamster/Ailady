@@ -1,83 +1,66 @@
 # Aria Active Work
 
-Date: 2026-04-08
+Date: 2026-06-27
 
 ## Current State
 
-Active implementation repo is now locked to:
+Active implementation repo: `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`, branch `aria-clean-recovery-20260327`.
 
-- `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`
-- branch `aria-clean-recovery-20260327`
+Codex reconciliation on 2026-06-30 observed the current local branch as `aria-web-build-e2e` and the active execution surface as the root pnpm web/worker workspace (`apps/web`, `apps/worker`, `packages/aria-core`, `packages/shared-types`). Treat `tools/girlai2` as important legacy/mobile context unless a task explicitly targets it.
 
-The clean repo now has its own local operating system and the first selective prompt-cost pass has been reimplemented locally.
+Project tracking is now installed as a first-class workstream:
+
+- GitHub Project: `Aria Product OS`
+- Repo map: `ops/aria/current/project-tracking.md`
+- Protocol: `ops/aria/protocols/project-tracking-protocol.md`
+
+**Pre-session health (2026-06-27):** 4/4 packages typecheck CLEAN. 39/39 tests pass. Worker builds and deploys.
+
+**Two active workstreams** — see dispatch index at `ops/aria/protocols/dispatch-sheets/INDEX.md`:
+
+### Waves Completed
+- **Wave 1** (4 agents): Phase A diagnosis confirmed H2+H3. Security tools installed. fast-check added. Shared types extracted.
+- **Wave 2** (3 agents): T1 property sweep (8 invariants, 80K runs). T3 body-fidelity (8 moods). Phase 1 breadth scans (0 CVEs, 1 HIGH CORS finding).
+- **Audit pass** (2026-06-27): 3 fixes applied from TS knowledge audit (moduleDetection, expect.toPass, branded EpochMs).
+
+### Waves Ready (dispatch sheets written)
+- **Wave 3** (3 agents): T2 live arcs, T4 grader fleet, D1 schema
+- **Wave 4** (2 agents): Phase C fixes, T5 regression + ablation
+- **Wave 5** (planned): GO/NO-GO verdict, body-fidelity deepening, security Phase 2-3
+
+### Workstream A: Psyche Readiness (diagnose → tune → body-fidelity)
+The "is the psyche ready for the body?" gate. Phase A (diagnose) confirmed the flat-result root cause: wrong eval arc (engaged instead of deflection) + wrong no-focal-drive fallback affect (neutral instead of warm). Phase B (vast virtual testing engine — 5 tiers from pure-layer property sweeps to continuous regression) is the spine. Phase C fixes the two genuine gaps. Phase D deepens body fidelity.
+
+### Workstream B: Security Volley + Standing Gate
+10-phase real-tool penetration test against the full stack (worker, web, auth-spike, LLM brain). Produces a ranked verified report. Builds a standing `pnpm security:gate` for CI + `pnpm security:volley` for nightly/manual. Report-first: no code fixes until findings are approved.
+
+### Completed (committed e7cde7a)
+- Aria Talking Loop (chat → emotion → speech pipeline)
+- Full Playwright E2E suite (render, emote, audio, loop specs)
+- GLB self-hosting for reliable avatar load
 
 ## Immediate Next Actions
 
-1. Use the new low-token execution packet as the default handoff surface.
-2. Treat `tools/girlai2/functions/src/services/llmService.ts` as the accepted stable coordinator shape.
-3. Return focus to product quality, feature readiness, and the pre-Heygen migration gate.
-4. Run the live tester-readiness sweeps on an attached Android device:
-   - `tools/girlai2/docs/VOICE_READINESS_PASS.md`
-   - `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
-   - `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
-5. Keep using `ops/aria/current/pre-heygen-migration-gate.md` as the canonical migration gate.
-6. Use `scripts/checkpoint-work.ps1` with `-OnlyPaths` on this dirty tree.
+1. Use `ops/aria/current/project-tracking.md` and GitHub Project `Aria Product OS` as the execution board.
+2. Adjudicate the CORS conflict before changing code.
+3. Dispatch/execute Wave 3:
+   - W3-P live arcs
+   - W3-L grader fleet
+   - W3-M D1 schema
+4. Dispatch/execute Wave 4 after Wave 3 evidence:
+   - W4-P Phase C fixes
+   - W4-L T5 regression + ablation
+5. Compile Wave 5 GO/NO-GO verdict.
+6. Use scoped checkpoint paths only.
 
 ## Do Not Lose These Facts
 
 - The clean repo is the only active implementation base.
 - The old repo is reference-only and should not receive new product work.
-- Do not blindly copy old `llmService.ts`, `memoryService.ts`, or `PROJECT_MEMORY_LEDGER.md` into this repo.
-- `HeyGen WebView` remains the planned avatar upgrade direction, but not before responsiveness and feature readiness are solid.
-- Prompt-cost changes now present in the clean repo:
-  - `tools/girlai2/functions/src/services/promptCostService.ts`
-  - dynamic initial history fetch in `tools/girlai2/functions/src/index.ts`
-  - fast-turn prompt compaction in `tools/girlai2/functions/src/services/llmService.ts`
-  - tests in `tools/girlai2/functions/test/prompt-cost.test.js`
-- Prompt-cost validation is now complete on deployed backend:
-  - deploy succeeded from clean repo
-  - dedicated latency pass artifact: `tools/girlai2/docs/_tmp_aria_device_test/70578ba3/20260405_045306`
-  - replay binary check artifact: `tools/girlai2/docs/_tmp_replay_binary_check_20260405.txt`
-- Prompt-shell shrink progress after the deployed validation:
-  - new service: `tools/girlai2/functions/src/services/promptAugmentService.ts`
-  - prompt augmentation ownership is now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Prompt-shell shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/promptShellService.ts`
-  - system-prompt shell ownership is now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Proactive shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/proactiveMessageService.ts`
-  - proactive companion message composition is now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Chat-mode shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/chatModeService.ts`
-  - chat-mode overlay ownership is now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Response-assembly shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/responseAssemblyService.ts`
-  - main response-generation request assembly is now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Provider-execution shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/providerExecutionService.ts`
-  - OpenAI, Anthropic, and Gemini execution helpers are now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Quality-orchestration shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`
-  - post-generation critic/persona/guard orchestration is now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Post-response shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`
-  - emotion, shadow-benchmark kickoff, and background memory-update orchestration are now moved out of `llmService.ts`
-  - local build/test validation is complete
-- Response-finalization shrink progress after the current slice:
-  - new service: `tools/girlai2/functions/src/services/responseFinalizationService.ts`
-  - response-path logging and final `AIResponse` assembly are now moved out of `llmService.ts`
-  - local build/test validation is complete
-- `llmService.ts` shrink decision:
-  - stop here
-  - current file shape is accepted as the stable coordinator baseline
-  - future extractions must be justified by real ownership improvement, not line-count pressure
+- `llmService.ts` shrink is DONE — current shape is accepted as stable coordinator baseline.
+- `HeyGen WebView` remains the planned avatar upgrade direction, but not before psyche + security are solid.
+- The PM protocol at `ops/aria/protocols/project-management.md` is now canonical for all work.
+- `verification-before-completion` is the iron law — no claims without fresh evidence.
 - 2026-04-08 tester-readiness work already landed locally and is deployed:
   - `generateResponse` updated successfully
   - `generateVoiceMessage` updated successfully

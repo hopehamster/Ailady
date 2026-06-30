@@ -12,6 +12,47 @@
 
 - Active app: `tools/girlai2`
 
+## Latest Tracking Setup (2026-06-30)
+
+- Codex reconciled the agent adapter layer for the current Aria web/worker queue and installed a real GitHub-backed execution tracker.
+- GitHub Project: `Aria Product OS` at `https://github.com/users/hopehamster/projects/4`.
+- Current tracker map: `ops/aria/current/project-tracking.md`.
+- Tracking protocol: `ops/aria/protocols/project-tracking-protocol.md`.
+- Current work is represented as GitHub issues #1-#10 across security, psyche, memory, avatar, platform, and ops tracks.
+- `.codex/` and `.claude/` are adapter layers only; they now sync from `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`, `ops/aria/current/NEXT_EXECUTION_SLICE.md`, and `ops/aria/current/EXECUTION_CHECKLIST.md`.
+- Active execution surface for this queue is the root TypeScript/Cloudflare workspace: `apps/web`, `apps/worker`, `packages/aria-core`, and `packages/shared-types`. `tools/girlai2` remains canonical historical/mobile context unless a task explicitly targets Flutter.
+- Config profile sources updated: global `C:\Users\Owner\.codex\config.toml`, global `C:\Users\Owner\.codex\config.aria.toml`, and repo template `ops/aria/config/codex/config.aria.toml`.
+- Verification for this setup is tracker/docs only; no product build is required unless product source changes.
+
+## Latest Catch-Up (2026-06-29)
+
+- Codex read repo memory plus the Obsidian vault at `C:\Users\Owner\Documents\Obsidian\aria-mind` and checked GitHub via authenticated `gh`.
+- Full catch-up note: `ops/aria/log/2026-06-29-codex-vault-github-catchup.md`.
+- Claude-layer catch-up note: `ops/aria/log/2026-06-29-claude-layer-catchup.md`.
+- Local `.claude/` is an adapter layer and is partially stale: its generated active slice still points to older Flutter/live-device readiness work. The newer global Claude memory + Obsidian + ops state point to the June web/worker psyche-security queue as current.
+- Global Claude project memory adds important current context: Aria pivoted to an intimate browser product on TypeScript/Cloudflare; Playwright is the mandatory self-verification path; the security audit/posture and avatar decisions live under `C:\Users\Owner\.claude\projects\c--Users-Owner-Documents-GitHub-Ailady-clean-20260327\memory\`.
+- GitHub repo `hopehamster/Ailady_clean_20260327` is private with default branch `main`, but has no issues and no PRs; the GitHub Projects visible to `gh` appear unrelated to Aria. Treat Obsidian + repo-local dispatch sheets as the active tracker.
+- Current local branch during catch-up: `aria-web-build-e2e`; working tree is very dirty from prior wave/security/spike work. Do not reset or clean; use scoped paths for any checkpoint.
+- Latest vault handoff says Waves 1-2 are complete, Waves 3-4 are ready, Wave 5 is planned, and next work is CORS adjudication/fix plus Wave 3 dispatch.
+- Memory conflict to resolve: 2026-06-28 vault health labels worker wildcard CORS as HIGH, while `docs/security/VOLLEY_2026-06-22.md` dismissed a prior wildcard-CORS candidate as non-exploitable in context.
+
+## Latest Session (2026-06-27)
+
+- **Pre-session health:** 4/4 packages typecheck CLEAN. 39/39 tests pass.
+- **Dispatch sheets:** 5 new sheets created (W3-P T2 live arcs, W3-L T4 grader fleet, W3-M D1 schema, W4-P Phase C fixes, W4-L T5 regression). Total: 12 dispatch sheets across 4 waves.
+- **Index updated:** `ops/aria/protocols/dispatch-sheets/INDEX.md` — Waves 1-2 marked complete, Waves 3-4 ready, Wave 5 planned.
+- **Ops state updated:** `ops/aria/current/active-work.md` reflects current wave status.
+
+## Latest Project Management Setup (2026-06-26)
+
+- **Canonical PM protocol**: `ops/aria/protocols/project-management.md` — integrates the 8-skill Superpowers stack (writing-plans, executing-plans, subagent-driven-development, dispatching-parallel-agents, write-a-prd, verification-before-completion, aria-checkpoint, finishing-a-development-branch) with the existing `ops/aria/` infrastructure.
+- **Multi-agent architecture**: `ops/aria/protocols/multi-agent-architecture.md` — defines 6-agent structure (Lead + Psyche + Security + Web + Memory + Infra + on-demand Personality QA), exact file ownership, 4 parallel dispatch patterns, merge order, conflict prevention matrix, and the current workstream dispatch map for psyche readiness + security volley + web build. Supersedes the legacy Flutter-specific `ARIA_SUBAGENT_OPERATING_MODEL.md`.
+- **Full pipeline**: IDEA → PRD → PLAN → EXECUTE → VERIFY → CHECKPOINT → FINISH. Each gate has a specific skill.
+- **Plan location**: `docs/superpowers/plans/YYYY-MM-DD-<feature>.md` (new convention). Legacy plans in `.claude/plans/` to be migrated.
+- **Dispatch sheets**: `ops/aria/protocols/dispatch-sheets/INDEX.md` — 7 ready-to-execute agent dispatch sheets across 2 waves. Wave 1 (4 agents, zero dependencies, full parallel): P diagnoses H2+H3, S installs security tools, I adds fast-check, M extracts shared types. Wave 2 (3 agents): P builds T1 property sweep, W builds T3 body-fidelity baseline, S runs Phase 1 breadth scans. Each sheet has exact file paths, acceptance criteria, verification commands, and return-to-L format.
+- **Stale ops files updated**: `priorities.md` and `active-work.md` now reflect June 2026 psyche readiness + security volley work.
+- **Verification iron law**: `verification-before-completion` — no completion claims without fresh verification evidence.
+
 ## Current Priorities
 
 - Memory and project awareness before product work

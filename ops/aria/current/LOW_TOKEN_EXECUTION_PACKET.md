@@ -1,99 +1,124 @@
 # Low-Token Execution Packet
 
+Date: 2026-06-30
+
 ## Project
 
 - Active repo: `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`
-- Active branch: `aria-clean-recovery-20260327`
-- Active app path: `tools/girlai2`
+- Active branch observed by Codex: `aria-web-build-e2e`
+- Active product surface: root pnpm workspace
+  - `apps/web`
+  - `apps/worker`
+  - `packages/aria-core`
+  - `packages/shared-types`
+- Legacy/mobile app path: `tools/girlai2`
+  - still valuable history and fallback product code
+  - not the default current execution surface unless a task explicitly targets Flutter/Firebase
 
 ## Current Goal
 
-- Keep Aria stable, fast enough to feel good on `IN2017`, and feature-complete enough for serious testing.
-- Treat the current `llmService.ts` shape as the stable coordinator baseline and stop shrinking it unless a future boundary clearly improves ownership.
-- Treat `HeyGen WebView` as the next avatar direction, but do not start serious migration work until the pre-migration gate is satisfied.
+Build Aria as the intimate browser product with a reliable TypeScript/Cloudflare brain, secure worker surface, verified browser behavior, and a body layer that can express the psyche.
+
+Near-term work is the psyche-readiness + security + tracking queue:
+
+1. keep the standing web/security regression gates green
+2. finish Wave 3 and Wave 4 dispatch work
+3. reach a GO/NO-GO verdict for psyche-to-body readiness
+4. preserve the Avaturn + TalkingHead body direction unless a new verified decision supersedes it
+5. keep GitHub Issues/Projects, `ops/aria/`, and Obsidian aligned
 
 ## What Is Stable
 
 - Clean repo is the only active implementation base.
-- Prompt-cost pass is deployed from the clean repo.
-- `IN2017` latency pass is validated:
-  - text p50 about `2177ms`
-  - voice startup acceptable for testing
-- Replay-on-return binary check is clean on the deployed backend.
-- Prompt augmentation ownership is extracted into `tools/girlai2/functions/src/services/promptAugmentService.ts`.
-- System-prompt shell ownership is extracted into `tools/girlai2/functions/src/services/promptShellService.ts`.
-- Proactive companion message composition is extracted into `tools/girlai2/functions/src/services/proactiveMessageService.ts`.
-- Chat-mode overlay ownership is extracted into `tools/girlai2/functions/src/services/chatModeService.ts`.
-- Response-generation request assembly is extracted into `tools/girlai2/functions/src/services/responseAssemblyService.ts`.
-- Provider execution helpers are extracted into `tools/girlai2/functions/src/services/providerExecutionService.ts`.
-- Post-generation quality orchestration is extracted into `tools/girlai2/functions/src/services/qualityOrchestrationService.ts`.
-- Post-response emotion, shadow, and background-update orchestration is extracted into `tools/girlai2/functions/src/services/postResponseOrchestrationService.ts`.
-- Response-path logging and final `AIResponse` assembly are extracted into `tools/girlai2/functions/src/services/responseFinalizationService.ts`.
-- Build and tests pass in `tools/girlai2/functions` for the current backend slice.
-- Voice-readiness backend/client changes are implemented and deployed:
-  - stronger TTS cleanup for punctuation, dates, ordinals, and symbols
-  - tighter Azure-to-ElevenLabs fallback continuity
-  - location-awareness setting now feeds runtime truth when no fresh location snapshot exists
-- Canned-tail suppression pass is implemented and deployed:
-  - reduced scripted `we can take this...` / `we can keep this...` closing-family behavior
-  - added regression coverage for overused closing-family cleanup
-- Opener-variety follow-up is implemented and deployed:
-  - reduced repetitive `yeah, i feel that` / `that really hits` lead family
-  - added regression coverage for opener-family cleanup
+- Old `Ailady` repo is reference-only.
+- Aria web pivot is current:
+  - TypeScript top-to-bottom
+  - React/Vite web app
+  - Cloudflare Worker backend
+  - `aria-core` package owns brain/psyche logic
+  - shared-types package owns portable contracts
+- Phase 1 web brain stack is recorded as complete in global Claude memory:
+  - conversation memory
+  - structured memory
+  - LLM extraction/write-gate
+  - semantic recall
+  - psyche safety budget
+- Playwright is the primary browser verification path.
+- Security posture after the 2026-06-22 volley:
+  - no critical/high routine-attack findings
+  - zero-tolerance tampering ban shipped
+  - `pnpm security:gate` is the deterministic standing gate
+  - `pnpm security:volley` is the manual/nightly deep run
+- Avatar/body direction after June research:
+  - lead path: Avaturn + TalkingHead with preset-only consent-safe avatars
+  - Tavus is the photoreal fallback
+  - HeyGen LiveAvatar LITE is no longer the lead because it cannot directly express per-turn psyche emotion
 
-## What Is Still Broken Or Incomplete
+## Current Tracker Stack
 
-- Voice identity and timbre consistency are still partial.
-- Settings-aware self-awareness breadth is still partial.
-- Resume/background stability and some mode paths are not fully at `live` in the migration gate.
-- Live tester validation is still pending because no Android device was attached during the last readiness pass.
-- Real-world confirmation is still needed on whether canned closing frequency dropped enough in normal chats.
-- Real-world confirmation is still needed on whether opener variety now feels natural in normal chats.
-- Working tree still contains older unrelated edits:
-  - `tools/girlai2/functions/src/services/conversationPolicyService.ts`
-  - `tools/girlai2/functions/src/services/truthKernelService.ts`
-  - `tools/girlai2/docs/ARIA_CURRENT_TASK_BOARD.md`
+- GitHub Issues/Projects: execution board and issue lifecycle
+- `ops/aria/current/project-tracking.md`: repo-local tracking map and operating protocol
+- `ops/aria/protocols/dispatch-sheets/`: task-level wave sheets
+- Obsidian vault `C:\Users\Owner\Documents\Obsidian\aria-mind`: narrative memory, session logs, decisions
+- `PROJECT_MEMORY_LEDGER.md`: compact cross-session memory index
 
 ## Current Next Step
 
-- Validate live chats for canned-tail reduction, then continue the broader live tester-readiness sweeps on an attached Android device and only then promote remaining migration-gate items from `partial` to `live`.
+Use the project tracker to drive:
 
-## Do Not Touch
+1. CORS adjudication against the later security-volley context
+2. Wave 3:
+   - W3-P live arcs
+   - W3-L grader fleet
+   - W3-M D1 schema
+3. Wave 4:
+   - W4-P Phase C fixes
+   - W4-L T5 regression/ablation
+4. Wave 5 GO/NO-GO verdict
 
-- Do not switch active work back to the old `Ailady` repo.
-- Do not start serious `HeyGen WebView` implementation yet.
-- Do not bundle unrelated dirty-tree files into the next checkpoint commit.
-- Do not regress:
-  - capability truthfulness
-  - chronology correctness
-  - repair quality
-  - recent-exchange thread selection
-  - replay-on-return behavior
+## Do Not Touch Without Explicit Reason
 
-## Required Verification
+- old `C:\Users\Owner\Documents\GitHub\Ailady` repo
+- unrelated dirty-tree files
+- generated dependency folders and Flutter ephemeral files
+- production provider/auth architecture without checking current global memory and repo ops docs first
 
-- In `tools/girlai2/functions`:
-  - `npm run build`
-  - `npm test`
-- If backend behavior changes materially:
-  - deploy `functions:generateResponse`
-  - rerun the dedicated `IN2017` validation path before claiming success
-- For the current readiness lane:
-  - attach a device
-  - run the prompts in `tools/girlai2/docs/VOICE_READINESS_PASS.md`
-  - run the loops in `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
-  - run the prompts in `tools/girlai2/docs/CAPABILITY_READINESS_PROMPT_PACK.md`
-- After material work:
-  - update `PROJECT_MEMORY_LEDGER.md`
-  - update this file
-  - update `ops/aria/current/NEXT_EXECUTION_SLICE.md` if the slice changed
-  - add one dated file under `ops/aria/log/`
-  - create a scoped checkpoint commit
+## Verification Commands
 
-## Where To Read More
+Root workspace:
 
-1. `ops/aria/current/NEXT_EXECUTION_SLICE.md`
-2. `ops/aria/current/EXECUTION_CHECKLIST.md`
-3. `ops/aria/current/pre-heygen-migration-gate.md`
-4. `tools/girlai2/docs/VOICE_READINESS_PASS.md`
-5. `tools/girlai2/docs/FEATURE_READINESS_MATRIX.md`
+```powershell
+pnpm -r --if-present typecheck
+pnpm -r --if-present test
+pnpm -C apps/web test:e2e:ci
+pnpm security:gate
+```
+
+Live/browser worker checks when needed:
+
+```powershell
+pnpm -C apps/worker dev
+pnpm -C apps/web dev
+ARIA_REAL_API=1 pnpm -C apps/web exec playwright test --grep "@real"
+```
+
+Flutter/mobile checks are required only for tasks touching `tools/girlai2`.
+
+## Required Writeback
+
+After material work:
+
+- update `PROJECT_MEMORY_LEDGER.md`
+- update `ops/aria/current/project-tracking.md` if tracking state changed
+- update relevant `ops/aria/current/*`
+- add one dated `ops/aria/log/YYYY-MM-DD-*.md`
+- sync adapters with `scripts/sync-agent-adapters.ps1`
+- use scoped checkpoint paths only
+
+## Read More
+
+1. `ops/aria/current/project-tracking.md`
+2. `ops/aria/current/active-work.md`
+3. `ops/aria/protocols/dispatch-sheets/INDEX.md`
+4. `docs/security/VOLLEY_2026-06-22.md`
+5. `C:\Users\Owner\Documents\Obsidian\aria-mind\work\sessions\index.md`

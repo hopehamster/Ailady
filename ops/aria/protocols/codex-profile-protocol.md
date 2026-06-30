@@ -28,9 +28,9 @@ Use one of:
 
 ## Aria Profile Defaults
 
-- model: `gpt-5.4`
+- model: `gpt-5.5`
 - reasoning effort: `medium`
-- personality: `pragmatic`
+- personality: `friendly`
 
 MCP set:
 
@@ -39,13 +39,26 @@ MCP set:
 - `playwright`
 - `stackflow`
 
+Plugin set:
+
+- `github@openai-curated`
+- `google-drive@openai-curated`
+- `test-android-apps@openai-curated`
+- `jam@openai-curated`
+
+Trusted project:
+
+- `C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327`
+
 ## Why This Exists
 
 Aria work is currently most sensitive to:
 
 - project memory continuity
 - docs truth lookup
+- GitHub Issues/Projects tracking
 - regression/browser/device tooling
+- Obsidian/Drive-style documentation workflows when handoff docs need structured authoring
 - occasional practical issue lookup
 
 It is not helped by:

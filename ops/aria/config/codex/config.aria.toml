@@ -1,6 +1,6 @@
-model = "gpt-5.4"
+model = "gpt-5.5"
 model_reasoning_effort = "medium"
-personality = "pragmatic"
+personality = "friendly"
 
 [mcp_servers.stackflow]
 command = "npx"
@@ -23,3 +23,18 @@ sandbox = "elevated"
 
 [features]
 multi_agent = true
+
+[plugins."github@openai-curated"]
+enabled = true
+
+[plugins."google-drive@openai-curated"]
+enabled = true
+
+[plugins."test-android-apps@openai-curated"]
+enabled = true
+
+[plugins."jam@openai-curated"]
+enabled = true
+
+[projects.'C:\Users\Owner\Documents\GitHub\Ailady_clean_20260327']
+trust_level = "trusted"
