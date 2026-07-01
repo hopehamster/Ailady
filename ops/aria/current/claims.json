@@ -1,0 +1,59 @@
+{
+  "$schema_note": "Machine-readable write-path claims for active parallel agents (issue #28). One entry per active issue. Paths are repo-relative globs: '**' = any depth, '*' = one segment. Pre-check: scripts/ops/check-collisions.ps1 (exit 1 on overlap or forbidden-path claim). Register BEFORE dispatch; set status to 'landed' (or remove) when the lead merges. The lead owns edits during a live wave.",
+  "updated": "2026-07-01",
+  "wave": "WAVE 2",
+  "claims": [
+    {
+      "issue": 9,
+      "stream": "Security/Platform",
+      "agent": "S — Security worker",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "apps/worker/src/index.ts",
+        "docs/security/**",
+        "scripts/security/**"
+      ],
+      "notes": "Rate limits per #1 CORS adjudication conditions. Does NOT own apps/worker/src/memory.ts (Memory stream owns it)."
+    },
+    {
+      "issue": 2,
+      "stream": "Psyche",
+      "agent": "P — Psyche worker",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "scripts/psyche/**",
+        "packages/aria-core/src/services/psyche*",
+        "packages/aria-core/test/*psyche*"
+      ],
+      "notes": "W3-P live-arc driver. Heavy aria-core work runs in an isolated worktree; only scripts/psyche/** + psyche-owned aria-core paths land on this branch."
+    },
+    {
+      "issue": 16,
+      "stream": "Memory",
+      "agent": "M — Memory worker",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "apps/worker/src/memory.ts",
+        "packages/aria-core/src/services/memoryService.ts",
+        "packages/aria-core/src/services/historyCompactionStore.ts",
+        "packages/shared-types/src/intelligentMemory.ts"
+      ],
+      "notes": "Close persistence stubs. shared-types/src/index.ts NOT claimed — coordinate with lead before touching it (#17)."
+    },
+    {
+      "issue": 28,
+      "stream": "Ops/Release",
+      "agent": "O — Ops worker",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "ops/aria/**",
+        "scripts/ops/**"
+      ],
+      "notes": "Collision guard itself. Excludes by convention: ops/aria/current/dispatch-map.md + project-tracking.md (lead-owned live tracking), scripts/psyche/**, scripts/security/**."
+    }
+  ]
+}

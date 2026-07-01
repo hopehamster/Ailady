@@ -85,15 +85,28 @@ Merge order:
 4. body/voice production
 5. release/observability
 
-## Collision Guard Checklist
+## Collision Guard (script-backed — issue #28)
 
-Before dispatching a worker:
+Machine-readable claims registry: `ops/aria/current/claims.json` — one entry per active issue: `issue`, `stream`, `agent`, `status` (`active`|`landed`), `claimed` date, `writable_paths` (repo-relative globs), `notes`. The lead owns this file during a live wave.
 
-- list exact writable paths in the issue comment
-- check other active issues for overlapping paths
-- avoid two workers touching shared types at the same time
-- avoid two workers touching `apps/web/src/AriaTalkingView.tsx` at the same time
-- avoid worker + memory workers both editing `packages/shared-types/src/index.ts`
+Pre-check script: `scripts/ops/check-collisions.ps1`
+
+```powershell
+pwsh scripts/ops/check-collisions.ps1            # exit 1 on any overlap / forbidden claim
+pwsh scripts/ops/check-collisions.ps1 -SelfTest  # proves the detector fires (overlapping fixture must FAIL)
+```
+
+It reports: (1) any file writable by 2+ active issues (globs expanded against git-tracked files + literal claims), (2) any claim covering a hook-blocked file (`conversationPolicyService.ts`, `truthKernelService.ts`, `ARIA_CURRENT_TASK_BOARD.md`, `*adminsdk*`), (3) shared-collision files (`packages/shared-types/src/index.ts`, `apps/web/src/AriaTalkingView.tsx`) claimed by 2+ issues (FAIL) or 1 issue (WARN — single owner allowed).
+
+Before dispatching a worker (lead checklist, in order):
+
+1. register the worker's exact writable paths as an `active` claim in `claims.json`
+2. run `scripts/ops/check-collisions.ps1` — must PASS before dispatch
+3. list the same writable paths in the issue comment and the dispatch prompt
+4. never dispatch two workers onto `packages/shared-types/src/index.ts`, `apps/web/src/AriaTalkingView.tsx`, or the same worker file — the script enforces this
+5. on merge: mark the claim `landed` (or remove it), then re-run the script for the remaining wave
+
+Worker handoff is not accepted without ALL of: changed files, verification commands + results, risks, and issue evidence (the return format below). Lead merge order is checklist-driven: merge in the pack's declared order (see Safe Parallel Packs), re-running the integration gate after each merge — never merge on prose alone.
 
 Worker return format:
 

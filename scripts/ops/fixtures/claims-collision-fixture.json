@@ -1,0 +1,49 @@
+{
+  "$schema_note": "Deliberately-overlapping fixture for scripts/ops/check-collisions.ps1 -SelfTest. Contains: (1) a glob-vs-literal collision on apps/worker/src/memory.ts, (2) a claim on a hook-blocked file, (3) two claims on shared packages/shared-types/src/index.ts. The self-test PASSES only if all of these are detected.",
+  "updated": "2026-07-01",
+  "wave": "FIXTURE",
+  "claims": [
+    {
+      "issue": 901,
+      "stream": "Security/Platform",
+      "agent": "fixture-A",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "apps/worker/src/**",
+        "packages/shared-types/src/index.ts"
+      ]
+    },
+    {
+      "issue": 902,
+      "stream": "Memory",
+      "agent": "fixture-B",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "apps/worker/src/memory.ts",
+        "packages/shared-types/src/index.ts"
+      ]
+    },
+    {
+      "issue": 903,
+      "stream": "Rogue",
+      "agent": "fixture-C",
+      "status": "active",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "tools/girlai2/functions/src/services/truthKernelService.ts"
+      ]
+    },
+    {
+      "issue": 904,
+      "stream": "Inactive",
+      "agent": "fixture-D (must be ignored)",
+      "status": "landed",
+      "claimed": "2026-07-01",
+      "writable_paths": [
+        "apps/worker/src/memory.ts"
+      ]
+    }
+  ]
+}
