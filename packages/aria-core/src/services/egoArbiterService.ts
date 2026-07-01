@@ -236,9 +236,11 @@ export function arbitrate(input: ArbitrateInput): EgoDirective {
     pursueOpenLoopId = null;
   }
 
-  // Nothing pressing → low-arousal neutral.
+  // Nothing pressing → warm low-arousal baseline (H3 fix). Absence of a focal
+  // drive is not blankness — she rests at quiet, attentive warmth, never flat
+  // neutral. Care discharge semantics are untouched (this path has no driveKey).
   if (!driveKey) {
-    return neutralDirective('understand', 'neutral', 0.15, false, 'no focal drive above threshold');
+    return neutralDirective('understand', 'caring', 0.2, false, 'no focal drive above threshold — warm baseline');
   }
 
   // 3. Candidate move, gated by stage permissibility (reasoning hygiene).
