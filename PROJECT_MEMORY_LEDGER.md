@@ -42,9 +42,9 @@
   - #4 W3-M D1 schema reconciliation
   - #9 worker rate limits/auth-open hardening
   - #11 root CI
-  - #12 close completed tracking slice / adapter truth
   - #13 Cloudflare auth spike integration
   - #15 warm psyche fallback
+- #12 close completed tracking slice / adapter truth was completed and closed with checkpoint `30a6228`.
 - Verification evidence from audit:
   - `pnpm -r --if-present typecheck` passed using `C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd`.
   - `pnpm -r --if-present test` passed; aria-core reported 39/39 tests passing.

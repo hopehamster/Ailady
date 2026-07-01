@@ -43,7 +43,6 @@ Active work is the Aria web/worker product:
 | P0 | [#4 W3-M D1 schema](https://github.com/hopehamster/Ailady_clean_20260327/issues/4) | `ops/aria/protocols/dispatch-sheets/W3-M*.md` | Memory/schema track |
 | P0 | [#9 Worker rate limits/auth-open hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/9) | `docs/security/VOLLEY_2026-06-22.md`, audit 2026-07-01 | Promoted to P0 because production auth opens the worker |
 | P0 | [#11 Root CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/11) | audit 2026-07-01 | Install enforceable CI before scaling agent execution |
-| P0 | [#12 Close tracking slice](https://github.com/hopehamster/Ailady_clean_20260327/issues/12) | audit 2026-07-01 | Normalize active slice and adapter truth |
 | P0 | [#13 Integrate Cloudflare auth spike](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | `spikes/cloudflare-auth-spike-A`, audit 2026-07-01 | Main worker production identity gate |
 | P0 | [#15 Warm psyche fallback](https://github.com/hopehamster/Ailady_clean_20260327/issues/15) | `packages/aria-core/test/phase-a-diagnosis.test.ts` | Fix H3 flat neutral fallback |
 | P1 | [#5 W4-P Phase C fixes](https://github.com/hopehamster/Ailady_clean_20260327/issues/5) | `ops/aria/protocols/dispatch-sheets/W4-P*.md` | Depends on W3-P evidence |
@@ -51,6 +50,12 @@ Active work is the Aria web/worker product:
 | P1 | [#7 Wave 5 GO/NO-GO verdict](https://github.com/hopehamster/Ailady_clean_20260327/issues/7) | dispatch index | Planned after Wave 4 |
 | P1 | [#8 Avatar supply-chain hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/8) | global Claude `project_aria_avatar_landscape.md`, `docs/security/VOLLEY_2026-06-22.md` | Self-host three/TalkingHead + strict CSP before launch |
 | P2 | [#10 Tracking system upkeep](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) | this file | Keep board/docs/Obsidian aligned |
+
+## Recently Completed
+
+| Issue | Evidence |
+|---|---|
+| [#12 Close tracking slice](https://github.com/hopehamster/Ailady_clean_20260327/issues/12) | Closed after checkpoint `30a6228`; active slice, ops hub, Claude/Codex adapters, roadmap, and multi-agent map are normalized |
 
 ## Launch Roadmap Issues
 
