@@ -1,0 +1,102 @@
+# Root CI — proves the boring things on every PR and push to main (issue #11).
+#
+# pnpm version: pnpm/action-setup reads the root package.json "packageManager"
+# field (pnpm@10.15.1) — one source of truth; the root pnpm-lock.yaml is
+# installed with --frozen-lockfile so the lockfile always wins.
+#
+# Security-gate split (determinism finding, 2026-07-01):
+#   - `pnpm -C packages/aria-core test:security` is DETERMINISTIC (pure node:test
+#     unit suites: crisis-gate-bypass.sec.ts, tampering-detection.sec.ts — no
+#     network, no API keys; verified 29/29 pass offline). It runs here in CI.
+#   - `pnpm -C apps/web test:e2e:security` (the other half of the root
+#     `pnpm security:gate`) requires a LIVE dev worker on 127.0.0.1:8787 plus the
+#     gitignored dev secret (apps/worker/.dev.vars / apps/web/.env.local), so it
+#     CANNOT run in CI. It stays a clearly named non-CI command: run the full
+#     `pnpm security:gate` locally before release.
+#
+# E2E: apps/web/playwright.config.ts is already CI-aware (CI=true → boots only
+# the Vite dev server; @real/@visual/@security specs are grep-inverted out by
+# test:e2e:ci; SwiftShader flags make WebGL render on GPU-less runners).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Typecheck, unit tests, security (deterministic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm (version from package.json "packageManager")
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (root workspace lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (all workspace packages)
+        run: pnpm -r --if-present typecheck
+
+      - name: Unit tests (all workspace packages)
+        run: pnpm -r --if-present test
+
+      - name: Security unit gate (deterministic half of `pnpm security:gate`)
+        run: pnpm -C packages/aria-core test:security
+
+  e2e:
+    name: Web E2E (Playwright, mocked backbone)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm (version from package.json "packageManager")
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (root workspace lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm -C apps/web exec playwright install --with-deps chromium
+
+      - name: Run E2E backbone (excludes @real/@visual/@security)
+        run: pnpm -C apps/web test:e2e:ci
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Upload Playwright test results (traces, videos, screenshots)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: ignore
