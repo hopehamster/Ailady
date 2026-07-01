@@ -6,6 +6,19 @@
 -- Vectors do NOT live here — semantic embeddings go to Qdrant (Phase 1d).
 -- Every temporal field is epoch-ms INTEGER (shared-types already migrated off
 -- Firestore Timestamp). GDPR delete cascades from users(uid).
+--
+-- VERIFY (from apps/worker; local SQLite in .wrangler/, no CF account needed):
+--   npx wrangler d1 migrations apply aria-dev --local
+--   npx wrangler d1 execute aria-dev --local --command \
+--     "SELECT name FROM sqlite_master WHERE type IN ('table','index') ORDER BY name"
+--   -- expect: intelligent_memory, scored_messages, idx_scored_messages_uid_ts,
+--   --         idx_scored_messages_uid_importance (plus 0001/0003 objects)
+-- Round-trip smoke:
+--   npx wrangler d1 execute aria-dev --local --command \
+--     "INSERT INTO users (uid, created_at_ms) VALUES ('smoke', 0); \
+--      INSERT INTO intelligent_memory (uid, last_updated) VALUES ('smoke', 0); \
+--      SELECT uid FROM intelligent_memory; \
+--      DELETE FROM users WHERE uid='smoke';"
 
 CREATE TABLE IF NOT EXISTS intelligent_memory (
   uid                         TEXT PRIMARY KEY NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
