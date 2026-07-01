@@ -1,25 +1,10 @@
-# Claude Workflow
+# Claude Workflow (Aria) — thin pointer
 
-Default flow for routine Aria work:
+**Follow the single canon: [`ops/aria/protocols/execution-loop.md`](../ops/aria/protocols/execution-loop.md).**
+This file adds only Claude-specific tool notes; it does NOT restate the loop (no parallel truth — `ops/aria/README.md:70`).
 
-1. Read `.claude/CATCHUP.md`.
-2. Read `.claude/ACTIVE_SLICE.md`.
-3. Follow the allowed file set from the active slice.
-4. Read only the minimum extra source files needed.
-5. Implement one bounded slice only.
-6. Verify before claiming success:
-   - `npm run build`
-   - `npm test`
-7. Write back:
-   - `PROJECT_MEMORY_LEDGER.md`
-   - relevant `ops/aria/current/*`
-   - one dated `ops/aria/log/*.md`
-8. Run `scripts/sync-agent-adapters.ps1`.
-9. Create a scoped checkpoint commit.
-
-If blocked:
-
-- read `ops/aria/current/EXECUTION_CHECKLIST.md`
-- then read only the canonical deeper docs needed for the block
-
-Do not broaden scope just because more work is visible.
+## Claude-specific adaptations
+- **Catch up** via the SessionStart hook (auto) or `/aria-catchup`. **Checkpoint** via `/aria-checkpoint` — requires an issue# + a writable-path list, commits only those paths, and NEVER auto-commits from a hook.
+- **I am the primary tester** (`browser-product-primary-tester.md`): verify browser behavior via Playwright (`pnpm -C apps/web test:e2e:ci`; `@real` for live), never punt to the user.
+- Use Skill / Agent / Workflow tools for orchestration; the mined-synthesis canon outranks training data.
+- The project `CLAUDE.md` (repo root) is the auto-loaded contract; the do-not-touch list is enforced by the PreToolUse hook.

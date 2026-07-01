@@ -36,3 +36,5 @@ apps/worker/.wrangler/
 # wrangler local secrets (DeepSeek/openrouter keys for `wrangler dev`) — NEVER commit
 **/.dev.vars
 **/.dev.vars.*
+.claude/.session-marker
+ops/aria/log/transcripts/

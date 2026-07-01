@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fp=\"$CLAUDE_TOOL_INPUT_FILE_PATH\"; if echo \"$fp\" | grep -qiE '(conversationPolicyService\\.ts|truthKernelService\\.ts|ARIA_CURRENT_TASK_BOARD\\.md)'; then echo 'BLOCKED: This file is on the do-not-touch dirty-tree list. See .claude/GUARDRAILS.md'; exit 2; fi; if echo \"$fp\" | grep -qi 'adminsdk'; then echo 'BLOCKED: Service account JSON files must not be edited.'; exit 2; fi"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fp=\"$CLAUDE_TOOL_INPUT_FILE_PATH\"; if echo \"$fp\" | grep -q 'tools/girlai2/functions/src/.*\\.ts$'; then cd 'c:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/tools/girlai2/functions' && npm run build 2>&1 | tail -20; else exit 0; fi"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File 'C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/claude-catchup.ps1'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File 'C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/claude-checkpoint-guard.ps1'"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File 'C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/claude-session-end.ps1'"
+          }
+        ]
+      }
+    ]
+  }
+}
