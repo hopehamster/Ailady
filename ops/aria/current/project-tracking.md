@@ -37,14 +37,10 @@ Active work is the Aria web/worker product:
 
 | Priority | Issue | Source | Notes |
 |---|---|---|---|
-| P0 | [#1 CORS adjudication](https://github.com/hopehamster/Ailady_clean_20260327/issues/1) | `2026-06-28-pre-session-health.md`, `docs/security/VOLLEY_2026-06-22.md` | Resolve conflict before changing code |
 | P0 | [#2 W3-P live arcs](https://github.com/hopehamster/Ailady_clean_20260327/issues/2) | `ops/aria/protocols/dispatch-sheets/W3-P*.md` | Needs worker running |
 | P0 | [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | `ops/aria/protocols/dispatch-sheets/W3-L*.md` | Depends on W3-P transcripts |
-| P0 | [#4 W3-M D1 schema](https://github.com/hopehamster/Ailady_clean_20260327/issues/4) | `ops/aria/protocols/dispatch-sheets/W3-M*.md` | Memory/schema track |
-| P0 | [#9 Worker rate limits/auth-open hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/9) | `docs/security/VOLLEY_2026-06-22.md`, audit 2026-07-01 | Promoted to P0 because production auth opens the worker |
-| P0 | [#11 Root CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/11) | audit 2026-07-01 | Install enforceable CI before scaling agent execution |
-| P0 | [#13 Integrate Cloudflare auth spike](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | `spikes/cloudflare-auth-spike-A`, audit 2026-07-01 | Main worker production identity gate |
-| P0 | [#15 Warm psyche fallback](https://github.com/hopehamster/Ailady_clean_20260327/issues/15) | `packages/aria-core/test/phase-a-diagnosis.test.ts` | Fix H3 flat neutral fallback |
+| P0 | [#9 Worker rate limits/auth-open hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/9) | `docs/security/VOLLEY_2026-06-22.md`, audit 2026-07-01 | Unblocked by #1 adjudication (CORS adds no amplification angle) |
+| P0 | [#13 Integrate Cloudflare auth spike](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | `spikes/cloudflare-auth-spike-A`, audit 2026-07-01 | Main worker production identity gate; carries CORS allowlist conditions from `docs/security/CORS_ADJUDICATION_2026-07-01.md` §4 |
 | P1 | [#5 W4-P Phase C fixes](https://github.com/hopehamster/Ailady_clean_20260327/issues/5) | `ops/aria/protocols/dispatch-sheets/W4-P*.md` | Depends on W3-P evidence |
 | P1 | [#6 W4-L T5 regression/ablation](https://github.com/hopehamster/Ailady_clean_20260327/issues/6) | `ops/aria/protocols/dispatch-sheets/W4-L*.md` | Depends on W3-P/W3-L |
 | P1 | [#7 Wave 5 GO/NO-GO verdict](https://github.com/hopehamster/Ailady_clean_20260327/issues/7) | dispatch index | Planned after Wave 4 |
@@ -55,6 +51,10 @@ Active work is the Aria web/worker product:
 
 | Issue | Evidence |
 |---|---|
+| [#1 CORS adjudication](https://github.com/hopehamster/Ailady_clean_20260327/issues/1) | Wave 1 2026-07-01: **ACCEPT with conditions** — `docs/security/CORS_ADJUDICATION_2026-07-01.md`; June-22 dismissal stands, allowlist conditions attach to #13; #9 unblocked |
+| [#4 W3-M D1 schema](https://github.com/hopehamster/Ailady_clean_20260327/issues/4) | Wave 1 2026-07-01: schema verified (local apply + cascade round-trip), VERIFY commands in `0002_intelligent_memory.sql`, `db:migrate:local` script added |
+| [#11 Root CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/11) | Wave 1 2026-07-01: `.github/workflows/ci.yml` authored; deterministic security in CI, live volley = local pre-release; untested until first push |
+| [#15 Warm psyche fallback](https://github.com/hopehamster/Ailady_clean_20260327/issues/15) | Wave 1 2026-07-01: H3 fixed — `caring@0.2` no-focal baseline; aria-core 39/39, e2e 14/14 |
 | [#12 Close tracking slice](https://github.com/hopehamster/Ailady_clean_20260327/issues/12) | Closed after checkpoint `30a6228`; active slice, ops hub, Claude/Codex adapters, roadmap, and multi-agent map are normalized |
 
 ## Launch Roadmap Issues
@@ -76,19 +76,9 @@ Active work is the Aria web/worker product:
 | [#27 Observability + Incidents](https://github.com/hopehamster/Ailady_clean_20260327/issues/27) | Observability | M7 | Add privacy-safe beta monitoring and incident process |
 | [#28 Multi-Agent Collision Guard](https://github.com/hopehamster/Ailady_clean_20260327/issues/28) | Ops/CI | M4 | Prevent parallel agent write conflicts |
 
-## CORS Conflict To Resolve
+## CORS Conflict — RESOLVED 2026-07-01
 
-Two memory sources disagree:
-
-- The 2026-06-28 vault health note calls worker `Access-Control-Allow-Origin: *` a HIGH open item.
-- `docs/security/VOLLEY_2026-06-22.md` says `/healthz` env + wildcard CORS was dismissed as non-exploitable in that earlier context.
-
-Resolution rule:
-
-1. Re-check current code and endpoint credential model.
-2. Decide whether the June 28 note refers to a different endpoint/risk than the volley dismissal.
-3. Update the GitHub issue with the adjudication.
-4. Only change code if the current threat model warrants it.
+Adjudicated in `docs/security/CORS_ADJUDICATION_2026-07-01.md` (#1): **ACCEPT with conditions.** The June-22 volley dismissal stands; the June-28 "HIGH" was a scanner-grade miscalibration from the W2-S curl scan. Header-based auth only, zero cookies, no `allow-credentials` — wildcard ACAO exposes nothing curl doesn't already get. Binding conditions (origin-allowlist via `ALLOWED_ORIGINS`, shrunken allow-headers, never emit allow-credentials, gate CORS regression assertions) attach to #13 at Phase 3. Verdict voids if cookie/session auth is ever introduced.
 
 ## GitHub Project Setup Expectations
 

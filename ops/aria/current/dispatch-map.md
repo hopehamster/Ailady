@@ -21,15 +21,17 @@
 - **M3 Web Body+Voice** (Phase 5): #8
 - **M7 Beta** (Phase 6): #26, #27
 
-## WAVE 1 — dispatch NOW (4 agents, fully parallel, disjoint paths, all unblocked)
-| Agent | Issue | Why now |
+## WAVE 1 — ✅ LANDED 2026-07-01 (4 parallel agents, full gate green)
+| Agent | Issue | Outcome |
 |---|---|---|
-| **Ops** | **#11 Root CI** (`.github/`) | Foundational; makes every gate enforceable. Zero collision. |
-| **Security** | **#1 CORS adjudication** (`apps/worker/src/index.ts`, `docs/security`) | The gating DECISION that unblocks #9 + #13. |
-| **Psyche** | **#15 Warm no-focal fallback** (`egoArbiterService.ts`) | The H3 fix; self-contained; unblocks the "alive" psyche behavior the arcs test. |
-| **Memory** | **#4 D1 schema** (`apps/worker/migrations`, `memory.ts`) | Independent of the above; unblocks memory durability work. |
+| **Ops** | **#11 Root CI** | `.github/workflows/ci.yml` authored; deterministic security in CI, live volley documented as local pre-release. Untested until first push. |
+| **Security** | **#1 CORS adjudication** | **ACCEPT with conditions** (`docs/security/CORS_ADJUDICATION_2026-07-01.md`); allowlist conditions attach to #13; **#9 unblocked**. |
+| **Psyche** | **#15 Warm no-focal fallback** | H3 fixed: `caring@0.2` baseline; H1 + I1–I8 + safety green (39/39). Live-arc neediness evidence rides on #2/#3. |
+| **Memory** | **#4 D1 schema** | Schema verified (local apply + cascade round-trip); `db:migrate:local` script added. Remote D1 provisioning pending. |
 
-## WAVE 2 — after Wave 1 lands
+Evidence: session log `ops/aria/log/2026-07-01-claude-wave1-parallel-dispatch.md`; gate = typecheck clean, tests 39/39, e2e 14/14, security 29/29.
+
+## WAVE 2 — dispatch NOW (unblocked by Wave 1)
 - **Security:** #9 rate limits (needs #1 CORS decision) → #13 auth-spike integration → #14 gate-to-CI.
 - **Psyche:** #2 W3-P live-arc driver → #3 W3-L grader fleet (now exercising the #15 warm fallback) → #5 W4-P → #6 W4-L.
 - **Memory:** #16 close stubs → #17 shared-contract validation → #18 recall freshness. *(Coordinate #17 with anyone touching `shared-types/index.ts`.)*
