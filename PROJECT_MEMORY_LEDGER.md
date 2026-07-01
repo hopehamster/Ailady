@@ -58,7 +58,7 @@
 - **Soft enforcement** (a hard session-end block is impossible in Claude Code hooks — owner-confirmed): non-blocking Stop reminder (`scripts/claude-checkpoint-guard.ps1`, marker-diff, never traps) + SessionEnd fallback session-log stub (`scripts/claude-session-end.ps1`) + SessionStart surfacing. Slash commands: refreshed `/aria-checkpoint` (web gate, session log, transcript archive, index prepend, gh evidence; requires issue#+paths; NEVER auto-commits from a hook) + new `/aria-catchup`.
 - **Leverage fix:** 22 marketing/video/ads/legal rules path-scoped in `~/.claude/rules` (project-dir globs only) so they no longer tax Aria coding sessions; `ai-profit-lab` + `ai-knowledge-feed` kept global.
 - **Dirty-tree cleanup surfaced as #29** (incl. the whole `node_modules/` committed-leak, generated Flutter artifacts, temp junk, product WIP → owning streams, spikes, the do-not-touch `ARIA_CURRENT_TASK_BOARD.md`) — deliberate/owner-gated, NOT resolved inline, does NOT block the P0 queue.
-- Standing directive (all projects): **Fable 5 active; proactively suggest better approaches whenever an opportunity appears** (separate global-config task to persist).
+- Standing directive (**this project only**, in `CLAUDE.md`): **Fable 5 active; proactively suggest better approaches whenever an opportunity appears.**
 - Session log: `ops/aria/log/2026-07-01-claude-ops-adapter-hardening.md`. Plan: `~/.claude/plans/melodic-fluttering-flame.md` (top section).
 
 ## Latest Catch-Up (2026-06-29)

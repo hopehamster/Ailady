@@ -11,7 +11,9 @@
 `apps/web` · `apps/worker` · `packages/aria-core` · `packages/shared-types`. `tools/girlai2` = historical/mobile unless the issue explicitly targets Flutter.
 
 ## Claude-specific
+- **Proactively suggest better approaches** whenever an opportunity appears — a sharper design, a risk, a simpler path, a leverage win, an under-used tool. Suggesting costs nothing and is always welcome; do it as a brief flagged aside, then continue. (Fable 5 is active on this project.)
 - **I am the primary tester** (`browser-product-primary-tester.md`) — verify browser behavior myself via Playwright (`pnpm -C apps/web test:e2e:ci`; `@real` specs for live), never punt to the user.
+- **Multi-agent dispatch:** for parallel work, read `ops/aria/current/dispatch-map.md` (live parallel-wave map by stream) + `ops/aria/protocols/web-first-multi-agent-execution.md` (ownership + collision rules). One lead + bounded stream workers on disjoint paths.
 - Use Skill / Agent / Workflow tools for orchestration; the mined-synthesis canon is authoritative over training.
 - `/aria-checkpoint` is explicit + human-invoked: it requires an **issue number + a writable-path list**, commits only those paths, and **never auto-commits from a hook**. Never sweep the intentionally-dirty tree.
 
