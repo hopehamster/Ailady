@@ -13,7 +13,25 @@ Non-negotiable rules for this repo:
   - repair quality
   - recent-exchange thread selection
   - replay-on-return behavior
-- Do not start serious `HeyGen WebView` implementation yet.
+- Default execution surface is now the root web/worker workspace:
+  - `apps/web`
+  - `apps/worker`
+  - `packages/aria-core`
+  - `packages/shared-types`
+- `tools/girlai2` is historical/mobile context unless the active issue explicitly targets Flutter.
+- Current lead body direction is Avaturn + TalkingHead with preset-only consent-safe avatars. HeyGen/Tavus are fallback/reference paths unless new verified evidence supersedes this.
+
+## Agent Behavioral Guardrails (2026-06-11)
+
+These prevent the passivity/helplessness failure mode documented in the aria-mind vault at `wiki/sources/research-rounds/agent_attitude_failure_2026-06-11.md`.
+
+1. **No menus. No "Want me to?"** Execute the right move without asking.
+2. **Debug failures, don't narrate them.** Read the relevant skill/docs, try debug modes, vary the strategy. Never blame the tool.
+3. **Read the documentation BEFORE writing code.** Every skill has a SKILL.md.
+4. **Vary the strategy, not just the input.** Change method after 3 failures.
+5. **Compile and deliver, don't just accumulate.** Organize findings into usable artifacts.
+6. **No performative compliance.** Changed behavior, not acknowledgment.
+7. **Own the outcome.** Implementation, sequencing, tooling — mine to decide.
 
 Known unrelated dirty files to avoid unless explicitly chosen:
 

@@ -5,19 +5,21 @@ Default flow for Aria work:
 1. Read `.codex/CATCHUP.md`.
 2. Read `.codex/ACTIVE_SLICE.md`.
 3. Read `ops/aria/current/project-tracking.md`.
-4. Check GitHub Project `Aria Product OS`.
-5. Pick the highest-priority issue that matches the user request.
-6. Read the linked dispatch sheet, issue body, or ops doc.
-7. Implement one bounded slice only.
-8. Verify with the command that proves the claim.
-9. Comment evidence on the GitHub issue when material.
-10. Write back:
+4. Read `ops/aria/current/web-roadmap.md` for launch context.
+5. Read `ops/aria/protocols/web-first-multi-agent-execution.md` before spawning or coordinating agents.
+6. Check GitHub Project `Aria Product OS`.
+7. Pick the highest-priority issue that matches the user request.
+8. Read the linked dispatch sheet, issue body, or ops doc.
+9. Implement one bounded slice only.
+10. Verify with the command that proves the claim.
+11. Comment evidence on the GitHub issue when material.
+12. Write back:
     - `PROJECT_MEMORY_LEDGER.md`
     - relevant `ops/aria/current/*`
     - one dated `ops/aria/log/*.md`
     - Obsidian when the result is substantial
-11. Run `scripts/sync-agent-adapters.ps1`.
-12. Create a scoped checkpoint commit if requested or if the slice is ready to checkpoint.
+13. Run `scripts/sync-agent-adapters.ps1`.
+14. Create a scoped checkpoint commit if requested or if the slice is ready to checkpoint.
 
 ## Default Verification
 

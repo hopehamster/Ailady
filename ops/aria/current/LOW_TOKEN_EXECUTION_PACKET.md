@@ -58,23 +58,27 @@ Near-term work is the psyche-readiness + security + tracking queue:
 
 - GitHub Issues/Projects: execution board and issue lifecycle
 - `ops/aria/current/project-tracking.md`: repo-local tracking map and operating protocol
+- `ops/aria/current/web-roadmap.md`: web-first launch roadmap
+- `ops/aria/protocols/web-first-multi-agent-execution.md`: multi-agent ownership and collision rules
 - `ops/aria/protocols/dispatch-sheets/`: task-level wave sheets
 - Obsidian vault `C:\Users\Owner\Documents\Obsidian\aria-mind`: narrative memory, session logs, decisions
 - `PROJECT_MEMORY_LEDGER.md`: compact cross-session memory index
 
 ## Current Next Step
 
-Use the project tracker to drive:
+Use the project tracker to drive the first web-first launch gates:
 
 1. CORS adjudication against the later security-volley context
-2. Wave 3:
+2. root CI/security gate installation
+3. Cloudflare auth spike integration into the main worker plan
+4. Wave 3:
    - W3-P live arcs
    - W3-L grader fleet
    - W3-M D1 schema
-3. Wave 4:
+5. Wave 4:
    - W4-P Phase C fixes
    - W4-L T5 regression/ablation
-4. Wave 5 GO/NO-GO verdict
+6. Wave 5 GO/NO-GO verdict
 
 ## Do Not Touch Without Explicit Reason
 
@@ -118,7 +122,9 @@ After material work:
 ## Read More
 
 1. `ops/aria/current/project-tracking.md`
-2. `ops/aria/current/active-work.md`
-3. `ops/aria/protocols/dispatch-sheets/INDEX.md`
-4. `docs/security/VOLLEY_2026-06-22.md`
-5. `C:\Users\Owner\Documents\Obsidian\aria-mind\work\sessions\index.md`
+2. `ops/aria/current/web-roadmap.md`
+3. `ops/aria/protocols/web-first-multi-agent-execution.md`
+4. `ops/aria/current/active-work.md`
+5. `ops/aria/protocols/dispatch-sheets/INDEX.md`
+6. `docs/security/VOLLEY_2026-06-22.md`
+7. `C:\Users\Owner\Documents\Obsidian\aria-mind\work\sessions\index.md`

@@ -10,13 +10,19 @@ Use this when:
 
 ## Read Order
 
-1. `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
-2. `ops/aria/current/NEXT_EXECUTION_SLICE.md`
-3. `ops/aria/current/EXECUTION_CHECKLIST.md`
-4. `PROJECT_MEMORY_LEDGER.md`
-5. `ops/aria/current/mission.md`
-6. `ops/aria/current/priorities.md`
-7. `ops/aria/current/active-work.md`
+1. `ops/aria/protocols/project-management.md` — **canonical PM protocol (read first)**
+2. `ops/aria/protocols/multi-agent-architecture.md` — **multi-agent structure, file ownership, dispatch patterns (read before fan-out)**
+3. `ops/aria/current/web-roadmap.md` — **web-first roadmap and launch phases**
+4. `ops/aria/protocols/web-first-multi-agent-execution.md` — **solo-team multi-agent execution map**
+5. `ops/aria/protocols/dispatch-sheets/INDEX.md` — **ready-to-execute agent task sheets**
+6. `ops/aria/current/project-tracking.md`
+7. `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
+8. `ops/aria/current/NEXT_EXECUTION_SLICE.md`
+4. `ops/aria/current/EXECUTION_CHECKLIST.md`
+5. `PROJECT_MEMORY_LEDGER.md`
+6. `ops/aria/current/mission.md`
+7. `ops/aria/current/priorities.md`
+8. `ops/aria/current/active-work.md`
 8. `ops/aria/current/known-regressions.md`
 9. `ops/aria/current/architecture-state.md`
 10. `ops/aria/current/pre-heygen-migration-gate.md`
@@ -28,15 +34,23 @@ Generated adapter files in `.codex/` and `.claude/` are refreshed by `scripts/sy
 
 ## Scope
 
-- Active product: `tools/girlai2`
-- Repo root is orchestration and memory
-- `tools/girlai2` is the live Aria product
+- Active product surface: root web/worker workspace
+  - `apps/web`
+  - `apps/worker`
+  - `packages/aria-core`
+  - `packages/shared-types`
+- Repo root is orchestration, memory, and web product workspace
+- `tools/girlai2` is historical/mobile context unless a task explicitly targets Flutter/mobile
 
 ## Current Immediate Next Step
 
 - follow `ops/aria/current/NEXT_EXECUTION_SLICE.md`
-- continue shrinking `tools/girlai2/functions/src/services/llmService.ts`
-- use `ops/aria/current/pre-heygen-migration-gate.md` as the canonical gate before serious `HeyGen WebView` implementation
+- use GitHub Project `Aria Product OS`
+- close the immediate web-first gates:
+  - CORS adjudication
+  - root CI/security gate installation
+  - Wave 3 psyche execution
+  - production auth/rate-limit planning
 
 ## Fast Catch-Up Outcome
 

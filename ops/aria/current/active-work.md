@@ -13,6 +13,10 @@ Project tracking is now installed as a first-class workstream:
 - GitHub Project: `Aria Product OS`
 - Repo map: `ops/aria/current/project-tracking.md`
 - Protocol: `ops/aria/protocols/project-tracking-protocol.md`
+- Web-first roadmap: `ops/aria/current/web-roadmap.md`
+- Multi-agent execution map: `ops/aria/protocols/web-first-multi-agent-execution.md`
+
+**Web-first audit (2026-07-01):** the pivot is real but not launch-complete. Root typecheck passed, root unit tests passed with aria-core 39/39 green, and web E2E CI timed out after 124 seconds in this shell. GitHub issues #11-#28 now cover CI, auth, psyche fallback, memory durability, web shell, body/voice, release, observability, and multi-agent collision prevention. Issue #9 was promoted to P0 for production auth/rate-limit hardening.
 
 **Pre-session health (2026-06-27):** 4/4 packages typecheck CLEAN. 39/39 tests pass. Worker builds and deploys.
 
@@ -42,16 +46,19 @@ The "is the psyche ready for the body?" gate. Phase A (diagnose) confirmed the f
 ## Immediate Next Actions
 
 1. Use `ops/aria/current/project-tracking.md` and GitHub Project `Aria Product OS` as the execution board.
-2. Adjudicate the CORS conflict before changing code.
-3. Dispatch/execute Wave 3:
+2. Use `ops/aria/current/web-roadmap.md` as the launch roadmap.
+3. Close #12 adapter truth cleanup, then #1 CORS adjudication.
+4. Install #11 root CI/security gate.
+5. Start #13 Cloudflare auth spike integration and #9 worker rate-limit planning.
+6. Dispatch/execute Wave 3:
    - W3-P live arcs
    - W3-L grader fleet
    - W3-M D1 schema
-4. Dispatch/execute Wave 4 after Wave 3 evidence:
+7. Dispatch/execute Wave 4 after Wave 3 evidence:
    - W4-P Phase C fixes
    - W4-L T5 regression + ablation
-5. Compile Wave 5 GO/NO-GO verdict.
-6. Use scoped checkpoint paths only.
+8. Compile Wave 5 GO/NO-GO verdict.
+9. Use scoped checkpoint paths only.
 
 ## Do Not Lose These Facts
 

@@ -32,8 +32,12 @@ Required track labels:
 - `track:security`
 - `track:memory`
 - `track:avatar`
+- `track:web`
 - `track:platform`
 - `track:ops`
+- `track:ci`
+- `track:observability`
+- `track:release`
 
 Required type labels:
 
@@ -42,6 +46,7 @@ Required type labels:
 - `type:bug`
 - `type:research`
 - `type:docs`
+- `type:epic`
 
 Required priority labels:
 

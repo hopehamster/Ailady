@@ -1,68 +1,115 @@
 # Next Execution Slice
 
-Date: 2026-06-30
+Date: 2026-07-01
 
 ## Title
 
-Install the real Aria project tracking system
+Execute the first web-first launch gates
 
 ## Goal
 
-Make GitHub Issues/Projects, repo-local ops docs, Obsidian, and agent adapters agree on the current Aria web/worker execution queue.
+Move from audited roadmap to executable progress by closing the highest-leverage launch gates for the web/worker pivot.
 
-This slice is successful when a future agent can start from `.codex/CATCHUP.md`, find the GitHub project board, and know exactly which current work item to pick without re-reading the entire history.
+The immediate queue is:
+
+1. adjudicate production CORS against the current auth model
+2. install root CI/security gate enforcement
+3. start Wave 3 psyche readiness execution
+4. integrate the Cloudflare auth spike plan into the main-worker roadmap
 
 ## Files Allowed To Change
+
+For this slice, choose one issue and stay inside its assigned paths.
+
+Ops/roadmap:
 
 - `PROJECT_MEMORY_LEDGER.md`
 - `.codex/*`
 - `.claude/CATCHUP.md`
 - `.claude/ACTIVE_SLICE.md`
-- `ops/aria/current/LOW_TOKEN_EXECUTION_PACKET.md`
-- `ops/aria/current/NEXT_EXECUTION_SLICE.md`
-- `ops/aria/current/active-work.md`
-- `ops/aria/current/priorities.md`
-- `ops/aria/current/tooling-state.md`
-- `ops/aria/current/project-tracking.md`
-- `ops/aria/protocols/project-tracking-protocol.md`
-- `ops/aria/config/codex/config.aria.toml`
-- `ops/aria/config/codex/config.general.toml`
+- `.claude/GUARDRAILS.md`
+- `ops/aria/current/*`
+- `ops/aria/protocols/*`
 - `ops/aria/log/YYYY-MM-DD-*.md`
-- GitHub labels, milestones, issues, and Projects for `hopehamster/Ailady_clean_20260327`
+- `.github/workflows/*`
+
+Security/platform issue paths:
+
+- `apps/worker/**`
+- `apps/web/tests/security/**`
+- `spikes/cloudflare-auth-spike-A/**`
+- `scripts/security/**`
+- `docs/security/**`
+
+Psyche issue paths:
+
+- `packages/aria-core/src/services/psyche*`
+- `packages/aria-core/src/services/egoArbiterService.ts`
+- `packages/aria-core/src/services/psycheMetricsService.ts`
+- `packages/aria-core/test/*psyche*`
+- `packages/aria-core/test/phase-a-diagnosis.test.ts`
+- `scripts/psyche/**`
+- `ops/aria/protocols/dispatch-sheets/**`
+
+Web/body issue paths:
+
+- `apps/web/src/**`
+- `apps/web/tests/**`
+- `apps/web/public/**`
 
 ## Files Not To Change
 
-- product source files under `apps/`, `packages/`, or `tools/girlai2/`
-- dependency folders
-- generated Flutter ephemeral files
 - old reference repo `C:\Users\Owner\Documents\GitHub\Ailady`
+- unrelated dirty-tree product files outside the selected issue
+- generated dependency folders
+- Flutter/mobile files unless the selected issue explicitly targets `tools/girlai2`
 
 ## Invariants To Preserve
 
-- `ops/aria/` remains canonical.
-- `.codex/` and `.claude/` are adapters, not independent memory systems.
-- GitHub Issues/Projects track execution; Obsidian tracks narrative memory and decisions.
-- No unrelated dirty-tree files are bundled into any checkpoint.
+- Web/worker root workspace is the active execution surface.
+- `tools/girlai2` is legacy/mobile context unless explicitly selected.
+- GitHub Project `Aria Product OS` is the execution board.
+- No issue is Done without verification evidence.
+- No multi-agent parallel work may use overlapping write paths.
+- Checkpoints must be scoped.
+
+## Recommended Next Issue Order
+
+1. #1 — Adjudicate worker CORS risk against June security volley context.
+2. Install Root CI For Typecheck, Unit, E2E CI, And Security Gate.
+3. Integrate Cloudflare Auth Spike Into Main Worker.
+4. #2 — W3-P live arcs.
+5. #4 — W3-M D1 schema reconciliation.
 
 ## Acceptance Criteria
 
-- `.codex` adapter files point to the current web/worker tracker.
-- Codex config templates include the Aria-clean repo trust entry and the project-relevant plugin set.
-- GitHub project board exists and is linked to the repo.
-- Current Wave 3/Wave 4/security/avatar/tracking work is represented as GitHub issues.
-- Repo-local tracking protocol explains how issues, dispatch sheets, Obsidian, and memory writeback stay in sync.
-- Fresh verification confirms the changed files and GitHub resources exist.
+- The selected GitHub issue has a clear evidence comment.
+- Relevant roadmap/tracking docs are updated.
+- Verification command is run or the blocker is documented.
+- Adapter files are regenerated when canonical packets/slices change.
+- Scoped checkpoint commit is created for completed docs/config/tracking work.
 
 ## Verification Commands
 
+Use the explicit pnpm path in this environment:
+
 ```powershell
-git diff -- .codex ops/aria PROJECT_MEMORY_LEDGER.md
-gh project list --owner hopehamster --format json
-gh issue list --repo hopehamster/Ailady_clean_20260327 --state open --limit 50 --json number,title,labels,milestone,url
+$env:Path = 'C:\Program Files\nodejs;C:\Users\Owner\AppData\Roaming\npm;' + $env:Path
+& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' -r --if-present typecheck
+& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' -r --if-present test
+& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' -C apps/web test:e2e:ci
+& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' security:gate
 ```
 
-No product build is required for this documentation/tracking slice because product source files must not change.
+For docs/tracking-only updates, replace product gates with:
+
+```powershell
+& 'C:\Program Files\GitHub CLI\gh.exe' issue list --repo hopehamster/Ailady_clean_20260327 --state open --limit 100 --json number,title,labels,milestone,url
+& 'C:\Program Files\GitHub CLI\gh.exe' project item-list 4 --owner hopehamster --format json --limit 100
+& 'C:\Program Files\Git\cmd\git.exe' diff -- ops/aria .codex .claude PROJECT_MEMORY_LEDGER.md
+```
 
 ## Checkpoint Instruction
 
-Use scoped paths only. Do not include unrelated pre-existing dirty files.
+Use `scripts/checkpoint-work.ps1` with explicit `-OnlyPaths`. Do not include unrelated pre-existing dirty files.
+

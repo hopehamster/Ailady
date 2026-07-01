@@ -24,6 +24,33 @@
 - Config profile sources updated: global `C:\Users\Owner\.codex\config.toml`, global `C:\Users\Owner\.codex\config.aria.toml`, and repo template `ops/aria/config/codex/config.aria.toml`.
 - Verification for this setup is tracker/docs only; no product build is required unless product source changes.
 
+## Latest Web-First Audit + Roadmap (2026-07-01)
+
+- Codex audited the web pivot using parallel subagents for web, worker/security, core psyche/memory, and ops/infra.
+- Roadmap created: `ops/aria/current/web-roadmap.md`.
+- Multi-agent execution map created: `ops/aria/protocols/web-first-multi-agent-execution.md`.
+- GitHub issues #11-#28 were created and attached to Project `Aria Product OS`.
+- Existing issue #9 was promoted to P0 and moved to `M6 Production Auth + Launch Gate` because production auth requires worker rate limits/spend controls.
+- New launch milestones:
+  - `M5 Web Production Shell`
+  - `M6 Production Auth + Launch Gate`
+  - `M7 Beta Observability + Release`
+- Current P0 launch queue:
+  - #1 CORS adjudication
+  - #2 W3-P live arcs
+  - #3 W3-L grader fleet
+  - #4 W3-M D1 schema reconciliation
+  - #9 worker rate limits/auth-open hardening
+  - #11 root CI
+  - #12 close completed tracking slice / adapter truth
+  - #13 Cloudflare auth spike integration
+  - #15 warm psyche fallback
+- Verification evidence from audit:
+  - `pnpm -r --if-present typecheck` passed using `C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd`.
+  - `pnpm -r --if-present test` passed; aria-core reported 39/39 tests passing.
+  - `pnpm -C apps/web test:e2e:ci` timed out after 124 seconds in this shell and needs a dedicated follow-up run.
+- Important audit verdict: the web pivot is real but still launch-incomplete. Strong areas are core brain, Worker memory/security foundation, talking loop, and tracker. Launch blockers are production auth/CORS/rate limits, CI, web product shell, body/voice promotion, psyche readiness, memory stub cleanup, release, and observability.
+
 ## Latest Catch-Up (2026-06-29)
 
 - Codex read repo memory plus the Obsidian vault at `C:\Users\Owner\Documents\Obsidian\aria-mind` and checked GitHub via authenticated `gh`.
