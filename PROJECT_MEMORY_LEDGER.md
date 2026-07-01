@@ -51,6 +51,16 @@
   - `pnpm -C apps/web test:e2e:ci` timed out after 124 seconds in this shell and needs a dedicated follow-up run.
 - Important audit verdict: the web pivot is real but still launch-incomplete. Strong areas are core brain, Worker memory/security foundation, talking loop, and tracker. Launch blockers are production auth/CORS/rate limits, CI, web product shell, body/voice promotion, psyche readiness, memory stub cleanup, release, and observability.
 
+## Latest Claude Ops Adapter Hardening (2026-07-01)
+
+- Baked GitHub+Obsidian tracking into Claude's Aria operation + path-scoped the marketing rules. Commit `fa1f087` (13 ops-infra files); companion global change to `~/.claude/rules` (uncommitted, outside repo).
+- **THE ONE CURRENT TRUTH is now enforced Claude-side:** new `CLAUDE.md` (repo root) + `ops/aria/protocols/execution-loop.md` (single loop canon; `.claude/` + `.codex/` `WORKFLOW.md` are now thin pointers — no parallel truth) route execution to the GitHub Project + P0 queue, NOT plan files. Fresh Claude sessions auto-catch-up via the SessionStart hook (`scripts/claude-catchup.ps1` — prints the current slice + live P0 queue, read-only).
+- **Soft enforcement** (a hard session-end block is impossible in Claude Code hooks — owner-confirmed): non-blocking Stop reminder (`scripts/claude-checkpoint-guard.ps1`, marker-diff, never traps) + SessionEnd fallback session-log stub (`scripts/claude-session-end.ps1`) + SessionStart surfacing. Slash commands: refreshed `/aria-checkpoint` (web gate, session log, transcript archive, index prepend, gh evidence; requires issue#+paths; NEVER auto-commits from a hook) + new `/aria-catchup`.
+- **Leverage fix:** 22 marketing/video/ads/legal rules path-scoped in `~/.claude/rules` (project-dir globs only) so they no longer tax Aria coding sessions; `ai-profit-lab` + `ai-knowledge-feed` kept global.
+- **Dirty-tree cleanup surfaced as #29** (incl. the whole `node_modules/` committed-leak, generated Flutter artifacts, temp junk, product WIP → owning streams, spikes, the do-not-touch `ARIA_CURRENT_TASK_BOARD.md`) — deliberate/owner-gated, NOT resolved inline, does NOT block the P0 queue.
+- Standing directive (all projects): **Fable 5 active; proactively suggest better approaches whenever an opportunity appears** (separate global-config task to persist).
+- Session log: `ops/aria/log/2026-07-01-claude-ops-adapter-hardening.md`. Plan: `~/.claude/plans/melodic-fluttering-flame.md` (top section).
+
 ## Latest Catch-Up (2026-06-29)
 
 - Codex read repo memory plus the Obsidian vault at `C:\Users\Owner\Documents\Obsidian\aria-mind` and checked GitHub via authenticated `gh`.
