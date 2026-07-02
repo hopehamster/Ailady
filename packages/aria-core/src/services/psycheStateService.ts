@@ -26,6 +26,7 @@ import type {
   EgoState,
   DrivePerception,
 } from '@aria/shared-types';
+import { asEpochMs } from '@aria/shared-types';
 
 const DRIVE_ORDER: DriveKey[] = [
   'relatedness',
@@ -103,7 +104,7 @@ export function defaultDriveState(nowMs: number): DriveState {
   for (const key of DRIVE_ORDER) {
     drives[key] = makeDrive();
   }
-  return { drives, turn: 0, lastUpdatedAtMs: nowMs };
+  return { drives, turn: 0, lastUpdatedAtMs: asEpochMs(nowMs) };
 }
 
 export function defaultEgoState(nowMs: number): EgoState {
@@ -181,7 +182,7 @@ function stepDrive(prev: Drive, key: DriveKey, p: DrivePerception): Drive {
 
   if (isDischarged(key, p)) {
     next = Math.max(0, next - cfg.dischargeAmount);
-    lastDischargedAtMs = p.nowMs;
+    lastDischargedAtMs = asEpochMs(p.nowMs);
     refractoryTurns = cfg.refractory;
   } else {
     next -= cfg.decayRate;
@@ -213,7 +214,7 @@ export function updateDriveState(current: DriveState, p: DrivePerception): Drive
   return {
     drives,
     turn: current.turn + 1,
-    lastUpdatedAtMs: p.nowMs,
+    lastUpdatedAtMs: asEpochMs(p.nowMs),
   };
 }
 
@@ -275,7 +276,7 @@ export function advanceEgoState(
     if (pursuingResolved || goal.progress >= 1) {
       closedDrive = goal.driveKey;
       return {
-        egoState: { activeGoal: null, lastUpdatedAtMs: p.nowMs },
+        egoState: { activeGoal: null, lastUpdatedAtMs: asEpochMs(p.nowMs) },
         closedDrive,
       };
     }
@@ -289,28 +290,28 @@ export function advanceEgoState(
         ...goal,
         stage: progress >= 1 ? 'satisfied' : 'advancing',
         progress,
-        lastAdvancedAtMs: p.nowMs,
+        lastAdvancedAtMs: asEpochMs(p.nowMs),
         stalls: 0,
       };
       if (progress >= 1) {
         closedDrive = goal.driveKey;
-        return { egoState: { activeGoal: null, lastUpdatedAtMs: p.nowMs }, closedDrive };
+        return { egoState: { activeGoal: null, lastUpdatedAtMs: asEpochMs(p.nowMs) }, closedDrive };
       }
-      return { egoState: { activeGoal: advanced, lastUpdatedAtMs: p.nowMs }, closedDrive };
+      return { egoState: { activeGoal: advanced, lastUpdatedAtMs: asEpochMs(p.nowMs) }, closedDrive };
     }
 
     // Stall: step back, never push.
     const stalls = goal.stalls + 1;
     if (stalls >= MAX_STALLS) {
       return {
-        egoState: { activeGoal: null, lastUpdatedAtMs: p.nowMs },
+        egoState: { activeGoal: null, lastUpdatedAtMs: asEpochMs(p.nowMs) },
         closedDrive,
       };
     }
     return {
       egoState: {
         activeGoal: { ...goal, stage: 'active', stalls },
-        lastUpdatedAtMs: p.nowMs,
+        lastUpdatedAtMs: asEpochMs(p.nowMs),
       },
       closedDrive,
     };
@@ -320,20 +321,20 @@ export function advanceEgoState(
   const focal = selectFocalDrive(driveState);
   if (focal) {
     const newGoal: EgoGoal = {
-      id: `goal_${p.nowMs}_${focal}`,
+      id: `goal_${asEpochMs(p.nowMs)}_${focal}`,
       kind: driveToGoalKind(focal),
       driveKey: focal,
       openLoopId: p.focalOpenLoopId,
       stage: 'forming',
       progress: 0,
-      createdAtMs: p.nowMs,
-      lastAdvancedAtMs: p.nowMs,
+      createdAtMs: asEpochMs(p.nowMs),
+      lastAdvancedAtMs: asEpochMs(p.nowMs),
       stalls: 0,
     };
-    return { egoState: { activeGoal: newGoal, lastUpdatedAtMs: p.nowMs }, closedDrive };
+    return { egoState: { activeGoal: newGoal, lastUpdatedAtMs: asEpochMs(p.nowMs) }, closedDrive };
   }
 
-  return { egoState: { activeGoal: null, lastUpdatedAtMs: p.nowMs }, closedDrive };
+  return { egoState: { activeGoal: null, lastUpdatedAtMs: asEpochMs(p.nowMs) }, closedDrive };
 }
 
 /**
@@ -353,7 +354,7 @@ export function stepPsyche(
     driveState.drives[closedDrive] = {
       ...d,
       pressure: clamp01(d.pressure - cfg.dischargeAmount),
-      lastDischargedAtMs: p.nowMs,
+      lastDischargedAtMs: asEpochMs(p.nowMs),
       refractoryTurns: cfg.refractory,
     };
   }
@@ -383,3 +384,5 @@ export const PSYCHE_TUNING = {
   MAX_STALLS,
   PROGRESS_STEP,
 };
+
+

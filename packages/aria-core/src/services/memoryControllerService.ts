@@ -1,3 +1,4 @@
+import { asEpochMs } from '@aria/shared-types';
 import type {
   ChronologyEvent,
   IntelligentMemory,
@@ -1100,8 +1101,8 @@ function buildSyntheticChronologyEvent(
     relativeDayOffset: cue.relativeDayOffset,
     confidence: cue.confidence,
     status: cue.direction === 'past' ? 'resolved' : 'open',
-    createdAt: eventDate.getTime(),
-    lastMentionedAt: eventDate.getTime(),
+    createdAt: asEpochMs(asEpochMs(eventDate.getTime())),
+    lastMentionedAt: asEpochMs(asEpochMs(eventDate.getTime())),
   };
 }
 
@@ -1247,7 +1248,7 @@ export function buildChronologyRouterResponse(
       const [y, m, d] = event.anchorDateIso.split('-').map(Number);
       const eventDate = new Date(Date.UTC(y, m - 1, d));
       const today = new Date(`${state.todayIso}T00:00:00Z`);
-      const diffDays = Math.round((eventDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.round((asEpochMs(asEpochMs(eventDate.getTime())) - today.getTime()) / (1000 * 60 * 60 * 24));
       return diffDays >= 0 && diffDays <= 7;
     });
     if (weekAhead.length === 0) {
@@ -1259,3 +1260,6 @@ export function buildChronologyRouterResponse(
 
   return null;
 }
+
+
+

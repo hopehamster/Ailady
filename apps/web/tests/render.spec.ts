@@ -10,16 +10,23 @@ test.describe("avatar render", () => {
   test("the 3D avatar paints (non-blank canvas)", async ({ talking }) => {
     await talking.goto();
     await talking.waitForAvatarReady();
-    await talking.page.waitForTimeout(1500); // let the render loop draw a frame
-    const painted = await talking.canvasNonBlankCount();
-    expect(painted, "avatar canvas painted pixels (far from #0A1628)").toBeGreaterThan(1000);
+    // Poll until the render loop draws a frame.  waitForTimeout is flaky —
+    // a fast GPU paints in 200ms; a sluggish CI runner may need 5s.
+    // expect.toPass auto-retries with backoff (Playwright course pattern).
+    await expect(async () => {
+      const painted = await talking.canvasNonBlankCount();
+      expect(painted).toBeGreaterThan(1000);
+    }).toPass({ timeout: 10_000, intervals: [300, 600, 1000, 2000] });
   });
 
   test("@visual avatar baseline (local only)", async ({ talking }) => {
     test.skip(!!process.env.CI, "visual baselines are local-only — per-OS swiftshader drift");
     await talking.goto();
     await talking.waitForAvatarReady();
-    await talking.page.waitForTimeout(1500);
+    await expect(async () => {
+      const painted = await talking.canvasNonBlankCount();
+      expect(painted).toBeGreaterThan(1000);
+    }).toPass({ timeout: 10_000, intervals: [300, 600, 1000, 2000] });
     await expect(talking.canvas).toHaveScreenshot("avatar-neutral.png");
   });
 });

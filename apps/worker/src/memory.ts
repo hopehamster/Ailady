@@ -8,6 +8,7 @@ import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types"
 import type { ConversationMessage } from "@aria/aria-core";
 import { createEmptyIntelligentMemory } from "@aria/aria-core";
 import type { IntelligentMemory, ScoredMessage } from "@aria/shared-types";
+import { asEpochMs } from "@aria/shared-types";
 
 export interface TurnMeta {
   emotion?: string;
@@ -189,7 +190,7 @@ export async function compileIntelligentMemory(
       id: String(r.id),
       role: r.role === "assistant" ? "assistant" : "user",
       content: String(r.content),
-      timestamp: Number(r.timestamp),
+      timestamp: asEpochMs(Number(r.timestamp)),
       importance: Number(r.importance),
       topics: (parseJson(r.topics_json) as string[] | undefined) ?? [],
     }))

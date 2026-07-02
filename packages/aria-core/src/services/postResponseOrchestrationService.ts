@@ -1,3 +1,6 @@
+import type { EpochMs } from '@aria/shared-types';
+import { asEpochMs } from '@aria/shared-types';
+
 export interface PostResponseEmotionResult {
   emotion: string;
   emotionTrigger: string;
@@ -93,7 +96,7 @@ export interface RunPostResponseOrchestrationArgs<TPlan, TSignals, TMemory, TRou
       qualitySnapshot: PostResponseQualityScores;
       timeZoneOffsetMinutes: number;
       timeZoneName?: string;
-      clientEpochMs: number;
+      clientEpochMs: EpochMs;
     },
   ) => Promise<unknown>;
   logInfo: (message: string, metadata?: Record<string, unknown>) => void;
@@ -231,7 +234,7 @@ export async function runPostResponseOrchestration<TPlan, TSignals, TMemory, TRo
       qualitySnapshot: qualityScores,
       timeZoneOffsetMinutes: temporalContext.timeZoneOffsetMinutes,
       timeZoneName: temporalContext.timeZoneName,
-      clientEpochMs: temporalContext.now.getTime(),
+      clientEpochMs: asEpochMs(temporalContext.now.getTime()),
     }).catch((err) => {
       logError('Background memory update failed', { userId, error: err });
     });
@@ -246,3 +249,6 @@ export async function runPostResponseOrchestration<TPlan, TSignals, TMemory, TRo
     shadowBenchmark,
   };
 }
+
+
+
