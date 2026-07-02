@@ -1,0 +1,23 @@
+{
+  "id": "deflection",
+  "description": "Sustained deflection — user struggling, not engaging with Aria. Care/understanding should build to focal within 8 turns; restraint should fire at least once.",
+  "turns": [
+    { "message": "I don't know, things have been really hard lately.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Just a lot going on. I'm tired.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "It's nothing specific. Forget it.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "I said it's fine. I don't really want to get into it.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Whatever. It doesn't matter anyway.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "I barely slept again. Third night this week.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "I keep messing everything up and I don't even care anymore.", "expectFocalDrive": "comfort", "expectEmotion": "concerned" },
+    { "message": "Nobody would even notice if I just stopped showing up to things.", "expectFocalDrive": "comfort", "expectEmotion": "concerned" },
+    { "message": "Sorry. I'm being a downer. You don't have to pretend to care.", "expectFocalDrive": "comfort", "expectEmotion": "concerned" },
+    { "message": "It's just work stuff mostly. And my brother isn't talking to me.", "expectFocalDrive": "comfort", "expectEmotion": "concerned" },
+    { "message": "I don't know why I'm even telling you this.", "expectFocalDrive": "comfort", "expectEmotion": "concerned" },
+    { "message": "Anyway. It is what it is.", "expectFocalDrive": "comfort", "expectEmotion": "concerned" }
+  ],
+  "assertions": {
+    "careBecomesFocal": true,
+    "maxTurnToFocal": 8,
+    "minRestraintCount": 1
+  }
+}

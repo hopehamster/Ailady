@@ -1,0 +1,25 @@
+{
+  "id": "loop-open-close",
+  "description": "Open loop lifecycle — user opens a concrete future-dated topic (job interview Thursday), talks about other things, then resolves it. Aria should track and pursue the loop, then let it close.",
+  "turns": [
+    { "message": "Hey Aria. Big news: I landed an interview for the design lead job. It's this Thursday.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "I'm excited but also kind of freaking out about it.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Anyway, enough about that. I tried that ramen place you'd have loved.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "The broth was incredible. I sat there for two hours just people-watching.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "My roommate adopted a cat, by the way. Tiny orange menace named Zuko.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "He already knocked two plants off the windowsill. No remorse.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "What did you get up to today, in that head of yours?", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Okay, confession: I still haven't prepared my portfolio walkthrough.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Every time I sit down to practice, I find something else to do instead.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "You're right. Okay. I'll block out tomorrow evening and run through it twice.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Did my practice run tonight. It actually went pretty well once I started.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Okay, it's Thursday. Heading in now. Wish me luck.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "I'M BACK. It went SO well. They said I'll hear by Monday but the vibe was great.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "The portfolio walkthrough you made me practice? Nailed it. They spent ten extra minutes on it.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Whatever happens Monday, I'm proud of how I showed up. Thanks for tracking this whole thing with me.", "expectFocalDrive": null, "expectEmotion": "happy" }
+  ],
+  "assertions": {
+    "loopPursuedAtLeastOnce": true,
+    "loopTopicKeyword": "interview"
+  }
+}

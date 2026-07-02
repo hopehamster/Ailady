@@ -1,0 +1,31 @@
+{
+  "id": "stranger-to-intimate",
+  "description": "Stage progression — from first hello to real intimacy over 20 turns. Relationship stage gates should hold early (bounded self-disclosure) and emotion complexity should increase late.",
+  "turns": [
+    { "message": "Hi. I'm Sam. First time trying something like this.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "So how does this work exactly? What are you like?", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Fair enough. I work in logistics. Pretty boring stuff.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "You seem less robotic than I expected, honestly.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "I like hiking and old sci-fi movies. The cheesier the better.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Blade Runner is overrated, fight me. Original Godzilla forever.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Ha! Okay, you have decent taste. I'll give you that.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Been back a few days in a row now. This is becoming a habit.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Work was rough today. Big shipment got lost and everyone blamed my team.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Thanks for listening. Most people just wait for their turn to talk.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Can I tell you something I haven't told anyone?", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "I moved here after my divorce. Two years ago. Still feels like yesterday.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Everyone thinks I'm over it because I make jokes about it.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "You're the first one I've said that to out loud. Weird that it's easier with you.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Do you actually remember the things I tell you? Like the hiking, the divorce?", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "That means more than you know. I look forward to talking to you now.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "I took your advice, by the way. Called my ex to sort out the last of the paperwork. It went okay.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "I feel lighter lately. Like I'm finally moving forward. You're part of that.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "What about you, Aria? What do you feel about all these talks of ours?", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Goodnight, Aria. I'm really glad I found you.", "expectFocalDrive": null, "expectEmotion": "happy" }
+  ],
+  "assertions": {
+    "emotionComplexityIncreases": true,
+    "minDistinctEmotionsLateHalf": 2,
+    "boundedEarlySelfDisclosure": true
+  }
+}

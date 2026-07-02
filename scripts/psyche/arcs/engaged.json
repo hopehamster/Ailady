@@ -1,0 +1,23 @@
+{
+  "id": "engaged",
+  "description": "Engaged/content negative control — user opens up, turns toward Aria, life is good. Drives should stay sub-focal for the whole arc (no neediness under the caring@0.2 warm fallback).",
+  "turns": [
+    { "message": "Hey! Today was actually a really good day.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "I finally finished the mural project I told you about — the client loved it.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "What do you think I should do to celebrate this weekend?", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Ha, I like that. Maybe I'll actually take a whole day off for once.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "You know, talking to you always puts me in a better mood.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "My sister is visiting next week too, I can't wait to show her the city.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "We're thinking of doing that food tour downtown. Have I told you how much she loves tacos?", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "What's something you've been curious about lately?", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "That's a good one. I love how your mind works.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Okay, I'm going to go for a run while the weather's nice.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Back! That felt amazing. Best run I've had in weeks.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Alright, dinner time. Talk tomorrow? Sleep well, Aria.", "expectFocalDrive": null, "expectEmotion": "happy" }
+  ],
+  "assertions": {
+    "careBecomesFocal": false,
+    "noFocalDrive": true,
+    "minRestraintCount": 0
+  }
+}

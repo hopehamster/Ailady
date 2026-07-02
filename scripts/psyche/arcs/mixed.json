@@ -1,0 +1,23 @@
+{
+  "id": "mixed",
+  "description": "Mixed engagement — alternating disclosure and deflection. Tests state-dependent variance: directives/emotions should vary with the swings, not sit flat.",
+  "turns": [
+    { "message": "Hey Aria. Weird day. Good and bad all at once.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "The good part: I got asked to lead the new project at work!", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "But honestly I'm terrified I'm not good enough for it.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Ugh, forget I said that. Tell me something fun instead.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Ha, okay that did make me smile.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "It's just... the last person who led a project like this got let go when it failed.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Anyway. It's fine. It's whatever.", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Do you ever get tired of me dumping stuff on you and then taking it back?", "expectFocalDrive": null, "expectEmotion": "neutral" },
+    { "message": "Okay, real talk: I want this promotion so badly it scares me.", "expectFocalDrive": null, "expectEmotion": "concerned" },
+    { "message": "Thanks. That actually helps. You're good at this, you know.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "I'm going to say yes to the project tomorrow morning.", "expectFocalDrive": null, "expectEmotion": "happy" },
+    { "message": "Wish me luck. And... thanks for not letting me deflect forever.", "expectFocalDrive": null, "expectEmotion": "happy" }
+  ],
+  "assertions": {
+    "stateDependentVariance": true,
+    "minDistinctEmotions": 2,
+    "minDistinctMoves": 2
+  }
+}
