@@ -22,7 +22,11 @@ const MOODS = [
   "playful",
 ] as const;
 
-test.describe("T3 — Body Fidelity Mood Sweep", () => {
+// @visual: GPU-bound (8 full avatar renders). CI runners only have SwiftShader
+// software rasterization — each mood takes 30-54s there and times out (run
+// 28557079006), vs ~2s on a real GPU. test:e2e:ci grep-inverts @visual, so this
+// sweep runs in the LOCAL gate (where it passes 8/8) like the @real suites.
+test.describe("T3 — Body Fidelity Mood Sweep @visual", () => {
   for (const mood of MOODS) {
     test(`avatar renders mood: ${mood}`, async ({ page, talking }) => {
       // Mock /api/chat → return this emotion
