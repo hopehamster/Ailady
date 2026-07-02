@@ -437,7 +437,8 @@ async function main() {
   };
 
   mkdirSync(OUT_DIR, { recursive: true });
-  const outPath = join(OUT_DIR, `arcs-${stamp}.json`);
+  // OUT_NAME override (W4-P h2fix re-run) so a re-run doesn't clobber the baseline.
+  const outPath = join(OUT_DIR, process.env.OUT_NAME ?? `arcs-${stamp}.json`);
   writeFileSync(outPath, JSON.stringify(out, null, 2));
   console.log(`\nwrote ${outPath}`);
 
