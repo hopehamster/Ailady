@@ -6,7 +6,7 @@
 
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import type { ConversationMessage } from "@aria/aria-core";
-import { createEmptyIntelligentMemory } from "@aria/aria-core";
+import { createEmptyIntelligentMemory, selectRecalledIds } from "@aria/aria-core";
 import type { IntelligentMemory, ScoredMessage } from "@aria/shared-types";
 import { asEpochMs } from "@aria/shared-types";
 
@@ -172,7 +172,7 @@ export async function compileIntelligentMemory(
   // RECENT ∪ TOP-IMPORTANCE pool (uses idx_scored_messages_uid_importance), newest-first.
   const scoredStmt = db
     .prepare(
-      "SELECT id, role, content, timestamp, importance, topics_json " +
+      "SELECT id, role, content, timestamp, importance, topics_json, last_accessed, access_count " +
         "FROM scored_messages WHERE uid = ? AND (" +
         "  id IN (SELECT id FROM scored_messages WHERE uid = ? ORDER BY timestamp DESC LIMIT ?) OR " +
         "  id IN (SELECT id FROM scored_messages WHERE uid = ? ORDER BY importance DESC, timestamp DESC LIMIT ?)" +
@@ -193,6 +193,9 @@ export async function compileIntelligentMemory(
       timestamp: asEpochMs(Number(r.timestamp)),
       importance: Number(r.importance),
       topics: (parseJson(r.topics_json) as string[] | undefined) ?? [],
+      // Access-time freshness (#18): NULL/0 = legacy row → decay from creation.
+      lastAccessedMs: r.last_accessed == null ? undefined : asEpochMs(Number(r.last_accessed)),
+      accessCount: r.access_count == null ? undefined : Number(r.access_count),
     }))
     .reverse();
 
@@ -440,5 +443,22 @@ export async function persistTurnAndMemory(
     ),
     ...buildMemoryStatements(db, uid, input.memory, input.newScored),
   ];
+
+  // #18 access-time freshness: the memories the brain actively RECALLED this
+  // turn (importance-selected beyond the recency window) restart their decay
+  // clock. Same atomic batch — the recall record can't desync from the turn.
+  const recalledIds = selectRecalledIds(input.memory, input.nowMs);
+  if (recalledIds.length > 0) {
+    const placeholders = recalledIds.map(() => "?").join(",");
+    statements.push(
+      db
+        .prepare(
+          "UPDATE scored_messages SET last_accessed = ?, access_count = access_count + 1 " +
+            `WHERE uid = ? AND id IN (${placeholders})`,
+        )
+        .bind(input.nowMs, uid, ...recalledIds),
+    );
+  }
+
   await db.batch(statements);
 }

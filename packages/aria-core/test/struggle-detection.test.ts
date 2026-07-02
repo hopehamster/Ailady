@@ -27,6 +27,21 @@ const SHOULD_FIRE = [
   // the original keyword list must still match (no regression)
   "I feel so alone even when there are people around me.",
   "I'm exhausted and overwhelmed.",
+  // Layer 4 (H2 fix, 2026-07-01): DEFLECTION — distress that minimizes itself.
+  // Live W3-P evidence (arcs-2026-07-02.json): the entire deflection arc matched
+  // NOTHING above, so care never accrued. These are that arc's actual phrasings —
+  // every one must now read as struggling.
+  "I don't know, things have been really hard lately.",
+  "Just a lot going on. I'm tired.",
+  "It's nothing specific. Forget it.",
+  "I said it's fine. I don't really want to get into it.",
+  "Whatever. It doesn't matter anyway.",
+  "I barely slept again. Third night this week.",
+  "I keep messing everything up and I don't even care anymore.",
+  "Nobody would even notice if I just stopped showing up to things.",
+  "Sorry. I'm being a downer. You don't have to pretend to care.",
+  "I don't know why I'm even telling you this.",
+  "Anyway. It is what it is.",
 ];
 
 // Benign / neutral / logistics — must NOT trip the detector (would make her needy).
@@ -50,6 +65,12 @@ const SHOULD_NOT_FIRE = [
   "I'm so tired, I slept great though, just woke up.",
   "I'm really tired of waiting for the bus.",
   "I'm pretty flat broke until payday lol.",
+  // Layer 4 benign look-alikes — deflection idioms used non-emotionally must NOT fire.
+  "Oh forget it, let's just order pizza instead.",
+  "The score doesn't matter, it's a friendly game.",
+  "There's a lot going on at the festival this weekend, you should come!",
+  "I stopped showing up to that gym because I switched to the closer one.",
+  "Hard to say, the weather has been unpredictable lately.",
 ];
 
 test('struggle detection FIRES on natural distress phrasing (psyche can perceive)', () => {

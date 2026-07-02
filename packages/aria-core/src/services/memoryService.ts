@@ -1455,6 +1455,50 @@ function applyImportanceDecay(
   return Math.max(MIN_IMPORTANCE_THRESHOLD, baseImportance * decay);
 }
 
+// Access-time freshness (#18): a recalled memory is a LIVE memory. Decay runs
+// from the most recent of (created, last recalled) — reaching for a fact
+// restarts its fade — and repeated recall earns a small, log-bounded boost
+// (+0.03 per e-fold of accesses, capped at +0.09) so the facts she keeps using
+// rank above equally-important facts she never touches. Pure; exported for the
+// recall-eval harness.
+const ACCESS_BOOST_STEP = 0.03;
+const ACCESS_BOOST_CAP = 0.09;
+
+export function effectiveImportance(
+  msg: Pick<ScoredMessage, 'importance' | 'timestamp' | 'lastAccessedMs' | 'accessCount'>,
+  nowMs: number = Date.now(),
+): number {
+  const anchor =
+    typeof msg.lastAccessedMs === 'number' && msg.lastAccessedMs > msg.timestamp
+      ? msg.lastAccessedMs
+      : msg.timestamp;
+  const decayed = applyImportanceDecay(msg.importance, anchor, nowMs);
+  const accesses = typeof msg.accessCount === 'number' && msg.accessCount > 0 ? msg.accessCount : 0;
+  const boost = Math.min(ACCESS_BOOST_CAP, ACCESS_BOOST_STEP * Math.log1p(accesses));
+  return clamp01(decayed + boost);
+}
+
+/** #18: the ids getRecentContextMessages RECALLS — the top-30-by-effective-
+ * importance messages OUTSIDE the last-20 recency window. The recency window
+ * is context, not recall; these are the memories she actively reached back
+ * for, so they (and only they) get their access clock bumped by the Worker.
+ * Mirrors getRecentContextMessages' split (sans per-turn topic boost, which
+ * is transient by design). Pure. */
+export function selectRecalledIds(
+  memory: IntelligentMemory,
+  nowMs: number = Date.now(),
+): string[] {
+  const scored = memory.scoredMessages ?? [];
+  if (scored.length === 0) return [];
+  const byTime = [...scored].sort((a, b) => b.timestamp - a.timestamp);
+  const recentIds = new Set(byTime.slice(0, 20).map((m) => m.id));
+  return [...scored]
+    .filter((m) => !recentIds.has(m.id))
+    .sort((a, b) => effectiveImportance(b, nowMs) - effectiveImportance(a, nowMs))
+    .slice(0, 30)
+    .map((m) => m.id);
+}
+
 /**
  * Extract core facts from a conversation exchange
  */
@@ -1785,6 +1829,28 @@ const PSYCHE_NEGATIVE_PHRASE =
 // being used non-emotionally).
 const PSYCHE_NEGATIVE_IM =
   /\b(i'?m|i am|im)\s+(so|really|just|kind of|kinda|pretty|a bit|quite)\s+(off|low|down|heavy|empty|lost|stuck|hollow|numb|drained|fragile|raw|on edge)\b(?!\s+(to|on|in|at|the|a|an|for|with|of|about|from|onto|into|up))/i;
+// Layer 4 (H2 fix, 2026-07-01): DEFLECTION/withdrawal idioms. Live W3-P evidence
+// (scripts/psyche/output/arcs-2026-07-02.json) showed the deflection arc — the
+// canonical "hurting but minimizing" user — matched NONE of layers 1-3, because
+// deflection is distress that refuses to name itself: "forget it", "it doesn't
+// matter", "I'm being a downer", "it is what it is". Care/understanding never
+// accrued and the psyche sat in the no-focal fallback for the whole arc. Each
+// idiom here is a withdrawal/minimization move, phrased tightly enough that
+// benign uses don't fire (see struggle-detection tests): self-erasure ("nobody
+// would notice", "being a downer"), retraction ("forget it", "doesn't matter
+// anyway", "why I'm even telling you"), resignation ("it is what it is", "don't
+// even care anymore"), diffuse-burden openers ("things have been (really) hard
+// lately", "a lot going on"), and distress-adjacent physical markers ("barely
+// slept").
+// Discriminators (adversarially self-checked against benign look-alikes):
+// "forget it" only in TERMINAL position (a retraction ending the thought: "It's
+// nothing. Forget it." — NOT "forget it, let's order pizza" where an alternative
+// follows); "a lot going on" blocked when followed by a location/event/topic
+// ("at the festival", "with the launch") — the deflection form is the bare,
+// unelaborated version; "stopped showing up" dropped entirely (benign uses
+// dominate; the arc line is caught by "nobody would notice").
+const PSYCHE_DEFLECTION =
+  /forget it\s*[.!…]*\s*$|\b(it doesn'?t (even )?matter( anyway)?|it is what it is|being a downer|nobody would (even )?(notice|care)|no one would (even )?(notice|care)|don'?t (even )?care anymore|(don'?t|not sure) (know )?why i'?m (even )?telling you|(things have been|it'?s been) (really |so |pretty )?(hard|rough|heavy|a lot) lately\b|a lot going on(?!\s+(at|in|with|over|around|this|next|there))|barely (slept|sleeping)|keep messing (everything|it all) up|don'?t (really )?want to get into it|you don'?t have to pretend)\b/i;
 
 /** Does this user message read as emotional distress? Drives the psyche's `care`
  * and `understanding` cue rise. Exported so the breadth of detection is regression-
@@ -1795,7 +1861,8 @@ export function detectUserStruggling(userMessage: string): boolean {
     PSYCHE_NEGATIVE_SENTIMENT.test(userMessage) ||
     PSYCHE_NEGATIVE_FEELING.test(userMessage) ||
     PSYCHE_NEGATIVE_PHRASE.test(userMessage) ||
-    PSYCHE_NEGATIVE_IM.test(userMessage)
+    PSYCHE_NEGATIVE_IM.test(userMessage) ||
+    PSYCHE_DEFLECTION.test(userMessage)
   );
 }
 const PSYCHE_ARIA_STEER =
@@ -2212,9 +2279,11 @@ function pruneAndDecayMessages(
   nowMs: number = Date.now(),
 ): ScoredMessage[] {
   // Apply decay to all messages (single-clock: caller threads the turn's nowMs).
+  // effectiveImportance = decay from max(created, lastAccessed) + bounded access
+  // boost (#18) — recalled memories stay warm, untouched ones fade.
   const decayedMessages = messages.map(msg => ({
     ...msg,
-    decayedImportance: applyImportanceDecay(msg.importance, msg.timestamp, nowMs),
+    decayedImportance: effectiveImportance(msg, nowMs),
   }));
 
   // Sort by decayed importance (keep highest)
@@ -2319,10 +2388,10 @@ export function getRecentContextMessages(
     return memory.recentContext.slice(-50);
   }
 
-  // Apply decay to all messages
+  // Apply decay to all messages (access-time freshness aware, #18)
   const scoredWithDecay = memory.scoredMessages.map(msg => ({
     ...msg,
-    decayedImportance: applyImportanceDecay(msg.importance, msg.timestamp),
+    decayedImportance: effectiveImportance(msg),
     // Boost relevance if current topic matches message topics
     topicRelevance: currentTopic && msg.topics
       ? msg.topics.some(t => t.toLowerCase().includes(currentTopic.toLowerCase()) ||

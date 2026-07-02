@@ -250,6 +250,12 @@ export interface ScoredMessage {
   importance: number;  // 0.0 - 1.0 base importance score
   decayedImportance?: number; // Importance after time decay applied
   topics?: string[];   // Topics mentioned for relevance matching
+  /** Access-time freshness (#18): when this message was last recalled into a
+   * prompt. A recalled memory restarts its decay clock — facts she keeps
+   * reaching for stay warm; untouched ones fade. Absent on legacy rows. */
+  lastAccessedMs?: EpochMs;
+  /** How many times it has been recalled (bounded log-scale ranking boost). */
+  accessCount?: number;
 }
 
 export interface SemanticMemoryRecord {

@@ -83,6 +83,10 @@ export {
   indexSemanticMemoryForTurn,
   // M2 (audit 2026-06-22) — right-to-erasure: purge a user's Qdrant vectors.
   deleteSemanticMemoryForUser,
+  // #18 access-time freshness — pure ranking + the recalled-id selector the
+  // Worker uses to bump last_accessed/access_count in the per-turn batch.
+  effectiveImportance,
+  selectRecalledIds,
 } from "./services/memoryService";
 export type {
   ApplyTurnInput,
