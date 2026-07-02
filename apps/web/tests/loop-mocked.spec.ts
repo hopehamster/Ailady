@@ -43,10 +43,26 @@ test.describe("talking loop (mocked)", () => {
     await expect(talking.emotionEl).toHaveAttribute("data-aria-emotion", "concerned");
   });
 
-  test("a server error surfaces as an error bubble, not a crash", async ({ page, talking }) => {
+  test("a server error surfaces as a product-quality bubble, not a crash (#24)", async ({ page, talking }) => {
     await page.route("**/api/chat", (route) => route.fulfill({ status: 500, contentType: "application/json", body: '{"success":false,"error":"brain_error"}' }));
     await talking.goto();
     await talking.send("hi");
-    await expect(page.getByText(/server error 500/)).toBeVisible();
+    // Warm in-world copy from errors/chatErrors.ts — never a raw status/stack/error id.
+    await expect(page.getByText(/hiccuped on my side/i)).toBeVisible();
+    await expect(page.getByText(/server error|brain_error|500/)).toHaveCount(0);
+  });
+
+  test("a 429 surfaces retry-after-aware copy (#24)", async ({ page, talking }) => {
+    await page.route("**/api/chat", (route) =>
+      route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        headers: { "retry-after": "17" },
+        body: '{"success":false,"error":"rate_limited"}',
+      }),
+    );
+    await talking.goto();
+    await talking.send("hi");
+    await expect(page.getByText(/give me 17 seconds/i)).toBeVisible();
   });
 });

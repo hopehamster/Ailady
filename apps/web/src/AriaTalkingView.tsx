@@ -5,6 +5,7 @@ import type { AvatarDriver } from "./avatar/AvatarDriver";
 import { loadAvatarLibrary } from "./avatar/avatarLibrary";
 import { synthesizeSpeech } from "./avatar/speech";
 import { devHeaders } from "./devAuth";
+import { chatHttpFailure, chatThrownFailure } from "./errors/chatErrors";
 
 // The talking loop: type to Aria → her rendered face shows the reply's emotion → her
 // mouth lip-syncs the reply. The avatar is driven IMPERATIVELY through the driver ref
@@ -33,6 +34,7 @@ export function AriaTalkingView() {
   // DOM-invisible). Set UNCONDITIONALLY on reply so the emote assertion is independent of
   // whether the avatar GLB loaded. Read via [data-aria-emotion].
   const [lastEmotion, setLastEmotion] = useState<string>("neutral");
+  const [lastIntensity, setLastIntensity] = useState<number>(0.2);
   const driverRef = useRef<AvatarDriver | null>(null);
 
   // Load the chosen face — the same preset "Create Aria" persists, so the face carries over.
@@ -79,28 +81,38 @@ export function AriaTalkingView() {
         headers: { "content-type": "application/json", ...devHeaders() },
         body: JSON.stringify(req),
       });
-      const data = (await r.json()) as ChatResponse;
-      if (!r.ok || data.success === false) {
-        setMsgs((m) => [...m, { who: "aria", text: `(server error ${r.status})` }]);
+      const data = (await r.json().catch(() => null)) as ChatResponse | null;
+      if (!r.ok || !data || data.success === false) {
+        const failure = chatHttpFailure(r.status, r.headers.get("retry-after"));
+        setMsgs((m) => [...m, { who: "aria", text: failure.message }]);
         return;
       }
 
       const reply = data.response ?? "(no reply)";
       setMsgs((m) => [...m, { who: "aria", text: reply }]);
       setLastEmotion(data.emotion ?? "neutral"); // test hook — independent of avatar load
+      setLastIntensity(
+        typeof data.emotionIntensity === "number" ? data.emotionIntensity : 0.2,
+      );
 
       // Mind ↔ body: set the sustained mood first (persists during speech), then speak.
       const driver = driverRef.current;
       if (driver) {
-        driver.setEmotion(data.emotion);
+        driver.setEmotion(data.emotion, data.emotionIntensity);
         // Defensive: resume right before speak too (not only at gesture start) — the avatar
         // may have loaded after the gesture, leaving the context suspended.
         if (driver.audioContext?.state === "suspended") void driver.audioContext.resume();
-        const timed = await synthesizeSpeech(reply, driver);
-        if (timed) await driver.speak(timed);
+        try {
+          const timed = await synthesizeSpeech(reply, driver);
+          if (timed) await driver.speak(timed);
+        } catch (ttsErr) {
+          // Voice failing must never break the text loop — she just goes quiet.
+          console.warn("tts/speak failed:", ttsErr);
+        }
       }
     } catch (e) {
-      setMsgs((m) => [...m, { who: "aria", text: `(error: ${String(e)})` }]);
+      console.error("chat send failed:", e);
+      setMsgs((m) => [...m, { who: "aria", text: chatThrownFailure(e).message }]);
     } finally {
       setBusy(false);
     }
@@ -127,7 +139,7 @@ export function AriaTalkingView() {
         </div>
       )}
 
-      <div data-aria-emotion={lastEmotion} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+      <div data-aria-emotion={lastEmotion} data-aria-intensity={lastIntensity} style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
         {msgs.map((m, i) => (
           <div
             key={i}

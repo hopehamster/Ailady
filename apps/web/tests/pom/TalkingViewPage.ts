@@ -62,12 +62,15 @@ export class TalkingViewPage {
     await this.page.goto("/", { waitUntil: "domcontentloaded" });
   }
 
-  /** Wait until the avatar GLB finished loading ("loading avatar…" gone + a <canvas> visible). */
+  /** Wait until the avatar GLB finished loading. AvatarStage exposes a deterministic
+   * [data-aria-avatar-status] hook (loading|ready|error) — assert on that, not UI copy. */
   async waitForAvatarReady(timeout = 60_000): Promise<void> {
     await expect(async () => {
-      const txt = await this.page.locator("body").innerText();
-      expect(txt).not.toContain("avatar failed");
-      expect(txt).not.toContain("loading avatar");
+      const status = await this.page
+        .locator("[data-aria-avatar-status]")
+        .first()
+        .getAttribute("data-aria-avatar-status");
+      expect(status).toBe("ready");
       await expect(this.canvas).toBeVisible();
     }).toPass({ timeout, intervals: [500, 1000, 2000, 3000] });
   }

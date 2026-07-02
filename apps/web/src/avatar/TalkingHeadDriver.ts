@@ -1,5 +1,5 @@
 import type { AvatarDriver, AvatarSpeakInput } from "./AvatarDriver";
-import { emotionToMood } from "./emotionMap";
+import { bodyPlanFor, type TalkingHeadMood } from "./emotionMap";
 
 // Primary driver: Avaturn T2 GLB rendered client-side via TalkingHead.js (Three.js).
 // Proven in spikes/avatar-derisk/. TalkingHead is loaded at runtime from the CDN by its
@@ -16,6 +16,10 @@ const TALKINGHEAD_URL =
 export class TalkingHeadDriver implements AvatarDriver {
   private head: any = null;
   private container: HTMLElement | null = null;
+  private currentMood: TalkingHeadMood | null = null;
+  private moodTimer: ReturnType<typeof setTimeout> | null = null;
+  private gazeTimer: ReturnType<typeof setTimeout> | null = null;
+  private gazeWindowSec: [number, number] = [8, 14];
 
   async mount(container: HTMLElement): Promise<void> {
     this.container = container;
@@ -40,10 +44,59 @@ export class TalkingHeadDriver implements AvatarDriver {
     });
   }
 
-  setEmotion(emotion: string): void {
-    // intensity is accepted by the interface but TalkingHead's base mood is categorical;
-    // intensity will modulate layered expressions in a later pass.
-    this.head?.setMood(emotionToMood(emotion));
+  setEmotion(emotion: string, intensity?: number): void {
+    if (!this.head) return;
+    const plan = bodyPlanFor(emotion, intensity);
+
+    // Mood layer — deduped (re-setting the same mood restarts TalkingHead's mood
+    // animation and reads as a twitch) and eased per the plan's transition time
+    // (strong snaps, subtle drifts) rather than applied instantly on every turn.
+    if (plan.mood !== this.currentMood) {
+      this.currentMood = plan.mood;
+      if (this.moodTimer) clearTimeout(this.moodTimer);
+      this.moodTimer = setTimeout(() => {
+        this.moodTimer = null;
+        // currentMood may have moved on during the ease — apply the latest.
+        try {
+          this.head?.setMood(this.currentMood);
+        } catch {
+          // mood application must never take down the render loop
+        }
+      }, plan.transitionMs);
+    }
+
+    // Gesture layer — strong-band only, capability-guarded (older TalkingHead
+    // builds without playGesture degrade to mood-only, never throw).
+    if (plan.gesture && typeof this.head.playGesture === "function") {
+      try {
+        this.head.playGesture(plan.gesture.name, plan.gesture.durationSec);
+      } catch {
+        // gesture is decoration; mood already applied
+      }
+    }
+
+    // Idle gaze cadence follows the emotion's liveliness.
+    this.gazeWindowSec = plan.gazeIntervalSec;
+  }
+
+  /** Idle micro-motion: periodically re-engage the camera so she never reads
+   * frozen between turns. TalkingHead already blinks/sways on its own; this
+   * adds the "she's still with you" glance. Capability-guarded no-op when the
+   * API is absent. Runs only between start() and stop(). */
+  private scheduleGaze(): void {
+    if (this.gazeTimer) clearTimeout(this.gazeTimer);
+    const [min, max] = this.gazeWindowSec;
+    const waitMs = (min + Math.random() * Math.max(0.1, max - min)) * 1000;
+    this.gazeTimer = setTimeout(() => {
+      try {
+        if (this.head && typeof this.head.lookAtCamera === "function") {
+          this.head.lookAtCamera(500);
+        }
+      } catch {
+        // gaze is decoration
+      }
+      this.scheduleGaze();
+    }, waitMs);
   }
 
   async speak(input: AvatarSpeakInput): Promise<void> {
@@ -60,13 +113,20 @@ export class TalkingHeadDriver implements AvatarDriver {
 
   start(): void {
     this.head?.start();
+    this.scheduleGaze();
   }
 
   stop(): void {
+    if (this.gazeTimer) clearTimeout(this.gazeTimer);
+    this.gazeTimer = null;
     this.head?.stop();
   }
 
   dispose(): void {
+    if (this.gazeTimer) clearTimeout(this.gazeTimer);
+    this.gazeTimer = null;
+    if (this.moodTimer) clearTimeout(this.moodTimer);
+    this.moodTimer = null;
     try {
       this.head?.stop();
     } catch {
