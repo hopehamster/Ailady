@@ -1,5 +1,6 @@
 import { type Page, type Locator, expect } from "@playwright/test";
 import { PNG } from "pngjs";
+import { seedDevSession } from "../helpers/auth";
 
 // The AvatarStage background (#0A1628). A blank canvas screenshots as this navy; a painted
 // avatar (skin/hair) is far from it.
@@ -55,10 +56,13 @@ export class TalkingViewPage {
     });
   }
 
-  /** Chat is the default tab. domcontentloaded (not "load"): this is an SPA whose heavy
-   * three.js/TalkingHead chunks load lazily, and a stray Vite optimizer reload aborts a
-   * "load" wait. waitForAvatarReady() does the real readiness polling after. */
+  /** Chat is the default view. Seeds a dev session first (#19 auth gate) so the
+   * spec lands straight in the chat; auth.spec.ts covers the gate itself.
+   * domcontentloaded (not "load"): this is an SPA whose heavy three.js/TalkingHead
+   * chunks load lazily, and a stray Vite optimizer reload aborts a "load" wait.
+   * waitForAvatarReady() does the real readiness polling after. */
   async goto(): Promise<void> {
+    await seedDevSession(this.page);
     await this.page.goto("/", { waitUntil: "domcontentloaded" });
   }
 

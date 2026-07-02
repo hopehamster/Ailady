@@ -1,0 +1,330 @@
+/* Aria product shell theme (#19). Dark, warm, elegant — deep navy with candle-gold
+   accents. One small hand-written sheet; no CSS framework. */
+
+:root {
+  --navy-950: #060e1c;
+  --navy-900: #0a1628; /* canonical app background (matches AvatarStage bg) */
+  --navy-800: #0f1f33;
+  --navy-700: #16293f;
+  --line: #22344c;
+  --ink: #e9edf3;
+  --ink-dim: #9fb2c8;
+  --gold: #c9a84c;
+  --gold-soft: #e3c87a;
+  --danger: #e08c9d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--navy-900);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+}
+
+/* ---------- shared controls ---------- */
+
+.btn {
+  border-radius: 10px;
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  background: var(--navy-800);
+  color: var(--ink);
+  font-weight: 600;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.btn:hover {
+  border-color: var(--gold);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn-gold {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #10131a;
+}
+
+.btn-gold:hover {
+  background: var(--gold-soft);
+  border-color: var(--gold-soft);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-dim);
+}
+
+.btn-ghost:hover {
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.btn-link:hover {
+  color: var(--gold-soft);
+}
+
+/* ---------- brand ---------- */
+
+.brand {
+  margin: 0;
+  font-family: Georgia, "Palatino Linotype", "Times New Roman", serif;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+
+/* ---------- sign-in gate ---------- */
+
+.signin-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  background:
+    radial-gradient(60vw 40vh at 50% -10%, rgba(201, 168, 76, 0.08), transparent 70%),
+    var(--navy-900);
+}
+
+.signin-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--navy-800);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.signin-card .brand {
+  font-size: 34px;
+  text-align: center;
+}
+
+.signin-sub {
+  margin: 0 0 6px;
+  text-align: center;
+  color: var(--ink-dim);
+  font-size: 14px;
+}
+
+.signin-label {
+  font-size: 13px;
+  color: var(--ink-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.signin-input {
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--navy-900);
+  color: var(--ink);
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+.signin-input:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.signin-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  min-height: 1em;
+}
+
+.signin-dev-hint {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-dim);
+  opacity: 0.8;
+}
+
+/* ---------- app shell ---------- */
+
+.app-shell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 2px 10px;
+  background: linear-gradient(to bottom, var(--navy-900) 82%, rgba(10, 22, 40, 0));
+}
+
+.app-header .brand {
+  font-size: 26px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-panel {
+  border: 1px solid var(--line);
+  background: var(--navy-800);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  color: var(--ink-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.history-panel strong {
+  color: var(--ink);
+}
+
+.lab-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.lab-nav .lab-tag {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-right: 4px;
+}
+
+.lab-nav .btn[aria-pressed="true"] {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #10131a;
+}
+
+/* ---------- chat panel ---------- */
+
+.chat-panel {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Empty state (#19): shown only while the conversation is empty. The messages
+   container is the [data-aria-emotion] div (rendered by AriaTalkingView); when
+   it has no bubbles it matches :empty and :has() reveals the welcome. */
+.chat-empty-hint {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 92px;
+  text-align: center;
+  pointer-events: none;
+  padding: 0 24px;
+}
+
+.chat-panel:has([data-aria-emotion]:empty) .chat-empty-hint {
+  display: block;
+}
+
+.chat-empty-hint .hint-title {
+  margin: 0 0 6px;
+  font-family: Georgia, "Palatino Linotype", serif;
+  font-size: 20px;
+  color: var(--gold-soft);
+}
+
+.chat-empty-hint .hint-sub {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 14px;
+}
+
+.lab-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 0 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .app-header {
+    padding-top: 10px;
+  }
+
+  .app-header .brand {
+    font-size: 22px;
+  }
+
+  .btn {
+    padding: 8px 12px;
+  }
+
+  .signin-card {
+    padding: 26px 20px;
+  }
+}

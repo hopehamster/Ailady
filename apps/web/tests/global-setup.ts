@@ -1,4 +1,5 @@
 import { chromium, type FullConfig } from "@playwright/test";
+import { seedDevSession } from "./helpers/auth";
 
 // Warm Vite's dep optimizer ONCE before the suite. The avatar view lazy-imports
 // three.js / TalkingHead; the FIRST browser to reach it triggers Vite's esbuild
@@ -16,6 +17,8 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   });
   const page = await browser.newPage();
   try {
+    // Seed the dev session (#19 auth gate) so the warm-up reaches the avatar view.
+    await seedDevSession(page);
     await page.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded", timeout: 120_000 });
     // Reach the avatar so the lazy three.js/TalkingHead chunks get optimized now.
     // The optimize triggers one full reload; wait it out, then the canvas appears.
