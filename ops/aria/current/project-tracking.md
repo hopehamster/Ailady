@@ -37,9 +37,7 @@ Active work is the Aria web/worker product:
 
 | Priority | Issue | Source | Notes |
 |---|---|---|---|
-| P0 | [#2 W3-P live arcs](https://github.com/hopehamster/Ailady_clean_20260327/issues/2) | `ops/aria/protocols/dispatch-sheets/W3-P*.md` | Needs worker running |
-| P0 | [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | `ops/aria/protocols/dispatch-sheets/W3-L*.md` | Depends on W3-P transcripts |
-| P0 | [#9 Worker rate limits/auth-open hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/9) | `docs/security/VOLLEY_2026-06-22.md`, audit 2026-07-01 | Unblocked by #1 adjudication (CORS adds no amplification angle) |
+| P0 | [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | `ops/aria/protocols/dispatch-sheets/W3-L*.md` | Transcripts READY: `scripts/psyche/output/arcs-2026-07-02.json` |
 | P0 | [#13 Integrate Cloudflare auth spike](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | `spikes/cloudflare-auth-spike-A`, audit 2026-07-01 | Main worker production identity gate; carries CORS allowlist conditions from `docs/security/CORS_ADJUDICATION_2026-07-01.md` §4 |
 | P1 | [#5 W4-P Phase C fixes](https://github.com/hopehamster/Ailady_clean_20260327/issues/5) | `ops/aria/protocols/dispatch-sheets/W4-P*.md` | Depends on W3-P evidence |
 | P1 | [#6 W4-L T5 regression/ablation](https://github.com/hopehamster/Ailady_clean_20260327/issues/6) | `ops/aria/protocols/dispatch-sheets/W4-L*.md` | Depends on W3-P/W3-L |
@@ -51,10 +49,14 @@ Active work is the Aria web/worker product:
 
 | Issue | Evidence |
 |---|---|
+| [#2 W3-P live arcs](https://github.com/hopehamster/Ailady_clean_20260327/issues/2) | Wave 2 2026-07-01: 5 arcs / 71 turns / $0.012 through live `/api/chat`; transcripts `scripts/psyche/output/arcs-2026-07-02.json`; H2 live-confirmed (deflection FAIL → #5) |
+| [#9 Rate limits](https://github.com/hopehamster/Ailady_clean_20260327/issues/9) | Wave 2 2026-07-01 `6527a31`: inert fail-closed gate + bounded inputs + design doc + probe; activation = #13 |
+| [#15 Warm psyche fallback](https://github.com/hopehamster/Ailady_clean_20260327/issues/15) | Wave 1 fix `7f4fd1a` + Wave 2 live evidence: engaged arc = no new neediness. CLOSED |
+| [#16 Memory durability](https://github.com/hopehamster/Ailady_clean_20260327/issues/16) | Wave 2 2026-07-01 `a6fc1c6`: all write paths classified; 15 contract tests; DURABILITY doc |
+| [#28 Collision guard](https://github.com/hopehamster/Ailady_clean_20260327/issues/28) | Wave 2 2026-07-01 `d7c8a07`: claims.json + check-collisions.ps1 (live PASS + self-test FAIL proof) |
 | [#1 CORS adjudication](https://github.com/hopehamster/Ailady_clean_20260327/issues/1) | Wave 1 2026-07-01: **ACCEPT with conditions** — `docs/security/CORS_ADJUDICATION_2026-07-01.md`; June-22 dismissal stands, allowlist conditions attach to #13; #9 unblocked |
 | [#4 W3-M D1 schema](https://github.com/hopehamster/Ailady_clean_20260327/issues/4) | Wave 1 2026-07-01: schema verified (local apply + cascade round-trip), VERIFY commands in `0002_intelligent_memory.sql`, `db:migrate:local` script added |
 | [#11 Root CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/11) | Wave 1 2026-07-01: `.github/workflows/ci.yml` authored; deterministic security in CI, live volley = local pre-release; untested until first push |
-| [#15 Warm psyche fallback](https://github.com/hopehamster/Ailady_clean_20260327/issues/15) | Wave 1 2026-07-01: H3 fixed — `caring@0.2` no-focal baseline; aria-core 39/39, e2e 14/14 |
 | [#12 Close tracking slice](https://github.com/hopehamster/Ailady_clean_20260327/issues/12) | Closed after checkpoint `30a6228`; active slice, ops hub, Claude/Codex adapters, roadmap, and multi-agent map are normalized |
 
 ## Launch Roadmap Issues

@@ -31,11 +31,14 @@
 
 Evidence: session log `ops/aria/log/2026-07-01-claude-wave1-parallel-dispatch.md`; gate = typecheck clean, tests 39/39, e2e 14/14, security 29/29.
 
-## WAVE 2 — dispatch NOW (unblocked by Wave 1)
-- **Security:** #9 rate limits (needs #1 CORS decision) → #13 auth-spike integration → #14 gate-to-CI.
-- **Psyche:** #2 W3-P live-arc driver → #3 W3-L grader fleet (now exercising the #15 warm fallback) → #5 W4-P → #6 W4-L.
-- **Memory:** #16 close stubs → #17 shared-contract validation → #18 recall freshness. *(Coordinate #17 with anyone touching `shared-types/index.ts`.)*
-- **Ops:** #28 multi-agent collision guard → #10 tracking upkeep.
+## WAVE 2 — ✅ LANDED 2026-07-01 (4 parallel agents; #9 `6527a31`, #16 `a6fc1c6`, #28 `d7c8a07`, #2 arcs shipped; #15 closed on engaged-arc evidence)
+Key outcomes: collision guard live (`claims.json` + `scripts/ops/check-collisions.ps1`); inert fail-closed rate limits staged for #13; memory write paths classified (durable/unsupported/removed); W3-L-ready transcripts at `scripts/psyche/output/arcs-2026-07-02.json` ($0.012, 71 turns). **H2 live-confirmed** (deflection arc: drives never focal) → W4-P #5 has transcript evidence. Log: `2026-07-01-claude-wave2-parallel-dispatch.md`.
+
+## WAVE 2.5 — dispatch NOW
+- **Psyche:** #3 W3-L grader fleet (transcripts ready; pre-flagged: H2 focal failure, emotion-variance fails, loop-pursuit null, incongruent-empathy tic) → then #5 W4-P (H2 fix).
+- **Security:** #13 auth-spike integration (uncomment ratelimit bindings, uid=Bearer `sub`, daily D1 ceilings, CORS conditions C1–C3, probe → volley [6/6]) → #14 gate-to-CI.
+- **Memory:** #17 shared-contract validation *(touches `shared-types/index.ts` — sole owner, no parallel claim)* → #18 recall freshness.
+- **Ops:** #10 tracking upkeep; push branch to prove #11 CI green.
 
 ## WAVE 3 — Web Shell + Body/Voice (Phase 4/5)
 **Gated on:** auth/CORS from Waves 1–2 (#1/#9/#13) AND psyche GO/NO-GO evidence (#7) — do not outrun psyche/security proof.
