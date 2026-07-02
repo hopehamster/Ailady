@@ -23,8 +23,23 @@ import {
   getUserBan,
   banUser,
 } from "./memory";
+import {
+  clientIp,
+  handleAdminRotate,
+  handleJwks,
+  handleLogout,
+  handleMe,
+  handleRefresh,
+  handleSendOtp,
+  handleVerifyOtp,
+  rateLimitGate,
+  readBearer,
+  type AuthEnv,
+  type RateLimitBinding,
+} from "./auth";
+import { bumpChatUidDaily } from "./auth_db";
 
-export interface Env {
+export interface Env extends AuthEnv {
   ENV: string;
   OPENAI_COMPAT_BASE_URL: string;
   OPENAI_COMPAT_MODEL: string;
@@ -54,11 +69,12 @@ export interface Env {
    * Cartesia library and set CARTESIA_VOICE_ID to its UUID. */
   CARTESIA_API_KEY?: string;
   CARTESIA_VOICE_ID?: string;
-  /** TODO(#13) — production rate limits (volley 2026-06-22 F4; design:
+  /** #13 — production rate limits, LIVE (volley 2026-06-22 F4; design:
    * docs/security/RATE_LIMITS_DESIGN_2026-07-01.md). Cloudflare Workers RateLimit
-   * bindings, declared in wrangler.toml [[unsafe.bindings]] at auth integration.
-   * OPTIONAL so today's dev worker (no bindings) typechecks + runs unchanged; the
-   * rateLimitGate helper fails CLOSED outside dev when a binding is missing. */
+   * bindings declared in wrangler.toml [[unsafe.bindings]]. Kept OPTIONAL so a
+   * binding-less local run still typechecks; rateLimitGate (src/auth.ts) fails
+   * CLOSED outside dev when a binding is missing. The auth-endpoint bindings
+   * (OTP send/verify + refresh) live on AuthEnv. */
   CHAT_IP_LIMIT?: RateLimitBinding;
   CHAT_UID_LIMIT?: RateLimitBinding;
   TTS_IP_LIMIT?: RateLimitBinding;
@@ -67,12 +83,12 @@ export interface Env {
   AVATAR_UID_LIMIT?: RateLimitBinding;
   ACCOUNT_IP_LIMIT?: RateLimitBinding;
   ACCOUNT_UID_LIMIT?: RateLimitBinding;
-}
-
-/** Minimal Cloudflare Workers RateLimit binding shape (same alias the auth spike
- * uses — spikes/cloudflare-auth-spike-A/src/worker.ts). */
-interface RateLimitBinding {
-  limit(opts: { key: string }): Promise<{ success: boolean }>;
+  /** #13 — CORS origin allowlist (adjudication C1): comma-separated exact
+   * origins. Unset in dev falls back to the local Vite origins; unset outside
+   * dev means NO origin is allowed (deny by default). */
+  ALLOWED_ORIGINS?: string;
+  /** #13 — per-uid daily chat-turn ceiling (D1 chat_uid_daily; design §4). */
+  CHAT_UID_DAILY_MAX?: string;
 }
 
 // HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
@@ -83,11 +99,52 @@ const AVATAR_SANDBOX_WAYNE = "dd73ea75-1218-4ef3-92ce-606d5f7fbc0a";
 const DEFAULT_CARTESIA_VOICE = "6ccbfb76-1fc6-48f7-b71d-91ac6298247b";
 const CARTESIA_SAMPLE_RATE = 44100;
 
-const CORS: Record<string, string> = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,POST,OPTIONS",
-  "access-control-allow-headers": "content-type,x-dev-secret,x-dev-uid",
-};
+// ── #13 CORS — origin allowlist (CORS_ADJUDICATION_2026-07-01.md conditions C1-C3).
+// The wildcard `*` died with the dev-only auth model. Rules, enforced at ONE seam
+// (withCors, applied to every response in fetch):
+//   C1: reflect the request Origin ONLY when it is in the ALLOWED_ORIGINS
+//       allowlist (+ `vary: origin`); non-matching/absent origin → NO
+//       access-control-allow-origin header (deny by default). allow-headers is
+//       content-type,authorization,x-turn-id — the x-dev-* names exist in dev ONLY.
+//   C2: access-control-allow-credentials is NEVER emitted (cookie-free Bearer
+//       design; if cookies are ever proposed, re-adjudicate first).
+//   C3: regression assertions live in scripts/security (rate-limit/CORS probe).
+const PROD_ALLOW_HEADERS = "content-type,authorization,x-turn-id";
+const DEV_ALLOW_HEADERS = PROD_ALLOW_HEADERS + ",x-dev-secret,x-dev-uid";
+
+function allowedOrigins(env: Env): Set<string> {
+  const set = new Set(
+    (env.ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  // Dev convenience only: an empty allowlist in dev = the local Vite origins.
+  // Outside dev an empty allowlist stays empty — deny by default, fail closed.
+  if (set.size === 0 && env.ENV === "dev") {
+    set.add("http://localhost:5173");
+    set.add("http://127.0.0.1:5173");
+  }
+  return set;
+}
+
+/** Single CORS seam — decorates EVERY response (incl. auth routes + preflight).
+ * Emits ACAO/methods/headers only for an allowlisted Origin; always varies on
+ * origin; never emits allow-credentials (C2). */
+function withCors(res: Response, request: Request, env: Env): Response {
+  const headers = new Headers(res.headers);
+  headers.append("vary", "origin");
+  const origin = request.headers.get("origin");
+  if (origin && allowedOrigins(env).has(origin)) {
+    headers.set("access-control-allow-origin", origin);
+    headers.set("access-control-allow-methods", "GET,POST,OPTIONS");
+    headers.set("access-control-allow-headers", env.ENV === "dev" ? DEV_ALLOW_HEADERS : PROD_ALLOW_HEADERS);
+    headers.set("access-control-max-age", "600");
+  }
+  // C2 — belt-and-braces: nothing sets this header; make sure nothing ever does.
+  headers.delete("access-control-allow-credentials");
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
 
 // Baseline security headers (audit 2026-06-22). This is a pure JSON API (serves no
 // HTML), so a deny-all CSP + nosniff + no-referrer + frame-deny are safe and close
@@ -102,19 +159,20 @@ const SECURITY_HEADERS: Record<string, string> = {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", ...CORS, ...SECURITY_HEADERS },
+    headers: { "content-type": "application/json", ...SECURITY_HEADERS },
   });
 }
 
 /**
- * Dev gate for the private endpoints. FAILS CLOSED: not dev -> 401 (real auth is
- * Phase 3); DEV_SHARED_SECRET unset -> 503 (an unset secret must fail closed, not
- * leave a zero-auth endpoint open); wrong/missing secret -> 403. Returns a
- * Response when blocked, or null to proceed.
+ * Dev gate — the DEV-MODE-ONLY alternative to Bearer auth (#13). FAILS CLOSED:
+ * not dev -> 401 (production requires Bearer — see authenticate());
+ * DEV_SHARED_SECRET unset -> 503 (an unset secret must fail closed, not leave a
+ * zero-auth endpoint open); wrong/missing secret -> 403. Returns a Response when
+ * blocked, or null to proceed. Only reachable from authenticate()'s dev branch.
  */
 function devGate(request: Request, env: Env): Response | null {
   if (env.ENV !== "dev") {
-    return json({ success: false, error: "auth_required", detail: "real auth lands in Phase 3" }, 401);
+    return json({ success: false, error: "auth_required", detail: "Bearer access token required" }, 401);
   }
   if (!env.DEV_SHARED_SECRET) {
     return json(
@@ -129,37 +187,31 @@ function devGate(request: Request, env: Env): Response | null {
 }
 
 /**
- * Rate-limit gate (volley 2026-06-22 F4 / issue #9). INERT in dev today: the
- * bindings are not declared in wrangler.toml yet, so `binding` is undefined and
- * dev proceeds (devGate is the dev protection). The moment ENV != "dev" a missing
- * binding FAILS CLOSED (503) — production must never run without its limits.
- * TODO(#13): declare the [[unsafe.bindings]] in wrangler.toml at auth integration
- * per docs/security/RATE_LIMITS_DESIGN_2026-07-01.md, then this goes live as-is.
+ * #13 — production identity for the /api/* endpoints. Bearer-first:
+ *   - `Authorization: Bearer <access>` present (any env) → full ES256 verify
+ *     (issuer, audience, exp, nbf, kid allowlist, jti revocation — readBearer)
+ *     and uid = the verified `sub` claim. Closes volley F8 (client-writable uid).
+ *   - No Bearer + ENV !== "dev" → 401 auth_required. The dev headers are DEAD
+ *     outside dev: x-dev-secret/x-dev-uid are never consulted.
+ *   - No Bearer + ENV === "dev" → devGate (x-dev-secret) + bounded x-dev-uid —
+ *     the dev-mode-only alternative path, preserving the local workflow.
+ * Returns the acting uid or the blocking Response.
  */
-async function rateLimitGate(
-  env: Env,
-  binding: RateLimitBinding | undefined,
-  key: string,
-): Promise<Response | null> {
-  if (!binding) {
-    if (env.ENV !== "dev") {
-      return json({ success: false, error: "rate_limit_unconfigured" }, 503);
-    }
-    return null; // dev without bindings — inert
+async function authenticate(request: Request, env: Env): Promise<{ uid: string } | Response> {
+  const authz = request.headers.get("authorization");
+  if (authz && authz.startsWith("Bearer ")) {
+    const r = await readBearer(request, env);
+    if (r instanceof Response) return r;
+    return { uid: r.claims.sub };
   }
-  const { success } = await binding.limit({ key });
-  if (!success) {
-    return new Response(JSON.stringify({ success: false, error: "rate_limited" }), {
-      status: 429,
-      headers: { "content-type": "application/json", "retry-after": "60", ...CORS, ...SECURITY_HEADERS },
-    });
+  if (env.ENV !== "dev") {
+    return json({ success: false, error: "auth_required", detail: "Bearer access token required" }, 401);
   }
-  return null;
-}
-
-/** Client IP for per-IP limit keys (same derivation as the auth spike). */
-function clientIp(request: Request): string {
-  return request.headers.get("CF-Connecting-IP") ?? request.headers.get("x-forwarded-for") ?? "unknown";
+  const blocked = devGate(request, env);
+  if (blocked) return blocked;
+  const uid = resolveUid(request);
+  if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+  return { uid };
 }
 
 // Bounded-input caps (issue #9 — every client-controlled string that reaches D1 or
@@ -179,10 +231,10 @@ function bodyTooLarge(request: Request): Response | null {
 }
 
 /**
- * Resolve the acting uid. TODO(#13): replace with the server-derived `sub` claim
- * from the Bearer access token (spikes/cloudflare-auth-spike-A readBearer) — the
- * x-dev-uid header dies with the dev gate (volley F8). Until then: bound the
- * header so an unbounded string can never become a D1 key (null = reject 400).
+ * Resolve the acting uid from the x-dev-uid header — DEV-MODE-ONLY (#13 done):
+ * only reachable from authenticate()'s dev branch, behind devGate. Production
+ * identity is the Bearer `sub` claim (volley F8 closed). Bounded so an
+ * unbounded string can never become a D1 key (null = reject 400).
  */
 function resolveUid(request: Request): string | null {
   const raw = request.headers.get("x-dev-uid");
@@ -265,22 +317,38 @@ function estCostUsd(model: string, tokIn: number, tokOut: number): number {
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    // #13 — CORS conditions C1-C3 are enforced at this single seam so EVERY
+    // response (api, auth, preflight, 404, errors) carries the same policy.
+    const res = await routeRequest(request, env, ctx);
+    return withCors(res, request, env);
+  },
+};
+
+async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") return new Response(null, { headers: { ...CORS, ...SECURITY_HEADERS } });
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: SECURITY_HEADERS });
     if (url.pathname === "/healthz") return json({ ok: true, env: env.ENV });
 
+    // ── #13 — auth endpoints (ported from the auth spike; src/auth.ts). ──────
+    // CORS comes from the seam above; rate limits live inside the handlers.
+    if (url.pathname === "/.well-known/jwks.json" && request.method === "GET") return handleJwks(request, env);
+    if (url.pathname === "/v1/auth/otp/send" && request.method === "POST") return handleSendOtp(request, env);
+    if (url.pathname === "/v1/auth/otp/verify" && request.method === "POST") return handleVerifyOtp(request, env);
+    if (url.pathname === "/v1/auth/refresh" && request.method === "POST") return handleRefresh(request, env);
+    if (url.pathname === "/v1/auth/logout" && request.method === "POST") return handleLogout(request, env);
+    if (url.pathname === "/v1/me" && request.method === "GET") return handleMe(request, env);
+    if (url.pathname === "/v1/admin/keys/rotate" && request.method === "POST") return handleAdminRotate(request, env);
+
     if (url.pathname === "/api/chat" && request.method === "POST") {
-      // SECURITY (Phase 0/1): this endpoint derives uid from the x-dev-uid header
-      // and defaults to a shared "dev-user" — an IDOR/cross-tenant pattern that is
-      // ONLY acceptable for local single-developer dev. Real phone-OTP auth +
-      // server-derived uid land in Phase 3. devGate fails closed before any work.
-      // Per-IP rate limit FIRST (before any parsing/crypto — bounds flood cost);
-      // inert in dev until the #13 bindings land, fails closed outside dev.
+      // SECURITY (#13): identity = verified Bearer `sub` via authenticate();
+      // the x-dev-uid path survives ONLY in dev behind devGate (volley F8 closed).
+      // Per-IP rate limit FIRST (before any parsing/crypto — bounds flood cost;
+      // JWT verify costs an ES256 op, so the IP gate also bounds crypto-DoS).
       const ipLimited = await rateLimitGate(env, env.CHAT_IP_LIMIT, "chat_ip:" + clientIp(request));
       if (ipLimited) return ipLimited;
-      const blocked = devGate(request, env);
-      if (blocked) return blocked;
+      const auth = await authenticate(request, env);
+      if (auth instanceof Response) return auth;
       const oversized = bodyTooLarge(request);
       if (oversized) return oversized;
 
@@ -296,8 +364,7 @@ export default {
       // Length cap (audit 2026-06-22 F4) — bounds token-flood cost-DoS against the LLM.
       // 4000 chars is generous for chat; longer is an abuse signal, not a real turn.
       // Per-turn cost is further bounded by the 20-turn history window + the 1200-char
-      // TTS slice. TODO(#13): add the per-uid DAILY turn/cost ceiling (D1 counter) per
-      // docs/security/RATE_LIMITS_DESIGN_2026-07-01.md §4.
+      // TTS slice + the per-uid DAILY turn ceiling below (#13; design §4).
       if (body.message.length > 4000) {
         return json({ success: false, error: "message_too_long" }, 413);
       }
@@ -310,12 +377,10 @@ export default {
       const turnIdHeader = request.headers.get("x-turn-id");
       const turnId = turnIdHeader && TURN_ID_RE.test(turnIdHeader) ? turnIdHeader : crypto.randomUUID();
       const nowMs = Date.now();
-      // Phase 1a: per-user conversation memory. Real phone-OTP auth is Phase 3;
-      // for dev the client may set x-dev-uid to keep separate conversations.
-      // TODO(#13): uid becomes the Bearer token `sub` claim (volley F8 closes).
-      const uid = resolveUid(request);
-      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
-      // Per-uid rate limit (issue #9; inert until #13 bindings — see rateLimitGate).
+      // #13: uid is the server-derived identity from authenticate() — the Bearer
+      // `sub` claim in production, the bounded x-dev-uid only in dev (F8 closed).
+      const uid = auth.uid;
+      // Per-uid rate limit (issue #9; LIVE — wrangler.toml bindings active).
       const uidLimited = await rateLimitGate(env, env.CHAT_UID_LIMIT, "chat_uid:" + uid);
       if (uidLimited) return uidLimited;
 
@@ -363,6 +428,27 @@ export default {
           await banUser(env.DB, uid, "prompt-injection", tamper.patterns.join(","), nowMs);
           console.warn("ban.tampering", { uid, patterns: tamper.patterns });
           return suspended();
+        }
+
+        // 1.7) #13 — per-uid DAILY turn ceiling (D1 chat_uid_daily; design §4).
+        // The "money" bound on the LLM cost sink: the 60s windows above only bound
+        // velocity. Deliberately AFTER the crisis gate (a person in crisis always
+        // gets the 988 card — the crisis path is regex + two D1 writes, no LLM) and
+        // BEFORE any brain spend. 429 carries retry-after = seconds to UTC midnight.
+        const dailyMax = Number.parseInt(env.CHAT_UID_DAILY_MAX ?? "", 10) || 500;
+        const dailyCount = await bumpChatUidDaily(env.DB, uid);
+        if (dailyCount > dailyMax) {
+          const nowSec = Math.floor(nowMs / 1000);
+          const secToUtcMidnight = 86400 - (nowSec % 86400);
+          console.warn("chat.daily_ceiling", { uid, dailyCount, dailyMax });
+          return new Response(JSON.stringify({ success: false, error: "rate_limited" }), {
+            status: 429,
+            headers: {
+              "content-type": "application/json",
+              "retry-after": String(secToUtcMidnight),
+              ...SECURITY_HEADERS,
+            },
+          });
         }
 
         // 2) Real Aria turn. Hydrate recent conversation from D1 as the brain's
@@ -492,10 +578,9 @@ export default {
       // Fail closed (this spends our LiveAvatar credits; not public).
       const ipLimited = await rateLimitGate(env, env.AVATAR_IP_LIMIT, "avatar_ip:" + clientIp(request));
       if (ipLimited) return ipLimited;
-      const blocked = devGate(request, env);
-      if (blocked) return blocked;
-      const uid = resolveUid(request); // TODO(#13): Bearer `sub`
-      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const auth = await authenticate(request, env); // #13: Bearer `sub` (dev fallback behind devGate)
+      if (auth instanceof Response) return auth;
+      const uid = auth.uid;
       const uidLimited = await rateLimitGate(env, env.AVATAR_UID_LIMIT, "avatar_uid:" + uid);
       if (uidLimited) return uidLimited;
       if ((await getUserBan(env.DB, uid)).banned) return suspended();
@@ -548,10 +633,9 @@ export default {
     if (url.pathname === "/api/tts" && request.method === "POST") {
       const ipLimited = await rateLimitGate(env, env.TTS_IP_LIMIT, "tts_ip:" + clientIp(request));
       if (ipLimited) return ipLimited;
-      const blocked = devGate(request, env);
-      if (blocked) return blocked;
-      const uid = resolveUid(request); // TODO(#13): Bearer `sub`
-      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const auth = await authenticate(request, env); // #13: Bearer `sub` (dev fallback behind devGate)
+      if (auth instanceof Response) return auth;
+      const uid = auth.uid;
       const uidLimited = await rateLimitGate(env, env.TTS_UID_LIMIT, "tts_uid:" + uid);
       if (uidLimited) return uidLimited;
       if ((await getUserBan(env.DB, uid)).banned) return suspended();
@@ -619,10 +703,9 @@ export default {
     if (url.pathname === "/api/account/delete" && request.method === "POST") {
       const ipLimited = await rateLimitGate(env, env.ACCOUNT_IP_LIMIT, "account_ip:" + clientIp(request));
       if (ipLimited) return ipLimited;
-      const blocked = devGate(request, env);
-      if (blocked) return blocked;
-      const uid = resolveUid(request); // TODO(#13): Bearer `sub` — delete becomes self-only
-      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const auth = await authenticate(request, env); // #13: Bearer `sub` — delete is self-only now
+      if (auth instanceof Response) return auth;
+      const uid = auth.uid;
       const uidLimited = await rateLimitGate(env, env.ACCOUNT_UID_LIMIT, "account_uid:" + uid);
       if (uidLimited) return uidLimited;
       try {
@@ -639,10 +722,9 @@ export default {
     if (url.pathname === "/api/account/export" && (request.method === "GET" || request.method === "POST")) {
       const ipLimited = await rateLimitGate(env, env.ACCOUNT_IP_LIMIT, "account_ip:" + clientIp(request));
       if (ipLimited) return ipLimited;
-      const blocked = devGate(request, env);
-      if (blocked) return blocked;
-      const uid = resolveUid(request); // TODO(#13): Bearer `sub` — export becomes self-only
-      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const auth = await authenticate(request, env); // #13: Bearer `sub` — export is self-only now
+      if (auth instanceof Response) return auth;
+      const uid = auth.uid;
       const uidLimited = await rateLimitGate(env, env.ACCOUNT_UID_LIMIT, "account_uid:" + uid);
       if (uidLimited) return uidLimited;
       try {
@@ -655,5 +737,4 @@ export default {
     }
 
     return json({ success: false, error: "not_found" }, 404);
-  },
-};
+}
