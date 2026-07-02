@@ -55,3 +55,57 @@ binding = "DB"
 database_name = "aria-dev"
 database_id = "local-dev-placeholder"
 migrations_dir = "migrations"
+
+# TODO(#13) — production rate limits (issue #9; volley 2026-06-22 F4). UNCOMMENT at
+# auth integration. src/index.ts already carries the inert gates: with these bindings
+# absent, dev proceeds (devGate protects) and ENV != "dev" FAILS CLOSED (503).
+# Values + reasoning: docs/security/RATE_LIMITS_DESIGN_2026-07-01.md §3.
+# `namespace_id` must be unique per binding within the account (pick a stable scheme).
+#
+# [[unsafe.bindings]]
+# name = "CHAT_IP_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2001"
+# simple = { limit = 30, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "CHAT_UID_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2002"
+# simple = { limit = 10, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "TTS_IP_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2003"
+# simple = { limit = 40, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "TTS_UID_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2004"
+# simple = { limit = 12, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "AVATAR_IP_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2005"
+# simple = { limit = 10, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "AVATAR_UID_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2006"
+# simple = { limit = 3, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "ACCOUNT_IP_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2007"
+# simple = { limit = 10, period = 60 }
+#
+# [[unsafe.bindings]]
+# name = "ACCOUNT_UID_LIMIT"
+# type = "ratelimit"
+# namespace_id = "2008"
+# simple = { limit = 3, period = 60 }

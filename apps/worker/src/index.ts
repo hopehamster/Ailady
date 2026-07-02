@@ -54,6 +54,25 @@ export interface Env {
    * Cartesia library and set CARTESIA_VOICE_ID to its UUID. */
   CARTESIA_API_KEY?: string;
   CARTESIA_VOICE_ID?: string;
+  /** TODO(#13) — production rate limits (volley 2026-06-22 F4; design:
+   * docs/security/RATE_LIMITS_DESIGN_2026-07-01.md). Cloudflare Workers RateLimit
+   * bindings, declared in wrangler.toml [[unsafe.bindings]] at auth integration.
+   * OPTIONAL so today's dev worker (no bindings) typechecks + runs unchanged; the
+   * rateLimitGate helper fails CLOSED outside dev when a binding is missing. */
+  CHAT_IP_LIMIT?: RateLimitBinding;
+  CHAT_UID_LIMIT?: RateLimitBinding;
+  TTS_IP_LIMIT?: RateLimitBinding;
+  TTS_UID_LIMIT?: RateLimitBinding;
+  AVATAR_IP_LIMIT?: RateLimitBinding;
+  AVATAR_UID_LIMIT?: RateLimitBinding;
+  ACCOUNT_IP_LIMIT?: RateLimitBinding;
+  ACCOUNT_UID_LIMIT?: RateLimitBinding;
+}
+
+/** Minimal Cloudflare Workers RateLimit binding shape (same alias the auth spike
+ * uses — spikes/cloudflare-auth-spike-A/src/worker.ts). */
+interface RateLimitBinding {
+  limit(opts: { key: string }): Promise<{ success: boolean }>;
 }
 
 // HeyGen LiveAvatar free sandbox avatar (Wayne) — zero credits, ~1-min sessions.
@@ -107,6 +126,69 @@ function devGate(request: Request, env: Env): Response | null {
     return json({ success: false, error: "forbidden" }, 403);
   }
   return null;
+}
+
+/**
+ * Rate-limit gate (volley 2026-06-22 F4 / issue #9). INERT in dev today: the
+ * bindings are not declared in wrangler.toml yet, so `binding` is undefined and
+ * dev proceeds (devGate is the dev protection). The moment ENV != "dev" a missing
+ * binding FAILS CLOSED (503) — production must never run without its limits.
+ * TODO(#13): declare the [[unsafe.bindings]] in wrangler.toml at auth integration
+ * per docs/security/RATE_LIMITS_DESIGN_2026-07-01.md, then this goes live as-is.
+ */
+async function rateLimitGate(
+  env: Env,
+  binding: RateLimitBinding | undefined,
+  key: string,
+): Promise<Response | null> {
+  if (!binding) {
+    if (env.ENV !== "dev") {
+      return json({ success: false, error: "rate_limit_unconfigured" }, 503);
+    }
+    return null; // dev without bindings — inert
+  }
+  const { success } = await binding.limit({ key });
+  if (!success) {
+    return new Response(JSON.stringify({ success: false, error: "rate_limited" }), {
+      status: 429,
+      headers: { "content-type": "application/json", "retry-after": "60", ...CORS, ...SECURITY_HEADERS },
+    });
+  }
+  return null;
+}
+
+/** Client IP for per-IP limit keys (same derivation as the auth spike). */
+function clientIp(request: Request): string {
+  return request.headers.get("CF-Connecting-IP") ?? request.headers.get("x-forwarded-for") ?? "unknown";
+}
+
+// Bounded-input caps (issue #9 — every client-controlled string that reaches D1 or
+// an upstream API gets an explicit bound; unbounded input is an abuse signal).
+const MAX_BODY_BYTES = 64 * 1024; // any JSON body larger than this is not a real request
+const MAX_UID_LEN = 128; // x-dev-uid is persisted as the D1 uid key — bound it
+const TURN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/; // x-turn-id becomes D1 row ids — bound + charset
+
+/** Reject oversized bodies before parsing (declared content-length; the chat/tts
+ * field-level caps below remain the authoritative bound after parse). */
+function bodyTooLarge(request: Request): Response | null {
+  const len = Number(request.headers.get("content-length") ?? 0);
+  if (Number.isFinite(len) && len > MAX_BODY_BYTES) {
+    return json({ success: false, error: "payload_too_large" }, 413);
+  }
+  return null;
+}
+
+/**
+ * Resolve the acting uid. TODO(#13): replace with the server-derived `sub` claim
+ * from the Bearer access token (spikes/cloudflare-auth-spike-A readBearer) — the
+ * x-dev-uid header dies with the dev gate (volley F8). Until then: bound the
+ * header so an unbounded string can never become a D1 key (null = reject 400).
+ */
+function resolveUid(request: Request): string | null {
+  const raw = request.headers.get("x-dev-uid");
+  if (raw === null || raw === "") return "dev-user";
+  if (raw.length > MAX_UID_LEN) return null;
+  return raw;
 }
 
 // Terminal response for a banned user (zero-tolerance tampering ban). Generic to the
@@ -193,8 +275,14 @@ export default {
       // and defaults to a shared "dev-user" — an IDOR/cross-tenant pattern that is
       // ONLY acceptable for local single-developer dev. Real phone-OTP auth +
       // server-derived uid land in Phase 3. devGate fails closed before any work.
+      // Per-IP rate limit FIRST (before any parsing/crypto — bounds flood cost);
+      // inert in dev until the #13 bindings land, fails closed outside dev.
+      const ipLimited = await rateLimitGate(env, env.CHAT_IP_LIMIT, "chat_ip:" + clientIp(request));
+      if (ipLimited) return ipLimited;
       const blocked = devGate(request, env);
       if (blocked) return blocked;
+      const oversized = bodyTooLarge(request);
+      if (oversized) return oversized;
 
       let body: ChatRequest;
       try {
@@ -207,18 +295,29 @@ export default {
       }
       // Length cap (audit 2026-06-22 F4) — bounds token-flood cost-DoS against the LLM.
       // 4000 chars is generous for chat; longer is an abuse signal, not a real turn.
+      // Per-turn cost is further bounded by the 20-turn history window + the 1200-char
+      // TTS slice. TODO(#13): add the per-uid DAILY turn/cost ceiling (D1 counter) per
+      // docs/security/RATE_LIMITS_DESIGN_2026-07-01.md §4.
       if (body.message.length > 4000) {
         return json({ success: false, error: "message_too_long" }, 413);
       }
 
       // Accept a client idempotency key so a retried turn reuses the same id:
       // chat_turns + scored_messages are ON CONFLICT idempotent and
-      // applyTurnToMemory replay-guards the fat-doc on the same turnId.
-      const turnId = request.headers.get("x-turn-id") || crypto.randomUUID();
+      // applyTurnToMemory replay-guards the fat-doc on the same turnId. Bounded
+      // (issue #9): a non-conforming header just loses idempotency, never lands
+      // an unbounded/odd-charset string in D1 row ids.
+      const turnIdHeader = request.headers.get("x-turn-id");
+      const turnId = turnIdHeader && TURN_ID_RE.test(turnIdHeader) ? turnIdHeader : crypto.randomUUID();
       const nowMs = Date.now();
       // Phase 1a: per-user conversation memory. Real phone-OTP auth is Phase 3;
       // for dev the client may set x-dev-uid to keep separate conversations.
-      const uid = request.headers.get("x-dev-uid") || "dev-user";
+      // TODO(#13): uid becomes the Bearer token `sub` claim (volley F8 closes).
+      const uid = resolveUid(request);
+      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      // Per-uid rate limit (issue #9; inert until #13 bindings — see rateLimitGate).
+      const uidLimited = await rateLimitGate(env, env.CHAT_UID_LIMIT, "chat_uid:" + uid);
+      if (uidLimited) return uidLimited;
 
       try {
         await ensureUser(env.DB, uid, nowMs);
@@ -391,9 +490,15 @@ export default {
     // The agent token + api key never reach the browser.
     if (url.pathname === "/api/avatar/session" && request.method === "POST") {
       // Fail closed (this spends our LiveAvatar credits; not public).
+      const ipLimited = await rateLimitGate(env, env.AVATAR_IP_LIMIT, "avatar_ip:" + clientIp(request));
+      if (ipLimited) return ipLimited;
       const blocked = devGate(request, env);
       if (blocked) return blocked;
-      if ((await getUserBan(env.DB, request.headers.get("x-dev-uid") || "dev-user")).banned) return suspended();
+      const uid = resolveUid(request); // TODO(#13): Bearer `sub`
+      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const uidLimited = await rateLimitGate(env, env.AVATAR_UID_LIMIT, "avatar_uid:" + uid);
+      if (uidLimited) return uidLimited;
+      if ((await getUserBan(env.DB, uid)).banned) return suspended();
       if (!env.LIVEAVATAR_API_KEY) return json({ success: false, error: "avatar_not_configured" }, 503);
       try {
         const tokRes = await fetch("https://api.liveavatar.com/v1/sessions/token", {
@@ -441,10 +546,18 @@ export default {
     // key server-side; returns base64 RAW PCM the web decodes into an AudioBuffer.
     // 503 when unconfigured so the web falls back to the silent lip-sync stub.
     if (url.pathname === "/api/tts" && request.method === "POST") {
+      const ipLimited = await rateLimitGate(env, env.TTS_IP_LIMIT, "tts_ip:" + clientIp(request));
+      if (ipLimited) return ipLimited;
       const blocked = devGate(request, env);
       if (blocked) return blocked;
-      if ((await getUserBan(env.DB, request.headers.get("x-dev-uid") || "dev-user")).banned) return suspended();
+      const uid = resolveUid(request); // TODO(#13): Bearer `sub`
+      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const uidLimited = await rateLimitGate(env, env.TTS_UID_LIMIT, "tts_uid:" + uid);
+      if (uidLimited) return uidLimited;
+      if ((await getUserBan(env.DB, uid)).banned) return suspended();
       if (!env.CARTESIA_API_KEY) return json({ success: false, error: "tts_not_configured" }, 503);
+      const oversized = bodyTooLarge(request);
+      if (oversized) return oversized;
 
       let body: TtsRequest;
       try {
@@ -504,9 +617,14 @@ export default {
     // fails closed; real per-user auth is Phase 3 (uid = x-dev-uid for now). No R2
     // binding on this worker yet — when audio/blobs move to R2, add its purge here.
     if (url.pathname === "/api/account/delete" && request.method === "POST") {
+      const ipLimited = await rateLimitGate(env, env.ACCOUNT_IP_LIMIT, "account_ip:" + clientIp(request));
+      if (ipLimited) return ipLimited;
       const blocked = devGate(request, env);
       if (blocked) return blocked;
-      const uid = request.headers.get("x-dev-uid") || "dev-user";
+      const uid = resolveUid(request); // TODO(#13): Bearer `sub` — delete becomes self-only
+      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const uidLimited = await rateLimitGate(env, env.ACCOUNT_UID_LIMIT, "account_uid:" + uid);
+      if (uidLimited) return uidLimited;
       try {
         await deleteAllUserData(env.DB, uid);
         const qdrantOk = await deleteSemanticMemoryForUser(uid);
@@ -519,9 +637,14 @@ export default {
 
     // M2 — data portability: export the user's stored data.
     if (url.pathname === "/api/account/export" && (request.method === "GET" || request.method === "POST")) {
+      const ipLimited = await rateLimitGate(env, env.ACCOUNT_IP_LIMIT, "account_ip:" + clientIp(request));
+      if (ipLimited) return ipLimited;
       const blocked = devGate(request, env);
       if (blocked) return blocked;
-      const uid = request.headers.get("x-dev-uid") || "dev-user";
+      const uid = resolveUid(request); // TODO(#13): Bearer `sub` — export becomes self-only
+      if (uid === null) return json({ success: false, error: "uid_invalid" }, 400);
+      const uidLimited = await rateLimitGate(env, env.ACCOUNT_UID_LIMIT, "account_uid:" + uid);
+      if (uidLimited) return uidLimited;
       try {
         const data = await exportAllUserData(env.DB, uid, Date.now());
         return json({ success: true, data });
