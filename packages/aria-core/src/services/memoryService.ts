@@ -1,7 +1,6 @@
 import type {
   CoreFact,
   EmotionalMoment,
-  ConversationSummary,
   OpenLoop,
   RelationalPacingProfile,
   SessionGoalStage,
@@ -28,6 +27,7 @@ import type {
   EgoState,
   DrivePerception,
 } from '@aria/shared-types';
+import { asEpochMs, asIsoDate } from '@aria/shared-types';
 import {
   defaultDriveState,
   defaultEgoState,
@@ -296,7 +296,7 @@ function defaultPacingProfile(): RelationalPacingProfile {
     humor: 0.38,
     depth: 0.40,
     autonomyRespect: 0.85,
-    lastAdjustedAt: Date.now(),
+    lastAdjustedAt: asEpochMs(Date.now()),
   };
 }
 
@@ -304,7 +304,7 @@ function defaultSessionArc(): SessionArcState {
   return {
     stage: 'rapport',
     turnCount: 0,
-    lastTransitionAt: Date.now(),
+    lastTransitionAt: asEpochMs(Date.now()),
   };
 }
 
@@ -336,7 +336,7 @@ function defaultPersonaConsistency(): PersonaConsistencyState {
     rollingScore: 0.85,
     lastScore: 0.85,
     recentViolations: [],
-    lastEvaluatedAt: Date.now(),
+    lastEvaluatedAt: asEpochMs(Date.now()),
   };
 }
 
@@ -432,7 +432,7 @@ function updatePacingProfile(
     next.autonomyRespect = clamp01(next.autonomyRespect + 0.05);
   }
 
-  next.lastAdjustedAt = Date.now();
+  next.lastAdjustedAt = asEpochMs(Date.now());
   return next;
 }
 
@@ -536,7 +536,7 @@ function updatePersonaConsistencyState(
     rollingScore,
     lastScore,
     recentViolations: merged,
-    lastEvaluatedAt: Date.now(),
+    lastEvaluatedAt: asEpochMs(Date.now()),
   };
 }
 
@@ -639,8 +639,8 @@ function buildWeeklyTuningFallback(
 
   return {
     id: `tuning_${weekStartIso}`,
-    weekStart: weekStartIso,
-    weekEnd: weekEndIso,
+    weekStart: asIsoDate(weekStartIso),
+    weekEnd: asIsoDate(weekEndIso),
     summary:
       `Weekly tuning review for ${weekStartIso} to ${weekEndIso}: ` +
       `engagement ${metrics.engagement.toFixed(2)}, empathy ${metrics.empathy.toFixed(2)}, ` +
@@ -648,7 +648,7 @@ function buildWeeklyTuningFallback(
     strengths,
     adjustments,
     metrics,
-    createdAt: Date.now(),
+    createdAt: asEpochMs(Date.now()),
   };
 }
 
@@ -692,7 +692,7 @@ function updateShadowBenchmarkStats(
     ties,
     averagePrimaryScore: clamp01(averagePrimaryScore),
     averageShadowScore: clamp01(averageShadowScore),
-    lastRunAt: Date.now(),
+    lastRunAt: asEpochMs(Date.now()),
   };
 }
 
@@ -716,7 +716,7 @@ function updateSessionArcState(current: SessionArcState, userMessage: string): S
 
   if (nextStage !== current.stage) {
     next.stage = nextStage;
-    next.lastTransitionAt = Date.now();
+    next.lastTransitionAt = asEpochMs(Date.now());
   }
 
   return next;
@@ -777,7 +777,7 @@ function updateOpenLoops(current: OpenLoop[], userMessage: string): OpenLoop[] {
       return {
         ...normalizedLoop,
         status: 'resolved' as const,
-        resolvedAt: now,
+        resolvedAt: asEpochMs(now),
       };
     }
     return normalizedLoop;
@@ -789,8 +789,8 @@ function updateOpenLoops(current: OpenLoop[], userMessage: string): OpenLoop[] {
         next[i] = {
           ...next[i],
           status: 'resolved',
-          resolvedAt: now,
-          lastMentionedAt: now,
+          resolvedAt: asEpochMs(now),
+          lastMentionedAt: asEpochMs(now),
           freshnessScore: computeLoopFreshness(now, now),
         };
         break;
@@ -821,7 +821,7 @@ function updateOpenLoops(current: OpenLoop[], userMessage: string): OpenLoop[] {
     if (existingIndex >= 0) {
         next[existingIndex] = {
           ...next[existingIndex],
-          lastMentionedAt: now,
+          lastMentionedAt: asEpochMs(now),
           refreshCount: (next[existingIndex].refreshCount || 0) + 1,
           priority: clamp01(Math.max(next[existingIndex].priority, inferLoopPriority(normalized))),
           freshnessScore: computeLoopFreshness(now, now),
@@ -838,11 +838,11 @@ function updateOpenLoops(current: OpenLoop[], userMessage: string): OpenLoop[] {
         summary: `${summaryPrefix}: ${topic}`,
         status: 'open',
         priority: inferLoopPriority(normalized),
-        createdAt: now,
-        lastMentionedAt: now,
+        createdAt: asEpochMs(now),
+        lastMentionedAt: asEpochMs(now),
         refreshCount: 0,
         freshnessScore: computeLoopFreshness(now, now),
-        expiresAt: now + OPEN_LOOP_EXPIRE_DAYS * 24 * 60 * 60 * 1000,
+        expiresAt: asEpochMs(now + OPEN_LOOP_EXPIRE_DAYS * 24 * 60 * 60 * 1000),
       });
     }
   }
@@ -1256,8 +1256,8 @@ function updateChronologyState(
           next.events[i] = {
             ...next.events[i],
             status: 'resolved',
-            resolvedAt: now,
-            lastMentionedAt: now,
+            resolvedAt: asEpochMs(now),
+            lastMentionedAt: asEpochMs(now),
           };
           break;
         }
@@ -1309,10 +1309,10 @@ function updateChronologyState(
       type,
       confidence: clamp01(Math.max(existing.confidence, cue.confidence)),
       status: candidateStatus === 'resolved' ? 'resolved' : existing.status,
-      lastMentionedAt: now,
+      lastMentionedAt: asEpochMs(now),
       resolvedAt:
         candidateStatus === 'resolved'
-          ? now
+          ? asEpochMs(now)
           : existing.resolvedAt,
     };
   } else {
@@ -1326,14 +1326,14 @@ function updateChronologyState(
       relativeDayOffset: cue.relativeDayOffset,
       confidence: clamp01(cue.confidence),
       status: candidateStatus,
-      createdAt: now,
-      lastMentionedAt: now,
-      resolvedAt: candidateStatus === 'resolved' ? now : undefined,
+      createdAt: asEpochMs(now),
+      lastMentionedAt: asEpochMs(now),
+      resolvedAt: candidateStatus === 'resolved' ? asEpochMs(now) : undefined,
     });
   }
 
   next.lastTemporalCueText = cue.cue;
-  next.lastTemporalCueAt = now;
+  next.lastTemporalCueAt = asEpochMs(now);
   next.events = pruneChronologyEvents(next.events, now);
   return next;
 }
@@ -1568,7 +1568,7 @@ Respond with JSON:
           : 'personal',
         fact: String(f.fact).slice(0, 500),
         context: typeof f.context === 'string' ? f.context.slice(0, 500) : undefined,
-        extractedAt: nowMs,
+        extractedAt: asEpochMs(nowMs),
         confidence: clamp01(f.confidence as number),
       }));
   } catch {
@@ -1700,7 +1700,7 @@ export async function extractTurnMemory(
         intensity: emotional.intensity,
         userMessage,
         aiResponse,
-        timestamp: nowMs,
+        timestamp: asEpochMs(nowMs),
       }
     : null;
 
@@ -1716,18 +1716,29 @@ export async function extractTurnMemory(
   return { scoring, extraction: { coreFacts, emotionalMoment } };
 }
 
-/**
- * Generate weekly conversation summary
- */
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally called the OpenAI client to summarize a week of conversation. Phase 0
-// has no LLM extraction; return null.
-export async function generateWeeklySummary(
-  _userId: string,
-  _messages: { role: 'user' | 'assistant'; content: string; timestamp: Date }[]
-): Promise<ConversationSummary | null> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
-  return null;
+// NOTE (issue #16, 2026-07-01): generateWeeklySummary (a Phase-0 stub that always
+// returned null) was REMOVED — it had zero callers anywhere in the workspace.
+// Weekly summaries, if web ever wants them, are a deferred feature (see
+// docs/memory/DURABILITY_2026-07-01.md).
+
+// ── UNSUPPORTED-in-web-build markers (issue #16) ─────────────────────────────
+// The remaining legacy persistence APIs below are EXPLICITLY UNSUPPORTED in the
+// web build: durable memory I/O is owned by the Worker (D1 for structured memory,
+// Qdrant for semantic vectors — see apps/worker/src/memory.ts and
+// docs/memory/DURABILITY_2026-07-01.md). They are intentionally NOT exported from
+// the @aria/aria-core barrel (src/index.ts); their only callers are internal
+// llmService paths kept for API-shape compatibility. Each returns a documented
+// inert value and logs a structured warning ONCE per isolate so a caller that
+// expects durability gets a visible signal instead of false confidence.
+const warnedUnsupportedMemoryApis = new Set<string>();
+function markUnsupportedMemoryApi(api: string): void {
+  if (warnedUnsupportedMemoryApis.has(api)) return;
+  warnedUnsupportedMemoryApis.add(api);
+  console.warn('memory.unsupported_api', {
+    api,
+    reason: 'no_store_in_aria_core; Worker/D1 owns persistence',
+    see: 'docs/memory/DURABILITY_2026-07-01.md',
+  });
 }
 
 /**
@@ -1897,7 +1908,7 @@ function extractAriaCommitmentLoops(
         i === idx
           ? {
               ...l,
-              lastMentionedAt: now,
+              lastMentionedAt: asEpochMs(now),
               refreshCount: (l.refreshCount || 0) + 1,
               freshnessScore: computeLoopFreshness(now, now),
             }
@@ -1912,8 +1923,8 @@ function extractAriaCommitmentLoops(
           summary: `${prefix}: ${topic}`,
           status: 'open' as const,
           priority: 0.6,
-          createdAt: now,
-          lastMentionedAt: now,
+          createdAt: asEpochMs(now),
+          lastMentionedAt: asEpochMs(now),
           refreshCount: 0,
           freshnessScore: computeLoopFreshness(now, now),
           origin: 'aria' as const,
@@ -1924,33 +1935,29 @@ function extractAriaCommitmentLoops(
   return next.slice(-MAX_OPEN_LOOPS);
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally loaded the IntelligentMemory document from Firestore (initializing
-// + persisting an empty doc on first use). Phase 0 runs memory:null — there is
-// no store to read from, so this returns null.
+// UNSUPPORTED (web build, issue #16): aria-core has no store. The Worker loads
+// memory from D1 (compileIntelligentMemory) and INJECTS it into the brain; this
+// legacy fallback always returns null. Not exported from the barrel.
 export async function getIntelligentMemory(_userId: string): Promise<IntelligentMemory | null> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedMemoryApi('getIntelligentMemory');
   return null;
 }
 
 /**
  * Update intelligent memory after a conversation exchange
  */
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally read the IntelligentMemory doc, ran the full per-turn update chain
-// (scoring, pacing, open loops, chronology, psyche accrual, semantic indexing,
-// weekly tuning, fact/emotion extraction) and persisted it to Firestore. With no
-// store in Phase 0 there is nothing to load or save; this is a no-op. The pure
-// per-turn update helpers (updatePacingProfile, updateOpenLoops,
-// updateChronologyState, buildDrivePerception, stepPsyche, etc.) are kept and
-// will be re-wired when the Phase-1 store lands.
+// UNSUPPORTED (web build, issue #16): the durable per-turn write path is
+// applyTurnToMemory (pure, below) + the Worker's persistTurnAndMemory (D1).
+// This legacy Firestore-era entry point is an explicit no-op kept only because
+// llmService threads it as its default updateMemoryInBackground; the Worker
+// path never relies on it. Not exported from the barrel.
 export async function updateIntelligentMemory(
   _userId: string,
   _userMessage: string,
   _aiResponse: string,
   _meta?: MemoryUpdateMeta,
 ): Promise<void> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedMemoryApi('updateIntelligentMemory');
   return;
 }
 
@@ -2030,7 +2037,7 @@ export function applyTurnToMemory(
     id: `${turnId}_user`,
     role: 'user',
     content: userMessage,
-    timestamp: nowMs,
+    timestamp: asEpochMs(nowMs),
     importance: scoring.userImportance,
     topics: scoring.topics,
   };
@@ -2038,7 +2045,7 @@ export function applyTurnToMemory(
     id: `${turnId}_ai`,
     role: 'assistant',
     content: aiResponse,
-    timestamp: nowMs,
+    timestamp: asEpochMs(nowMs),
     importance: scoring.aiImportance,
     topics: scoring.topics,
   };
@@ -2122,7 +2129,7 @@ export function applyTurnToMemory(
     memory.qualitySnapshots = [
       ...(memory.qualitySnapshots || []),
       {
-        timestamp: nowMs,
+        timestamp: asEpochMs(nowMs),
         engagement: clamp01(meta.qualitySnapshot.engagement),
         empathy: clamp01(meta.qualitySnapshot.empathy),
         safety: clamp01(meta.qualitySnapshot.safety),
@@ -2156,7 +2163,7 @@ export function applyTurnToMemory(
     ].slice(-50);
   }
 
-  memory.lastUpdated = nowMs;
+  memory.lastUpdated = asEpochMs(nowMs);
   return memory;
 }
 
@@ -2189,7 +2196,7 @@ export function createEmptyIntelligentMemory(
     behaviorCounters: defaultBehaviorCounters(),
     openLoopHealth: defaultOpenLoopHealth(),
     chronology: defaultChronologyState(),
-    lastUpdated: nowMs,
+    lastUpdated: asEpochMs(nowMs),
   };
   if (psycheFoundationEnabled()) {
     migratePsycheFoundation(memory, nowMs);
@@ -2802,7 +2809,7 @@ export async function recallSemanticMemories(
         text: typeof p.text === 'string' ? p.text : '',
         sourceType,
         topics: Array.isArray(p.topics) ? (p.topics as string[]) : [],
-        createdAt,
+        createdAt: asEpochMs(createdAt),
         semanticScore,
         recencyScore,
         weightedScore:
@@ -2842,30 +2849,29 @@ export function getShadowBenchmarkStats(
   return memory.shadowBenchmarkStats || defaultShadowBenchmarkStats();
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally read the source message from Firestore, updated the user's style
-// profile + persona consistency from the vote, persisted the memory doc, and
-// appended a `conversationFeedback` record. With no store in Phase 0, there is
-// nothing to read or write; this returns a non-success result. The pure
-// per-vote update helpers (updateStyleProfileFromFeedback) are kept for the
-// Phase-1 rewire.
+// UNSUPPORTED (web build, issue #16): feedback votes have no durable store yet.
+// Returns { success: false } so callers can surface "not recorded" honestly.
+// Wiring this durable requires a Worker feedback endpoint + D1 write — new-endpoint
+// territory (issues #13/#17), deliberately NOT invented here. The pure per-vote
+// helper (updateStyleProfileFromFeedback) is retained for that rewire. Not
+// exported from the barrel.
 export async function recordResponseFeedback(
   _userId: string,
   _input: ResponseFeedbackInput,
 ): Promise<{ success: boolean; styleProfile?: UserStyleProfile }> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedMemoryApi('recordResponseFeedback');
   return { success: false };
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally read the memory doc, folded the shadow-evaluation into the rolling
-// benchmark stats, persisted the doc, and appended an `abShadowEvaluations`
-// record. No store in Phase 0 → no-op. updateShadowBenchmarkStats is kept pure.
+// UNSUPPORTED (web build, issue #16): shadow A/B evaluations are not persisted
+// in the web build (telemetry/benchmark feature, launch-deferred). Explicit no-op;
+// updateShadowBenchmarkStats stays pure for the eventual rewire. Not exported
+// from the barrel.
 export async function recordShadowEvaluation(
   _userId: string,
   _input: ShadowEvaluationInput,
 ): Promise<void> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedMemoryApi('recordShadowEvaluation');
   return;
 }
 
@@ -2925,23 +2931,24 @@ export function canGenerateProactiveNow(
   return { ok: true, reason: 'due' };
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally read the memory doc, merged the proactive-config patch, and
-// persisted it. No store in Phase 0 → returns null. The clamping/merge logic is
-// inlined here and will be re-wired once a store exists.
+// UNSUPPORTED (web build, issue #16): proactive-messaging config writes have no
+// durable path (proactive messaging itself is launch-deferred; proactiveConfig
+// defaults to disabled). Returns null = "not persisted". A durable version needs
+// a Worker endpoint writing proactive_config_json in D1 (issues #13/#17 scope).
+// Not exported from the barrel.
 export async function updateProactiveConfig(
   _userId: string,
   _patch: Partial<ProactiveMessagingConfig>,
 ): Promise<ProactiveMessagingConfig | null> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedMemoryApi('updateProactiveConfig');
   return null;
 }
 
-// PHASE-0 STUB: persistence is Phase-1 memory work.
-// Originally read the memory doc, stamped lastProactiveAt, and persisted it.
-// No store in Phase 0 → no-op.
+// UNSUPPORTED (web build, issue #16): companion of updateProactiveConfig — no
+// durable lastProactiveAt stamp until proactive messaging lands with its Worker
+// endpoint. Explicit no-op. Not exported from the barrel.
 export async function markProactiveSent(_userId: string): Promise<void> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedMemoryApi('markProactiveSent');
   return;
 }
 
@@ -3075,3 +3082,8 @@ export function getLastSessionEmotionalTone(memory: IntelligentMemory | null): s
   });
   return sorted[0]?.emotion || null;
 }
+
+
+
+
+

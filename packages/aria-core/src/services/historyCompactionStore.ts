@@ -28,6 +28,25 @@ import { buildSummarizerPrompt } from './historyCompactor';
 import type { ConversationTurn, CompactionOptions } from './historyCompactor';
 import type { IntelligentMemory } from '@aria/shared-types';
 
+// ── UNSUPPORTED-in-web-build markers (issue #16) ─────────────────────────────
+// History-compaction PERSISTENCE is unsupported in the web build: the Firestore
+// summary doc this module wrote/read no longer exists, and no D1 equivalent has
+// been wired (deferred — see docs/memory/DURABILITY_2026-07-01.md). The whole
+// feature is additionally gated OFF by HISTORY_COMPACTION_ENABLED (default
+// false), so production never reaches these paths. Each stub returns a
+// documented inert value and warns ONCE per isolate so enabling the flag
+// without a store produces a visible signal, not silent data loss.
+const warnedUnsupportedApis = new Set<string>();
+function markUnsupportedCompactionApi(api: string): void {
+  if (warnedUnsupportedApis.has(api)) return;
+  warnedUnsupportedApis.add(api);
+  console.warn('historyCompaction.unsupported_api', {
+    api,
+    reason: 'no_summary_store_in_web_build',
+    see: 'docs/memory/DURABILITY_2026-07-01.md',
+  });
+}
+
 export interface HistorySummaryRecord {
   /** The summary text representing the compacted older turns. */
   summary: string;
@@ -91,7 +110,9 @@ export async function maybeCompactHistoryInBackground(args: {
   now: number;
   options?: CompactionOptions;
 }): Promise<HistorySummaryRecord | null> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  // UNSUPPORTED (web build, issue #16): no summary store → produce side never
+  // runs. Returns null ("nothing compacted"). Flag-gated OFF upstream.
+  markUnsupportedCompactionApi('maybeCompactHistoryInBackground');
   return null;
 }
 
@@ -100,18 +121,20 @@ export function summarizerPromptForTurns(turns: ConversationTurn[]): string {
   return buildSummarizerPrompt(turns);
 }
 
-// ── Thin Firestore I/O (integration-tested via emulator, not unit tests) ──────
+// ── Summary-store I/O — UNSUPPORTED in the web build (no store exists yet) ────
 
-/** Persist the summary to the user's history-summary doc. */
-export const saveHistorySummary: PersistSummaryFn = async (uid, record) => {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+/** Persist the summary to the user's history-summary doc.
+ * UNSUPPORTED (web build, issue #16): explicit no-op — nothing is persisted. */
+export const saveHistorySummary: PersistSummaryFn = async (_uid, _record) => {
+  markUnsupportedCompactionApi('saveHistorySummary');
   return;
 };
 
-/** Load the persisted summary for the consume side. Returns null if absent. */
+/** Load the persisted summary for the consume side.
+ * UNSUPPORTED (web build, issue #16): always null — there is no store. */
 export async function loadHistorySummary(
-  uid: string,
+  _uid: string,
 ): Promise<HistorySummaryRecord | null> {
-  // PHASE-0 STUB: persistence is Phase-1 memory work
+  markUnsupportedCompactionApi('loadHistorySummary');
   return null;
 }
