@@ -37,18 +37,24 @@ Active work is the Aria web/worker product:
 
 | Priority | Issue | Source | Notes |
 |---|---|---|---|
-| P0 | [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | `ops/aria/protocols/dispatch-sheets/W3-L*.md` | Transcripts READY: `scripts/psyche/output/arcs-2026-07-02.json` |
-| P0 | [#13 Integrate Cloudflare auth spike](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | `spikes/cloudflare-auth-spike-A`, audit 2026-07-01 | Main worker production identity gate; carries CORS allowlist conditions from `docs/security/CORS_ADJUDICATION_2026-07-01.md` §4 |
-| P1 | [#5 W4-P Phase C fixes](https://github.com/hopehamster/Ailady_clean_20260327/issues/5) | `ops/aria/protocols/dispatch-sheets/W4-P*.md` | Depends on W3-P evidence |
-| P1 | [#6 W4-L T5 regression/ablation](https://github.com/hopehamster/Ailady_clean_20260327/issues/6) | `ops/aria/protocols/dispatch-sheets/W4-L*.md` | Depends on W3-P/W3-L |
-| P1 | [#7 Wave 5 GO/NO-GO verdict](https://github.com/hopehamster/Ailady_clean_20260327/issues/7) | dispatch index | Planned after Wave 4 |
-| P1 | [#8 Avatar supply-chain hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/8) | global Claude `project_aria_avatar_landscape.md`, `docs/security/VOLLEY_2026-06-22.md` | Self-host three/TalkingHead + strict CSP before launch |
+| P0 | [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | `ops/aria/protocols/dispatch-sheets/W3-L*.md` | Transcripts READY (post-H2-fix): `scripts/psyche/output/arcs-2026-07-02-h2fix.json` — next up, feeds #7 GO/NO-GO |
+| P1 | [#6 W4-L T5 regression/ablation](https://github.com/hopehamster/Ailady_clean_20260327/issues/6) | `ops/aria/protocols/dispatch-sheets/W4-L*.md` | Depends on W3-L |
+| P1 | [#7 Wave 5 GO/NO-GO verdict](https://github.com/hopehamster/Ailady_clean_20260327/issues/7) | dispatch index | After #3+#6 — the "can we launch" gate |
+| P1 | [#8 Avatar supply-chain hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/8) | global Claude `project_aria_avatar_landscape.md`, `docs/security/VOLLEY_2026-06-22.md` | Self-host three/TalkingHead + strict CSP before launch (CDN RCE surface); absorbs #20 R2 self-host |
+| P1 | [#14 Promote security gate to CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/14) | `docs/security/AUTH_INTEGRATION_2026-07-01.md` | Auth unit tests (expired/nbf) + CORS regression into run-volley (#13 follow-up) |
+| P1 | [#31 Psyche W4-P residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) | #5 arc diff | Restraint gate/mixed-variance/loop-pursuit/post-focal collapse |
 | P2 | [#10 Tracking system upkeep](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) | this file | Keep board/docs/Obsidian aligned |
 
 ## Recently Completed
 
 | Issue | Evidence |
 |---|---|
+| [#13 Cloudflare auth](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | Wave 3 2026-07-01 `0fc981d`: phone-OTP + ES256 JWT + refresh rotation/revoke, Bearer on all /api/* (F8 closed), live rate limits + daily ceilings, CORS C1-C3, migration 0005; 16 live smoke checks |
+| [#5 W4-P H2 fix](https://github.com/hopehamster/Ailady_clean_20260327/issues/5) | Wave 3 2026-07-01 `99062cb`: deflection perception fix LIVE-PROVEN (care focal @ turn 6, comforting@0.45, engaged arc quiet); residuals → #31 |
+| [#18 Recall freshness](https://github.com/hopehamster/Ailady_clean_20260327/issues/18) | Wave 3 2026-07-01 `99062cb`: access-time freshness (migration 0004) + recall-eval harness (precision 1.0) |
+| [#19 Production web shell](https://github.com/hopehamster/Ailady_clean_20260327/issues/19) | Wave 3 2026-07-01 `d38c03a`: auth-gated entry + branded AppShell + prod/dev split + deferred history + mobile; 14/14 e2e |
+| [#22 Psyche-to-body](https://github.com/hopehamster/Ailady_clean_20260327/issues/22) | Wave 3 2026-07-01 `4da749d`: intensity-banded body plan + idle gaze + data-aria-intensity |
+| [#11 Root CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/11) | Wave 3 2026-07-01: GREEN on PR #30 (both jobs); GLBs via ci-assets-v1 release, @visual/CI-scale for SwiftShader |
 | [#2 W3-P live arcs](https://github.com/hopehamster/Ailady_clean_20260327/issues/2) | Wave 2 2026-07-01: 5 arcs / 71 turns / $0.012 through live `/api/chat`; transcripts `scripts/psyche/output/arcs-2026-07-02.json`; H2 live-confirmed (deflection FAIL → #5) |
 | [#9 Rate limits](https://github.com/hopehamster/Ailady_clean_20260327/issues/9) | Wave 2 2026-07-01 `6527a31`: inert fail-closed gate + bounded inputs + design doc + probe; activation = #13 |
 | [#15 Warm psyche fallback](https://github.com/hopehamster/Ailady_clean_20260327/issues/15) | Wave 1 fix `7f4fd1a` + Wave 2 live evidence: engaged arc = no new neediness. CLOSED |

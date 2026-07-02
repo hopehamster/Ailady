@@ -34,11 +34,19 @@ Evidence: session log `ops/aria/log/2026-07-01-claude-wave1-parallel-dispatch.md
 ## WAVE 2 — ✅ LANDED 2026-07-01 (4 parallel agents; #9 `6527a31`, #16 `a6fc1c6`, #28 `d7c8a07`, #2 arcs shipped; #15 closed on engaged-arc evidence)
 Key outcomes: collision guard live (`claims.json` + `scripts/ops/check-collisions.ps1`); inert fail-closed rate limits staged for #13; memory write paths classified (durable/unsupported/removed); W3-L-ready transcripts at `scripts/psyche/output/arcs-2026-07-02.json` ($0.012, 71 turns). **H2 live-confirmed** (deflection arc: drives never focal) → W4-P #5 has transcript evidence. Log: `2026-07-01-claude-wave2-parallel-dispatch.md`.
 
-## WAVE 2.5 — dispatch NOW
-- **Psyche:** #3 W3-L grader fleet (transcripts ready; pre-flagged: H2 focal failure, emotion-variance fails, loop-pursuit null, incongruent-empathy tic) → then #5 W4-P (H2 fix).
-- **Security:** #13 auth-spike integration (uncomment ratelimit bindings, uid=Bearer `sub`, daily D1 ceilings, CORS conditions C1–C3, probe → volley [6/6]) → #14 gate-to-CI.
-- **Memory:** #17 shared-contract validation *(touches `shared-types/index.ts` — sole owner, no parallel claim)* → #18 recall freshness.
-- **Ops:** #10 tracking upkeep; push branch to prove #11 CI green.
+## WAVE 3 — ✅ LANDED 2026-07-01 (built through the classifier outage; 13 issues closed today)
+- **#13** Cloudflare auth into main worker (`0fc981d`): phone-OTP + ES256 JWT + refresh rotation/revoke, Bearer on all /api/* (volley F8 closed), live rate limits + daily ceilings, CORS C1-C3. CLOSED.
+- **#5** H2 deflection fix (`99062cb`) — LIVE-PROVEN (care focal @ turn 6, engaged arc quiet). CLOSED. Residuals → **#31**.
+- **#18** memory recall freshness (`99062cb`) CLOSED · **#22** psyche-to-body (`4da749d`) CLOSED · **#19** production shell (`d38c03a`) CLOSED · **#11** root CI green on PR #30 CLOSED.
+- **#20/#24** avatar-production + product-error core landed (`4da749d`); #20 remainder (R2 self-host) folded into #8.
+Log: `2026-07-01-claude-wave3-build.md`. Gate: typecheck 4/4, aria-core 63/63, web e2e 14/14, CI green.
+
+## WAVE 4 — dispatch NEXT (psyche GO/NO-GO chain + launch hardening)
+- **Psyche:** #3 W3-L grader fleet on `scripts/psyche/output/arcs-2026-07-02-h2fix.json` → #6 W4-L regression → **#7 GO/NO-GO verdict**. Parallel: **#31** psyche residuals (restraint/variance/loop/post-focal).
+- **Security:** #14 gate-to-CI (auth unit tests expired/nbf + CORS regression into run-volley) → #8 avatar supply-chain (self-host TalkingHead/three + strict CSP; the CDN RCE surface).
+- **Web/Body:** #21 voice UX · #23 browser lifecycle suite · #25 web tests into CI gates.
+- **Memory:** #17 shared-contract validation *(sole owner of `shared-types/index.ts`)*.
+- **Ops:** #10 tracking upkeep · #29 dirty-tree cleanup · #26 release process · #27 observability (M7 beta).
 
 ## WAVE 3 — Web Shell + Body/Voice (Phase 4/5)
 **Gated on:** auth/CORS from Waves 1–2 (#1/#9/#13) AND psyche GO/NO-GO evidence (#7) — do not outrun psyche/security proof.
