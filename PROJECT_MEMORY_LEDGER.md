@@ -12,6 +12,13 @@
 
 - Active app: `tools/girlai2`
 
+## Emotion Range — state-appropriate variety (2026-07-03, #34)
+
+- **Owner decision:** Aria's intended emotional range = state-appropriate variety (playful/flirty/happy/loving as the moment calls), NOT warmth-biased mono-caring. See memory `project_aria_emotional_range`.
+- **#34 (P1) FIXED**: the psyche's emotion-forward (P4) was overriding the model's emotion with the #15 warm baseline (`caring@0.2`) on every no-focal turn → 86% of turns flattened to caring. Fix: `EgoDirective.assertEmotion` — arbiter asserts emotion only on a focal drive / deliberate yield; else defers to the model (`egoArbiterService.ts` + `llmService.ts` gate on `assertEmotion !== false`).
+- Verified: unit 94/94, security 35/35; **live re-run** caring share **86%→0%**, distinct client emotions 7→10 (all arcs 5–6), ablation still SIGNIFICANT (psyche shapes text, no longer flattens emotion). Evidence: `arcs-on-fixed-2026-07-03.json`, `ablation-onfixed-2026-07-03.json`.
+- Clears the #7 **C4** blocker. With #32 (C1) + #33 (C6), all three code-level psyche-readiness blockers are cleared; only a full re-gate remains for a GO.
+
 ## Crisis Gate — passive-ideation detection (2026-07-03, #32 P0)
 
 - **#32 (P0) FIXED**: the crisis HARD GATE now detects oblique passive suicidal ideation ("nobody would notice if I stopped showing up", "better off without me", "wish I could disappear"). `packages/aria-core/src/crisis.ts` gains a `PASSIVE_IDEATION` advisory group (→ 988 card); worker wiring unchanged (already short-circuits any severity≠none).

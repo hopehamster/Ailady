@@ -47,6 +47,15 @@ export interface EgoDirective {
   intendedEmotion: EmotionKey;
   /** 0..1, capped by the relationship stage's vulnerability tier. */
   intendedEmotionIntensity: number;
+  /**
+   * Whether the psyche is ASSERTING this emotion (a focal drive or a deliberate
+   * yield) vs merely resting at the warm baseline. Emotion-forward (P4) overrides
+   * the model's emotion only when this is true; on the baseline it defers to the
+   * model's state-appropriate emotion so positive arcs stay playful/happy/flirty
+   * instead of collapsing to mono-caring (issue #34). Optional/undefined ⇒ assert
+   * (back-compatible: existing directives without the flag keep prior behavior).
+   */
+  assertEmotion?: boolean;
   scalarBias: ScalarBias;
   /** A drive wanted a move the stage doesn't permit (she held back) — telemetry. */
   restraint: boolean;
@@ -197,6 +206,7 @@ function neutralDirective(
   intensity: number,
   yielded: boolean,
   rationale: string,
+  assertEmotion = true,
 ): EgoDirective {
   return {
     move,
@@ -204,6 +214,7 @@ function neutralDirective(
     pursueOpenLoopId: null,
     intendedEmotion: emotion,
     intendedEmotionIntensity: intensity,
+    assertEmotion,
     scalarBias: { ...ZERO_BIAS },
     restraint: false,
     yielded,
@@ -240,7 +251,11 @@ export function arbitrate(input: ArbitrateInput): EgoDirective {
   // drive is not blankness — she rests at quiet, attentive warmth, never flat
   // neutral. Care discharge semantics are untouched (this path has no driveKey).
   if (!driveKey) {
-    return neutralDirective('understand', 'caring', 0.2, false, 'no focal drive above threshold — warm baseline');
+    // Warm baseline is a FLOOR, not an override: defer the expressed emotion to the
+    // model so positive/engaged turns keep their state-appropriate variety
+    // (playful/happy/flirty) instead of flattening to caring (issue #34, owner
+    // decision 2026-07-03). assertEmotion=false ⇒ emotion-forward does not override.
+    return neutralDirective('understand', 'caring', 0.2, false, 'no focal drive above threshold — warm baseline', false);
   }
 
   // 3. Candidate move, gated by stage permissibility (reasoning hygiene).
@@ -279,6 +294,9 @@ export function arbitrate(input: ArbitrateInput): EgoDirective {
     pursueOpenLoopId,
     intendedEmotion: cfg.emotion,
     intendedEmotionIntensity: intensity,
+    // A drive is genuinely focal — the psyche asserts this emotion (emotion-forward
+    // overrides the model's). Off-baseline behavior is unchanged (issue #34).
+    assertEmotion: true,
     scalarBias: bias,
     restraint,
     yielded: false,

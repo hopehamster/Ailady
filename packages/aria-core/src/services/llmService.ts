@@ -2715,7 +2715,9 @@ export async function generateAIResponse(
         stage: turnStage,
       },
       intendedEmotion:
-        psycheEmotionForwardEnabled() && egoDirective ? egoDirective.intendedEmotion : undefined,
+        psycheEmotionForwardEnabled() && egoDirective && egoDirective.assertEmotion !== false
+          ? egoDirective.intendedEmotion
+          : undefined,
     });
 
     const generationTokens = fastTurnPath
@@ -3121,7 +3123,7 @@ export async function generateAIResponse(
       skippedAgents,
       modelEmotionAnalysisEnabled: MODEL_EMOTION_ANALYSIS_ENABLED,
       intendedEmotion:
-        psycheEmotionForwardEnabled() && egoDirective
+        psycheEmotionForwardEnabled() && egoDirective && egoDirective.assertEmotion !== false
           ? { emotion: egoDirective.intendedEmotion, emotionIntensity: egoDirective.intendedEmotionIntensity }
           : undefined,
       shadowBenchmarkEnabled: SHADOW_BENCHMARK_ENABLED,

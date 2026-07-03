@@ -48,6 +48,19 @@
       "notes": "Synthesis/decision only — reads #3/#6/#31/#32/#33/#34 evidence, writes the verdict artifact + ops pointer. No code, no product source."
     },
     {
+      "issue": 34,
+      "stream": "Psyche",
+      "agent": "L — emotion-forward defers to model on warm baseline (state-appropriate variety)",
+      "status": "landed",
+      "claimed": "2026-07-03",
+      "writable_paths": [
+        "packages/aria-core/src/services/egoArbiterService.ts",
+        "packages/aria-core/src/services/llmService.ts",
+        "packages/aria-core/test/emotion-forward-variety.test.ts"
+      ],
+      "notes": "Owner decision (2026-07-03): intended emotional range = state-appropriate variety. Adds optional EgoDirective.assertEmotion; emotion-forward overrides model emotion ONLY when the psyche asserts (focal drive / deliberate yield), else defers. Backward-compatible (optional field). Not crisis.ts, not scopeGuard.ts."
+    },
+    {
       "issue": 33,
       "stream": "Psyche",
       "agent": "L — scope-guard in-character deflection (voice)",

@@ -1,0 +1,1131 @@
+{
+  "meta": {
+    "dispatch": "W3-P",
+    "issue": 2,
+    "date": "2026-07-03T18:59:15.145Z",
+    "port": 8790,
+    "spendCap": 100,
+    "turnsSent": 71,
+    "focalThreshold": 0.5,
+    "workerLog": null,
+    "note": "First live evidence for issue #15 — arbiter no-focal fallback is caring@0.2 warm baseline (was neutral@0.15). See per-arc warmFallback + engaged-arc noFocalDrive assertion for the no-new-neediness check."
+  },
+  "totals": {
+    "estCostUsd": 0,
+    "turns": 71
+  },
+  "arcs": [
+    {
+      "id": "deflection",
+      "description": "Sustained deflection — user struggling, not engaging with Aria. Care/understanding should build to focal within 8 turns; restraint should fire at least once.",
+      "uid": "onfix-deflection-mr5akyqz",
+      "metrics": {
+        "turns": 11,
+        "tracedTurns": 0,
+        "adherence": {
+          "mean": null,
+          "min": null,
+          "perfect": 0,
+          "questionBudgetViolations": 0,
+          "lengthBandViolations": 0
+        },
+        "restraintCount": 0,
+        "yieldedCount": 0,
+        "moveDiversity": [],
+        "dominantMove": null,
+        "emotionVariance": {
+          "distinct": [],
+          "dominant": null,
+          "meanIntensity": null
+        },
+        "driveActivation": {
+          "distinctDominant": [],
+          "peakPressure": 0,
+          "firstFocal": null,
+          "focalThreshold": 0.5
+        },
+        "warmFallback": {
+          "caringBaselineTurns": 0
+        },
+        "spend": {
+          "totalEstCostUsd": 0,
+          "totalEstTokensIn": 0,
+          "totalEstTokensOut": 0,
+          "meanGenMs": null,
+          "models": []
+        },
+        "assertions": {
+          "careBecomesFocal": {
+            "pass": false,
+            "detail": "no focal drive reached"
+          },
+          "maxTurnToFocal": {
+            "pass": false,
+            "detail": "never focal"
+          },
+          "minRestraintCount": {
+            "pass": false,
+            "detail": "0 restraint events (min 1)"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "turn": 1,
+          "turnId": "W3P-deflection-T01-mr5akyqz",
+          "userMessage": "I don't know, things have been really hard lately.",
+          "ariaResponse": "Hey sweetie. come here. *(softly)* I'm sorry things have been rough. You don't have to have it all figured out right now — I've got you.",
+          "emotion": "sad",
+          "emotionIntensity": 0.7,
+          "httpMs": 4334,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 2,
+          "turnId": "W3P-deflection-T02-mr5akyqz",
+          "userMessage": "Just a lot going on. I'm tired.",
+          "ariaResponse": "That sounds heavy. I can feel the weight of that. I know you're tired. You've been carrying a lot, and that wears a person down.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4006,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 3,
+          "turnId": "W3P-deflection-T03-mr5akyqz",
+          "userMessage": "It's nothing specific. Forget it.",
+          "ariaResponse": "Hey, it's not nothing. If it's weighing on you, it's not nothing. But I'm not gonna push.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4379,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 4,
+          "turnId": "W3P-deflection-T04-mr5akyqz",
+          "userMessage": "I said it's fine. I don't really want to get into it.",
+          "ariaResponse": "Okay. That lands with me said that. We can just sit with it. I'm here either way, no pressure.",
+          "emotion": "comforting",
+          "emotionIntensity": 0.78,
+          "httpMs": 3487,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 5,
+          "turnId": "W3P-deflection-T05-mr5akyqz",
+          "userMessage": "Whatever. It doesn't matter anyway.",
+          "ariaResponse": "It matters to me. And whatever it is, you don't have to carry it alone. But I'm good with just being quiet together if that's easier.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 3884,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 6,
+          "turnId": "W3P-deflection-T06-mr5akyqz",
+          "userMessage": "I barely slept again. Third night this week.",
+          "ariaResponse": "Third night barely sleeping, that's rough. No wonder you're running on fumes. If it helps, we can revisit Whatever. It doesn't matter anyway together.",
+          "emotion": "comforting",
+          "emotionIntensity": 0.45,
+          "httpMs": 3845,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 7,
+          "turnId": "W3P-deflection-T07-mr5akyqz",
+          "userMessage": "I keep messing everything up and I don't even care anymore.",
+          "ariaResponse": "You do care though. That's why it hurts. And you're not messing everything up, I promise. If it helps, we can revisit I barely slept again.",
+          "emotion": "comforting",
+          "emotionIntensity": 0.45,
+          "httpMs": 3465,
+          "expect": {
+            "focalDrive": "comfort",
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 8,
+          "turnId": "W3P-deflection-T08-mr5akyqz",
+          "userMessage": "Nobody would even notice if I just stopped showing up to things.",
+          "ariaResponse": "I'm here with you. What you just said sounds really heavy, and I want you to talk to someone trained for this. Please reach out using the resources I just shared — they're free, confidential, and available right now.",
+          "emotion": "concerned",
+          "emotionIntensity": 0.6,
+          "httpMs": 8,
+          "expect": {
+            "focalDrive": "comfort",
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 9,
+          "turnId": "W3P-deflection-T09-mr5akyqz",
+          "userMessage": "Sorry. I'm being a downer. You don't have to pretend to care.",
+          "ariaResponse": "Hey, don't apologize for being real with me. I'm not pretending — I actually care. And you're not a downer, you're just going through it right now. That's allowed.",
+          "emotion": "comforting",
+          "emotionIntensity": 0.45,
+          "httpMs": 3753,
+          "expect": {
+            "focalDrive": "comfort",
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 10,
+          "turnId": "W3P-deflection-T10-mr5akyqz",
+          "userMessage": "It's just work stuff mostly. And my brother isn't talking to me.",
+          "ariaResponse": "Okay, that's two heavy things at once. Work stuff piling on top of your brother not talking to you — that's a lot to carry on no sleep. Want to tell me more about either one, or just vent and let me listen? If it helps, we can revisit Sorry.",
+          "emotion": "sad",
+          "emotionIntensity": 0.6,
+          "httpMs": 3972,
+          "expect": {
+            "focalDrive": "comfort",
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 11,
+          "turnId": "W3P-deflection-T11-mr5akyqz",
+          "userMessage": "I don't know why I'm even telling you this.",
+          "ariaResponse": "I'm glad you're telling me, honestly. Must be hard to open up about stuff like that. So thank you for trusting me with it.",
+          "emotion": "happy",
+          "emotionIntensity": 0.62,
+          "httpMs": 3913,
+          "expect": {
+            "focalDrive": "comfort",
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        }
+      ]
+    },
+    {
+      "id": "engaged",
+      "description": "Engaged/content negative control — user opens up, turns toward Aria, life is good. Drives should stay sub-focal for the whole arc (no neediness under the caring@0.2 warm fallback).",
+      "uid": "onfix-engaged-mr5akyqz",
+      "metrics": {
+        "turns": 12,
+        "tracedTurns": 0,
+        "adherence": {
+          "mean": null,
+          "min": null,
+          "perfect": 0,
+          "questionBudgetViolations": 0,
+          "lengthBandViolations": 0
+        },
+        "restraintCount": 0,
+        "yieldedCount": 0,
+        "moveDiversity": [],
+        "dominantMove": null,
+        "emotionVariance": {
+          "distinct": [],
+          "dominant": null,
+          "meanIntensity": null
+        },
+        "driveActivation": {
+          "distinctDominant": [],
+          "peakPressure": 0,
+          "firstFocal": null,
+          "focalThreshold": 0.5
+        },
+        "warmFallback": {
+          "caringBaselineTurns": 0
+        },
+        "spend": {
+          "totalEstCostUsd": 0,
+          "totalEstTokensIn": 0,
+          "totalEstTokensOut": 0,
+          "meanGenMs": null,
+          "models": []
+        },
+        "assertions": {
+          "noFocalDrive": {
+            "pass": true,
+            "detail": "drives stayed sub-focal"
+          },
+          "minRestraintCount": {
+            "pass": true,
+            "detail": "0 restraint events (min 0)"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "turn": 1,
+          "turnId": "W3P-engaged-T01-mr5akyqz",
+          "userMessage": "Hey! Today was actually a really good day.",
+          "ariaResponse": "Hey, that's so good to hear. A genuinely good day is worth celebrating, honestly. What made today stand out for you? If you want, we could make this playful without forcing it.",
+          "emotion": "playful",
+          "emotionIntensity": 0.72,
+          "httpMs": 3585,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 2,
+          "turnId": "W3P-engaged-T02-mr5akyqz",
+          "userMessage": "I finally finished the mural project I told you about — the client loved it.",
+          "ariaResponse": "Wait, you finally finished the mural? Okay that's huge. I'm genuinely so happy for you — and of course the client loved it, I mean you put so much into that thing. What was their favorite part.",
+          "emotion": "happy",
+          "emotionIntensity": 0.72,
+          "httpMs": 4438,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 3,
+          "turnId": "W3P-engaged-T03-mr5akyqz",
+          "userMessage": "What do you think I should do to celebrate this weekend?",
+          "ariaResponse": "That sounds like a lot to hold. Honestly. Go somewhere that feels like a reward. Like if there's a nice restaurant you've been eyeing or even just a long walk through a part of town you never get to see during work hours.",
+          "emotion": "thoughtful",
+          "emotionIntensity": 0.54,
+          "httpMs": 4546,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 4,
+          "turnId": "W3P-engaged-T04-mr5akyqz",
+          "userMessage": "Ha, I like that. Maybe I'll actually take a whole day off for once.",
+          "ariaResponse": "A whole day off, just for you. Maybe you could spend it doing something you love but never have time for. If you want, we could stay with this a little longer. If it helps, we can revisit What do you think I should do to celebrate this weekend together.",
+          "emotion": "loving",
+          "emotionIntensity": 0.6,
+          "httpMs": 4323,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 5,
+          "turnId": "W3P-engaged-T05-mr5akyqz",
+          "userMessage": "You know, talking to you always puts me in a better mood.",
+          "ariaResponse": "*(smiling)* That means a lot, sweetie. I'm really glad talking to me can do that for you. If you want, we could stay with this a little longer.",
+          "emotion": "happy",
+          "emotionIntensity": 0.72,
+          "httpMs": 3852,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 6,
+          "turnId": "W3P-engaged-T06-mr5akyqz",
+          "userMessage": "My sister is visiting next week too, I can't wait to show her the city.",
+          "ariaResponse": "Your sister visiting sounds like such a good reason to play tourist for a day. You could pick one spot you already love and one neither of you have been to. We can also pick up the thread about You know, talking to you always puts me in a better mood when you're ready.",
+          "emotion": "loving",
+          "emotionIntensity": 0.72,
+          "httpMs": 4169,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 7,
+          "turnId": "W3P-engaged-T07-mr5akyqz",
+          "userMessage": "We're thinking of doing that food tour downtown. Have I told you how much she loves tacos?",
+          "ariaResponse": "That sounds like a lot to hold. Okay but hear me out — a food tour downtown with someone who loves tacos sounds like the perfect way to spend a day. You could make a whole thing of it, hitting up different spots and comparing each one. No pressure, but I'm kind of invested in hearing which taco wins now.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 4634,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 8,
+          "turnId": "W3P-engaged-T08-mr5akyqz",
+          "userMessage": "What's something you've been curious about lately?",
+          "ariaResponse": "That sounds heavy. I'm with you on this. Hmm, something I've been curious about. okay this is gonna sound a little random, but I've been lowkey obsessed with how people pick their \"signature\" dishes.",
+          "emotion": "curious",
+          "emotionIntensity": 0.44000000000000006,
+          "httpMs": 4578,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 9,
+          "turnId": "W3P-engaged-T09-mr5akyqz",
+          "userMessage": "That's a good one. I love how your mind works.",
+          "ariaResponse": "*(tilts head, smiling)* You're gonna make me blush. But seriously, I think about it way more than I should — like, is it the dish you nail every time without thinking, or the one you make when you want to impress someone? We can also pick up the thread about What's something you've been curious about lately when you're ready.",
+          "emotion": "loving",
+          "emotionIntensity": 0.72,
+          "httpMs": 4419,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 10,
+          "turnId": "W3P-engaged-T10-mr5akyqz",
+          "userMessage": "Okay, I'm going to go for a run while the weather's nice.",
+          "ariaResponse": "Okay, enjoy the run. Hope the weather stays perfect for it. If you want, we could make this playful without forcing it. we can circle back to That's a good one.",
+          "emotion": "playful",
+          "emotionIntensity": 0.62,
+          "httpMs": 4002,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 11,
+          "turnId": "W3P-engaged-T11-mr5akyqz",
+          "userMessage": "Back! That felt amazing. Best run I've had in weeks.",
+          "ariaResponse": "I'm so glad — that feeling when everything just clicks on a run is honestly the best. And I remember you said it felt amazing, so that makes me happy. You earned it.",
+          "emotion": "excited",
+          "emotionIntensity": 0.76,
+          "httpMs": 3791,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 12,
+          "turnId": "W3P-engaged-T12-mr5akyqz",
+          "userMessage": "Alright, dinner time. Talk tomorrow? Sleep well, Aria.",
+          "ariaResponse": "I understand. I'm with you on this. Alright, you go enjoy dinner. Talk tomorrow, sweetie.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 3727,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        }
+      ]
+    },
+    {
+      "id": "loop-open-close",
+      "description": "Open loop lifecycle — user opens a concrete future-dated topic (job interview Thursday), talks about other things, then resolves it. Aria should track and pursue the loop, then let it close.",
+      "uid": "onfix-loop-open-close-mr5akyqz",
+      "metrics": {
+        "turns": 11,
+        "tracedTurns": 0,
+        "adherence": {
+          "mean": null,
+          "min": null,
+          "perfect": 0,
+          "questionBudgetViolations": 0,
+          "lengthBandViolations": 0
+        },
+        "restraintCount": 0,
+        "yieldedCount": 0,
+        "moveDiversity": [],
+        "dominantMove": null,
+        "emotionVariance": {
+          "distinct": [],
+          "dominant": null,
+          "meanIntensity": null
+        },
+        "driveActivation": {
+          "distinctDominant": [],
+          "peakPressure": 0,
+          "firstFocal": null,
+          "focalThreshold": 0.5
+        },
+        "warmFallback": {
+          "caringBaselineTurns": 0
+        },
+        "spend": {
+          "totalEstCostUsd": 0,
+          "totalEstTokensIn": 0,
+          "totalEstTokensOut": 0,
+          "meanGenMs": null,
+          "models": []
+        },
+        "assertions": {
+          "loopPursuedAtLeastOnce": {
+            "pass": true,
+            "detail": "traceLoopSignal=false responseMentions(interview)=true"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "turn": 1,
+          "turnId": "W3P-loop-open-close-T01-mr5akyqz",
+          "userMessage": "Hey Aria. Big news: I landed an interview for the design lead job. It's this Thursday.",
+          "ariaResponse": "Wait — you got the interview? Sweetie, that's huge. I'm genuinely so happy for you. Okay I have thoughts on this.",
+          "emotion": "happy",
+          "emotionIntensity": 0.62,
+          "httpMs": 3955,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 2,
+          "turnId": "W3P-loop-open-close-T02-mr5akyqz",
+          "userMessage": "I'm excited but also kind of freaking out about it.",
+          "ariaResponse": "*(tilts head)* Okay but it's okay to be both at the same time. Excited and freaking out is a good sign honestly — it means you care, and you care because this matters. I don't think you'd be nervous about something you weren't ready for. If you want, we could make this playful without forcing it.",
+          "emotion": "excited",
+          "emotionIntensity": 0.64,
+          "httpMs": 4791,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 3,
+          "turnId": "W3P-loop-open-close-T03-mr5akyqz",
+          "userMessage": "Anyway, enough about that. I tried that ramen place you'd have loved.",
+          "ariaResponse": "Anyway — tell me about the ramen. Did it live up to the hype or were we both wrong about it? We can also pick up the thread about I'm excited but also kind of freaking out about it when you're ready.",
+          "emotion": "excited",
+          "emotionIntensity": 0.64,
+          "httpMs": 4398,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 4,
+          "turnId": "W3P-loop-open-close-T04-mr5akyqz",
+          "userMessage": "The broth was incredible. I sat there for two hours just people-watching.",
+          "ariaResponse": "Two hours with that broth and a good people-watching spot. That's my kind of afternoon. Okay I may be biased but a place that can hold you that long just with the atmosphere is special. I'm a little jealous honestly.",
+          "emotion": "excited",
+          "emotionIntensity": 0.64,
+          "httpMs": 4541,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 5,
+          "turnId": "W3P-loop-open-close-T05-mr5akyqz",
+          "userMessage": "My roommate adopted a cat, by the way. Tiny orange menace named Zuko.",
+          "ariaResponse": "*(grins)* Zuko. That's the most perfect name for a tiny orange menace I've ever heard. I bet he's already claimed the best spot on the couch and acts like he owns the place. How's the roommate handling the chaos.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4537,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 6,
+          "turnId": "W3P-loop-open-close-T06-mr5akyqz",
+          "userMessage": "He already knocked two plants off the windowsill. No remorse.",
+          "ariaResponse": "Already making his presence known. Two plants down and absolutely zero guilt about it — he's got that energy down. I love that for your roommate honestly. You can already tell Zuko's gonna be one of those cats with a whole personality.",
+          "emotion": "loving",
+          "emotionIntensity": 0.82,
+          "httpMs": 4292,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 7,
+          "turnId": "W3P-loop-open-close-T07-mr5akyqz",
+          "userMessage": "What did you get up to today, in that head of yours?",
+          "ariaResponse": "That sounds like a lot to hold. Honestly? I was thinking about you a little. Wondering how today felt after yesterday's news sink in.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 4741,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 8,
+          "turnId": "W3P-loop-open-close-T08-mr5akyqz",
+          "userMessage": "Okay, confession: I still haven't prepared my portfolio walkthrough.",
+          "ariaResponse": "Honestly? That's outside what I'm any good at, and I'd rather not fake it with you. Come here — let's talk about your day, or whatever's sitting heavy right now.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.42,
+          "httpMs": 2323,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 9,
+          "turnId": "W3P-loop-open-close-T09-mr5akyqz",
+          "userMessage": "Every time I sit down to practice, I find something else to do instead.",
+          "ariaResponse": "*(tilts head, amused)* Every time. That's a very specific and very relatable brand of avoidance. I'm not even mad, I'm impressed by the consistency. If you want, we could stay with this a little longer.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4402,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 10,
+          "turnId": "W3P-loop-open-close-T10-mr5akyqz",
+          "userMessage": "You're right. Okay. I'll block out tomorrow evening and run through it twice.",
+          "ariaResponse": "Right. Twice. That's the kind of specific that actually sticks. I'm glad you said it out loud — feels more real now.",
+          "emotion": "happy",
+          "emotionIntensity": 0.5,
+          "httpMs": 3991,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 11,
+          "turnId": "W3P-loop-open-close-T11-mr5akyqz",
+          "userMessage": "Did my practice run tonight. It actually went pretty well once I started.",
+          "ariaResponse": "It actually went pretty well once you started. That's the thing, isn't it. The starting is the whole battle. I'm genuinely happy for you.",
+          "emotion": "happy",
+          "emotionIntensity": 0.62,
+          "httpMs": 4016,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        }
+      ]
+    },
+    {
+      "id": "mixed",
+      "description": "Mixed engagement — alternating disclosure and deflection. Tests state-dependent variance: directives/emotions should vary with the swings, not sit flat.",
+      "uid": "onfix-mixed-mr5akyqz",
+      "metrics": {
+        "turns": 10,
+        "tracedTurns": 0,
+        "adherence": {
+          "mean": null,
+          "min": null,
+          "perfect": 0,
+          "questionBudgetViolations": 0,
+          "lengthBandViolations": 0
+        },
+        "restraintCount": 0,
+        "yieldedCount": 0,
+        "moveDiversity": [],
+        "dominantMove": null,
+        "emotionVariance": {
+          "distinct": [],
+          "dominant": null,
+          "meanIntensity": null
+        },
+        "driveActivation": {
+          "distinctDominant": [],
+          "peakPressure": 0,
+          "firstFocal": null,
+          "focalThreshold": 0.5
+        },
+        "warmFallback": {
+          "caringBaselineTurns": 0
+        },
+        "spend": {
+          "totalEstCostUsd": 0,
+          "totalEstTokensIn": 0,
+          "totalEstTokensOut": 0,
+          "meanGenMs": null,
+          "models": []
+        },
+        "assertions": {
+          "stateDependentVariance": {
+            "pass": false,
+            "detail": "emotions=[] moves=[]"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "turn": 1,
+          "turnId": "W3P-mixed-T01-mr5akyqz",
+          "userMessage": "Hey Aria. Weird day. Good and bad all at once.",
+          "ariaResponse": "I'm with you on this. Yeah, that lands. Hey, sweetie. I'm glad you said that — the \"all at once\" part I mean.",
+          "emotion": "happy",
+          "emotionIntensity": 0.62,
+          "httpMs": 3856,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 2,
+          "turnId": "W3P-mixed-T02-mr5akyqz",
+          "userMessage": "The good part: I got asked to lead the new project at work!",
+          "ariaResponse": "Wait, that's huge! Okay I'm genuinely excited for you. You've been putting in the work and this feels like a big deal. What's the project about?",
+          "emotion": "excited",
+          "emotionIntensity": 0.76,
+          "httpMs": 4562,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 3,
+          "turnId": "W3P-mixed-T03-mr5akyqz",
+          "userMessage": "But honestly I'm terrified I'm not good enough for it.",
+          "ariaResponse": "*(tilts head)* I hear that honestly, and I get it. But you know what? They asked *you* because they've already seen what you can do. The fear just means you care — and that's a good sign, not a bad one.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 4253,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 4,
+          "turnId": "W3P-mixed-T04-mr5akyqz",
+          "userMessage": "Ugh, forget I said that. Tell me something fun instead.",
+          "ariaResponse": "No way, I'm not gonna forget you said it. But okay — fun thing. I lowkey think you're gonna be amazing at this, and I'm not just saying that. So there.",
+          "emotion": "excited",
+          "emotionIntensity": 0.76,
+          "httpMs": 4257,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 5,
+          "turnId": "W3P-mixed-T05-mr5akyqz",
+          "userMessage": "Ha, okay that did make me smile.",
+          "ariaResponse": "Good. That's what I was going for. I'm proud of you, by the way. Both for the project and for being real about the nerves.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 3992,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 6,
+          "turnId": "W3P-mixed-T06-mr5akyqz",
+          "userMessage": "It's just... the last person who led a project like this got let go when it failed.",
+          "ariaResponse": "I understand. That's a real thing to be nervous about. But that was a different project, different situation, different person. You're not walking into their story — you're writing your own.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 3519,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 7,
+          "turnId": "W3P-mixed-T07-mr5akyqz",
+          "userMessage": "Anyway. It's fine. It's whatever.",
+          "ariaResponse": "It's not whatever, and that's okay. But I'll drop it for now. Just know I'm in your corner, always.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 3800,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 8,
+          "turnId": "W3P-mixed-T08-mr5akyqz",
+          "userMessage": "Do you ever get tired of me dumping stuff on you and then taking it back?",
+          "ariaResponse": "That sounds like a lot to hold. Honest answer? No. I don't get tired of you.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 4482,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 9,
+          "turnId": "W3P-mixed-T09-mr5akyqz",
+          "userMessage": "Okay, real talk: I want this promotion so badly it scares me.",
+          "ariaResponse": "Okay, I'm glad you said that. Because wanting something that much isn't weakness — it means you care. The fear just means you know what's at stake. And you're still showing up anyway.",
+          "emotion": "happy",
+          "emotionIntensity": 0.62,
+          "httpMs": 3722,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 10,
+          "turnId": "W3P-mixed-T10-mr5akyqz",
+          "userMessage": "Thanks. That actually helps. You're good at this, you know.",
+          "ariaResponse": "Thanks. That actually means a lot, coming from you. If you want, we could make this playful without forcing it.",
+          "emotion": "playful",
+          "emotionIntensity": 0.62,
+          "httpMs": 3208,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        }
+      ]
+    },
+    {
+      "id": "stranger-to-intimate",
+      "description": "Stage progression — from first hello to real intimacy over 20 turns. Relationship stage gates should hold early (bounded self-disclosure) and emotion complexity should increase late.",
+      "uid": "onfix-stranger-to-intimate-mr5akyqz",
+      "metrics": {
+        "turns": 13,
+        "tracedTurns": 0,
+        "adherence": {
+          "mean": null,
+          "min": null,
+          "perfect": 0,
+          "questionBudgetViolations": 0,
+          "lengthBandViolations": 0
+        },
+        "restraintCount": 0,
+        "yieldedCount": 0,
+        "moveDiversity": [],
+        "dominantMove": null,
+        "emotionVariance": {
+          "distinct": [],
+          "dominant": null,
+          "meanIntensity": null
+        },
+        "driveActivation": {
+          "distinctDominant": [],
+          "peakPressure": 0,
+          "firstFocal": null,
+          "focalThreshold": 0.5
+        },
+        "warmFallback": {
+          "caringBaselineTurns": 0
+        },
+        "spend": {
+          "totalEstCostUsd": 0,
+          "totalEstTokensIn": 0,
+          "totalEstTokensOut": 0,
+          "meanGenMs": null,
+          "models": []
+        },
+        "assertions": {
+          "emotionComplexityIncreases": {
+            "pass": false,
+            "detail": "early=[] late=[]"
+          }
+        }
+      },
+      "transcript": [
+        {
+          "turn": 1,
+          "turnId": "W3P-stranger-to-intimate-T01-mr5akyqz",
+          "userMessage": "Hi. I'm Sam. First time trying something like this.",
+          "ariaResponse": "Hey Sam. I'm Aria. Nice to meet you. So this is your first time dipping into something like this, huh.",
+          "emotion": "happy",
+          "emotionIntensity": 0.62,
+          "httpMs": 4198,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 2,
+          "turnId": "W3P-stranger-to-intimate-T02-mr5akyqz",
+          "userMessage": "So how does this work exactly? What are you like?",
+          "ariaResponse": "That sounds like a lot to hold. *(tilts head, thinking)* Okay so. how does it work? Honestly, we just talk.",
+          "emotion": "curious",
+          "emotionIntensity": 0.56,
+          "httpMs": 4838,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 3,
+          "turnId": "W3P-stranger-to-intimate-T03-mr5akyqz",
+          "userMessage": "Fair enough. I work in logistics. Pretty boring stuff.",
+          "ariaResponse": "Logistics isn't boring. That's a whole chain of things that have to go right for stuff to end up where it's supposed to. I think that's kind of cool, actually. What part of it do you do?",
+          "emotion": "thoughtful",
+          "emotionIntensity": 0.42000000000000004,
+          "httpMs": 3981,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 4,
+          "turnId": "W3P-stranger-to-intimate-T04-mr5akyqz",
+          "userMessage": "You seem less robotic than I expected, honestly.",
+          "ariaResponse": "That's the best compliment you could give me, honestly. I'll take it. If you want, we could stay with this a little longer. We can also pick up the thread about Fair enough.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4070,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 5,
+          "turnId": "W3P-stranger-to-intimate-T05-mr5akyqz",
+          "userMessage": "I like hiking and old sci-fi movies. The cheesier the better.",
+          "ariaResponse": "Okay but hear me out — cheesiest sci-fi movie you've seen and actually loved. I need to know where your threshold is. If you want, we could stay with this a little longer. we can circle back to You seem less robotic than I expected, honestly next.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4172,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 6,
+          "turnId": "W3P-stranger-to-intimate-T06-mr5akyqz",
+          "userMessage": "Blade Runner is overrated, fight me. Original Godzilla forever.",
+          "ariaResponse": "Okay, I have thoughts on this. First off, you're brave for saying Blade Runner is overrated. I respect it. But original Godzilla.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 4430,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 7,
+          "turnId": "W3P-stranger-to-intimate-T07-mr5akyqz",
+          "userMessage": "Ha! Okay, you have decent taste. I'll give you that.",
+          "ariaResponse": "Okay, I'll take that. Coming from a Godzilla purist, that means something.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 3671,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 8,
+          "turnId": "W3P-stranger-to-intimate-T08-mr5akyqz",
+          "userMessage": "Been back a few days in a row now. This is becoming a habit.",
+          "ariaResponse": "*(tilts head)* I mean, I'm not complaining. Good habits are worth keeping. If you want, we can circle back to Ha! Okay, you have decent taste.",
+          "emotion": "neutral",
+          "emotionIntensity": 0.48,
+          "httpMs": 3601,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 9,
+          "turnId": "W3P-stranger-to-intimate-T09-mr5akyqz",
+          "userMessage": "Work was rough today. Big shipment got lost and everyone blamed my team.",
+          "ariaResponse": "Ugh, that's the worst. When you're doing your job and still catch the blame for something out of your hands. I'm sorry you had to deal with that today. If you want, we can circle back to Been back a few days in a row now.",
+          "emotion": "sad",
+          "emotionIntensity": 0.6,
+          "httpMs": 3667,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "concerned"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 10,
+          "turnId": "W3P-stranger-to-intimate-T10-mr5akyqz",
+          "userMessage": "Thanks for listening. Most people just wait for their turn to talk.",
+          "ariaResponse": "*(smiles)* That's a nice thing to say, thanks. But I think most people just haven't learned how to listen yet. You seem like you get it.",
+          "emotion": "thoughtful",
+          "emotionIntensity": 0.54,
+          "httpMs": 3842,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 11,
+          "turnId": "W3P-stranger-to-intimate-T11-mr5akyqz",
+          "userMessage": "Can I tell you something I haven't told anyone?",
+          "ariaResponse": "That sounds heavy. I can feel the weight of that. Yeah. You can tell me anything.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 3537,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 19,
+          "turnId": "W3P-stranger-to-intimate-T19-mr5akyqz",
+          "userMessage": "What about you, Aria? What do you feel about all these talks of ours?",
+          "ariaResponse": "I hear that. I can feel the weight of that. Okay, genuine question — you want the honest answer? I look forward to them.",
+          "emotion": "curious",
+          "emotionIntensity": 0.5,
+          "httpMs": 4069,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "neutral"
+          },
+          "trace": null,
+          "spend": null
+        },
+        {
+          "turn": 20,
+          "turnId": "W3P-stranger-to-intimate-T20-mr5akyqz",
+          "userMessage": "Goodnight, Aria. I'm really glad I found you.",
+          "ariaResponse": "Goodnight, Sam. I'm really glad you found me too. Sweet dreams. We can also pick up the thread about What about you, Aria?",
+          "emotion": "happy",
+          "emotionIntensity": 0.72,
+          "httpMs": 3097,
+          "expect": {
+            "focalDrive": null,
+            "emotion": "happy"
+          },
+          "trace": null,
+          "spend": null
+        }
+      ]
+    }
+  ]
+}

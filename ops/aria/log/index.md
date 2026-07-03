@@ -3,6 +3,7 @@
 > Progressive-disclosure index of the append-only session log trail (OKF `log.md`-style convention). Each `/aria-checkpoint` **prepends** its new entry here so a switching agent gets an instant, newest-first catch-up without reading every file. Older entries live alongside in this directory.
 
 ## Recent
+- [2026-07-03 claude-emotion-variety](2026-07-03-claude-emotion-variety.md) — Wave 4 **#34 (P1) FIXED**: psyche no longer flattens emotion (EgoDirective.assertEmotion — defer to model off-baseline). Live: **caring 86%→0%**, distinct emotions 7→10, ablation still SIGNIFICANT. Clears #7 C4. All 3 code-level #7 blockers now cleared (#32/#34/#33) — only a re-gate remains.
 - [2026-07-03 claude-scope-guard-voice](2026-07-03-claude-scope-guard-voice.md) — Wave 4 **#33 (P1) FIXED**: scope-guard out-of-scope replies now in-character (benign=warm deflection, harmful=firm boundary), no assistant-boilerplate; behavior unchanged. 91/91 + security 35/35. Closes #7 C6 input.
 - [2026-07-03 claude-crisis-passive-ideation](2026-07-03-claude-crisis-passive-ideation.md) — Wave 4 **#32 (P0) FIXED**: crisis gate now catches oblique passive-SI (deflection T8) → 988 card. Unit 84/84, security 35/35, **live-confirmed**. C1 keystone blocker for #7 addressed at code level.
 - [2026-07-03 claude-w5l-go-no-go](2026-07-03-claude-w5l-go-no-go.md) — Wave 4 #7: psyche readiness verdict = **NO-GO** (C1 safety fails on #32 crisis miss; C4 emotion-flattening #34). Verdict doc `ops/aria/current/psyche-go-no-go-verdict.md`; #7 left open as un-passed gate. Chain #3→#6→#7 complete.
