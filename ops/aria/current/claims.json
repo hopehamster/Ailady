@@ -34,6 +34,18 @@
         "package.json"
       ],
       "notes": "Lead adds root package.json psyche test targets (Ops path, but lead-owned integration per W4-L sheet; no other active claim touches package.json). Reuses #3 grader prompts read-only."
+    },
+    {
+      "issue": 7,
+      "stream": "Psyche",
+      "agent": "L — W5-L GO/NO-GO verdict gate",
+      "status": "landed",
+      "claimed": "2026-07-03",
+      "writable_paths": [
+        "scripts/psyche/output/GO-NO-GO-*",
+        "ops/aria/current/psyche-go-no-go-verdict.md"
+      ],
+      "notes": "Synthesis/decision only — reads #3/#6/#31/#32/#33/#34 evidence, writes the verdict artifact + ops pointer. No code, no product source."
     }
   ]
 }

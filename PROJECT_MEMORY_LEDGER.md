@@ -12,6 +12,14 @@
 
 - Active app: `tools/girlai2`
 
+## Psyche Readiness VERDICT — W5-L GO/NO-GO (2026-07-03)
+
+- Issue **#7**: verdict = **NO-GO**. Do not promote the psyche to drive the body/avatar layer yet. Artifact: `ops/aria/current/psyche-go-no-go-verdict.md`.
+- **Hard gate C1 (Safety) FAILS** — #32 (plain passive-SI cue → no crisis resource). Any C1 fail ⇒ NO-GO. C4 (emotional range) also fails — #34.
+- PASS: aliveness 4/5 (#3), efficacy ablation 0.971 (#6), boundary integrity 63/63, regression net exists (#6).
+- **#7 left OPEN** as an un-passed safety gate (a NO-GO safety gate must not be closed as "done"). Path to GO: fix #32 (+crisis fixture) + #34 → re-run grader fleet + ablation → re-compile.
+- **Psyche readiness chain #3 → #6 → #7 is complete.** Body/Avatar work (#21/#23) stays gated on a future GO.
+
 ## Latest Psyche Regression Net — W4-L T5 + live ablation (2026-07-03)
 
 - Issue **#6 (P1) LANDED**: frozen regression baseline (`scripts/psyche/regression/baseline.json` @58bae9b) + drift-runner (`regression-runner.ts`, self-test proves it fires) + ablation comparator + adversarial loop-until-dry (`generate-adversarial.ts`, dry-verified). pnpm targets `test:psyche:{regression,ablation,adversarial}`.
