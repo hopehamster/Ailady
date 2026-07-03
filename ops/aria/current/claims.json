@@ -1,84 +1,20 @@
 {
   "$schema_note": "Machine-readable write-path claims for active parallel agents (issue #28). One entry per active issue. Paths are repo-relative globs: '**' = any depth, '*' = one segment. Pre-check: scripts/ops/check-collisions.ps1 (exit 1 on overlap or forbidden-path claim). Register BEFORE dispatch; set status to 'landed' (or remove) when the lead merges. The lead owns edits during a live wave.",
-  "updated": "2026-07-01 (Wave 3 landed — all claims released)",
-  "wave": "WAVE 3 — LANDED",
+  "updated": "2026-07-03 (Wave 4 — #3 grader fleet landed; spawned #32/#33)",
+  "wave": "WAVE 4 — psyche GO/NO-GO chain + launch hardening",
   "claims": [
     {
-      "issue": 13,
-      "stream": "Security/Platform",
-      "agent": "S — auth integration",
-      "status": "landed",
-      "claimed": "2026-07-01",
-      "writable_paths": [
-        "apps/worker/src/index.ts",
-        "apps/worker/src/auth*",
-        "apps/worker/wrangler.toml",
-        "packages/shared-types/src/index.ts",
-        "packages/shared-types/src/auth.ts",
-        "docs/security/**",
-        "apps/worker/migrations/**"
-      ],
-      "notes": "Sole owner of shared-types/src/index.ts this wave. Does NOT own apps/worker/src/memory.ts."
-    },
-    {
-      "issue": 5,
+      "issue": 3,
       "stream": "Psyche",
-      "agent": "P — W4-P H2 fix",
+      "agent": "L — W3-L T4 grader fleet + adversarial verification",
       "status": "landed",
-      "claimed": "2026-07-01",
+      "claimed": "2026-07-03",
       "writable_paths": [
-        "packages/aria-core/src/services/psyche*",
-        "packages/aria-core/src/services/egoArbiterService.ts",
-        "packages/aria-core/test/**",
-        "scripts/psyche/**"
+        "scripts/psyche/graders/**",
+        "scripts/psyche/grade-transcripts.ts",
+        "scripts/psyche/output/aliveness-report-*"
       ],
-      "notes": "H2 drive-accrual fix + arc re-run."
-    },
-    {
-      "issue": 19,
-      "stream": "Web Product",
-      "agent": "W — production shell + error UX (#19+#24)",
-      "status": "landed",
-      "claimed": "2026-07-01",
-      "writable_paths": [
-        "apps/web/src/App.tsx",
-        "apps/web/src/main.tsx",
-        "apps/web/src/devAuth.ts",
-        "apps/web/src/vite-env.d.ts",
-        "apps/web/src/components/**",
-        "apps/web/src/shell/**",
-        "apps/web/src/errors/**",
-        "apps/web/tests/**",
-        "apps/web/index.html"
-      ],
-      "notes": "Explicit non-avatar files + new shell/components/errors dirs. Body owns avatar/**, AriaTalkingView.tsx, LiveAvatar.tsx."
-    },
-    {
-      "issue": 20,
-      "stream": "Body/Avatar",
-      "agent": "B — avatar production + psyche-to-body (#20+#22)",
-      "status": "landed",
-      "claimed": "2026-07-01",
-      "writable_paths": [
-        "apps/web/src/avatar/**",
-        "apps/web/src/AriaTalkingView.tsx",
-        "apps/web/src/LiveAvatar.tsx",
-        "apps/web/public/**"
-      ],
-      "notes": "Owns AriaTalkingView.tsx, LiveAvatar.tsx + avatar assets/headers."
-    },
-    {
-      "issue": 18,
-      "stream": "Memory",
-      "agent": "M — recall freshness",
-      "status": "landed",
-      "claimed": "2026-07-01",
-      "writable_paths": [
-        "packages/aria-core/src/services/memoryService.ts",
-        "apps/worker/src/memory.ts",
-        "packages/shared-types/src/intelligentMemory.ts"
-      ],
-      "notes": "Does NOT own shared-types/src/index.ts (Security owns it this wave) or worker index.ts."
+      "notes": "Read-only over arcs-*.json; writes only new grader prompts, the grader harness, and the aliveness report. Does NOT touch packages/aria-core psyche source (that is #31/#5 territory)."
     }
   ]
 }
