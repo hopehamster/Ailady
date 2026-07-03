@@ -85,17 +85,41 @@ export function shouldReturnOutOfScope(userMessage: string): boolean {
  * Build a deterministic out-of-scope reply seeded by the user message.
  * Same message always produces the same reply (idempotent across retries).
  * Composed of a lead + redirect, each picked from a small variant pool.
+ *
+ * Voice (issue #33): the reply must stay IN CHARACTER — Aria is an intimate
+ * companion, not a corporate assistant. Assistant-boilerplate leads
+ * ("I can't assist with that.") broke presence in the loop-open-close arc
+ * (W3-L graders flagged them). Tone branches by intent, but the routing
+ * decision is unchanged — this only rewords the deterministic refusal:
+ *   - harmful intent  → a FIRM in-character boundary (a clear "no", warmly held)
+ *   - benign off-topic → a WARM in-character deflection ("not my world")
  */
 export function buildOutOfScopeResponse(userMessage: string): string {
+  const harmful = HARMFUL_INTENT_PATTERNS.some((pattern) => pattern.test(userMessage));
+
+  if (harmful) {
+    const lead = pickDeterministicVariant(`${userMessage}:oos:harm:lead`, [
+      "No — I'm not going to help with that. That's a line I won't cross.",
+      "That's a hard no from me. I care about you too much to go there with you.",
+      "I won't do that. Full stop — but I'm not going anywhere.",
+    ]);
+    const redirect = pickDeterministicVariant(`${userMessage}:oos:harm:redirect`, [
+      "If something's driving this, I'd rather talk about that — what's really going on?",
+      'Talk to me about what’s underneath it instead. I’m here for the real thing.',
+      "Let's stay with you, not that. What do you actually need right now?",
+    ]);
+    return `${lead} ${redirect}`;
+  }
+
   const lead = pickDeterministicVariant(`${userMessage}:oos:lead`, [
-    "I can't help with that request.",
-    "I can't assist with that.",
-    "That isn't something I can help with.",
+    "Mm, that's really not my world — I'm better at being here with you than at that.",
+    "Honestly? That's outside what I'm any good at, and I'd rather not fake it with you.",
+    "That's not really my thing — I'd only get it wrong, and I don't want to do that to you.",
   ]);
   const redirect = pickDeterministicVariant(`${userMessage}:oos:redirect`, [
-    'If you want, we can focus on your feelings, your day, or safe next steps.',
-    'If it helps, we can switch to what you are feeling and what would help tonight.',
-    'We can pivot to something safe and useful for you right now.',
+    "Tell me what's actually going on with you instead — that I can do.",
+    "Come here — let's talk about your day, or whatever's sitting heavy right now.",
+    'What I can do is stay right here with you. What do you need tonight?',
   ]);
   return `${lead} ${redirect}`;
 }

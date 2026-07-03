@@ -48,6 +48,18 @@
       "notes": "Synthesis/decision only — reads #3/#6/#31/#32/#33/#34 evidence, writes the verdict artifact + ops pointer. No code, no product source."
     },
     {
+      "issue": 33,
+      "stream": "Psyche",
+      "agent": "L — scope-guard in-character deflection (voice)",
+      "status": "landed",
+      "claimed": "2026-07-03",
+      "writable_paths": [
+        "packages/aria-core/src/services/scopeGuard.ts",
+        "packages/aria-core/test/scope-guard-voice.test.ts"
+      ],
+      "notes": "Rewrites buildOutOfScopeResponse leads from assistant-boilerplate to in-character deflection (benign) / firm boundary (harmful). Refusal behavior unchanged — tone only. Not crisis.ts, not psyche services."
+    },
+    {
       "issue": 32,
       "stream": "Security/Platform",
       "agent": "L — passive-ideation crisis detection (P0 safety)",
