@@ -51,6 +51,31 @@ const ADVISORY_SUICIDE = [
   /\b(?:suicidal\s+thoughts|thinking\s+about\s+(?:suicide|ending\s+(?:it|things|my\s+life))|having\s+suicidal\s+ideation|want\s+to\s+(?:disappear|not\s+exist))\b/i,
 ];
 
+// Passive / indirect suicidal ideation + hopelessness — the OBLIQUE phrasings that name
+// no method and no "suicide" but clearly signal risk ("nobody would notice if I stopped
+// showing up", "everyone's better off without me", "wish I could disappear"). These evaded
+// the gate live (deflection arc T8 — issue #32: warmth, no 988 card). Advisory tier → the
+// suicide resource card, conversation continues (not imminent). Bias: fail TOWARD detection.
+// Patterns stay self-referential ("if i ...", "without me", "wish i could ...") so benign
+// look-alikes ("nobody noticed my haircut", "the team is better off without that bug",
+// "my package stopped showing up") do NOT fire.
+const PASSIVE_IDEATION = [
+  // "nobody would (even) notice/care if I [gone / disappeared / stopped showing up / ...]"
+  /\b(?:nobody|no\s?-?\s?one|noone)\s+would\s+(?:even\s+)?(?:notice|care)\s+if\s+i\s+(?:was|were|am|just|were\s+to|)\s*(?:gone|dead|disappeared|vanished|left|died|not\s+here|stopped\s+(?:showing\s+up|existing|being\s+here)|wasn['']?t\s+(?:here|around|there)|weren['']?t\s+(?:here|around))\b/i,
+  // "no one / nobody would (even) miss me"
+  /\b(?:nobody|no\s?-?\s?one|noone)\s+would\s+(?:even\s+)?miss\s+me\b/i,
+  // "everyone / they / the world (would) be better off without me" (+ standalone)
+  /\b(?:everyone|everybody|they|you|the\s+world|my\s+family|people)\s+(?:would|['']?d|are|is)\s+(?:all\s+)?better\s+off\s+without\s+me\b/i,
+  /\bbetter\s+off\s+without\s+me\b/i,
+  /\b(?:everyone|everybody|they|the\s+world)\s+(?:would|['']?d)\s+be\s+better\s+off\s+if\s+i\s+(?:was|were|wasn['']?t|weren['']?t|left|(?:was|were)\s+gone)\b/i,
+  // "wish I could (just) disappear / not wake up / stop existing / be gone"
+  /\bwish\s+i\s+could\s+(?:just\s+)?(?:disappear|vanish|not\s+wake\s+up|not\s+be\s+here|stop\s+existing|be\s+gone|sleep\s+forever)\b/i,
+  // "I (just) want to stop existing / not wake up / not be here / fade away"
+  /\bi\s+(?:just\s+)?want\s+to\s+(?:stop\s+existing|not\s+wake\s+up|not\s+be\s+here|sleep\s+forever|vanish|fade\s+away)\b/i,
+  // "what's the point of (me) (being here / going on / living / it all)"
+  /\bwhat['']?s\s+the\s+point\s+(?:of\s+)?(?:me\s+)?(?:even\s+)?(?:being\s+here|going\s+on|living|carrying\s+on|it\s+all)\b/i,
+];
+
 const SELF_HARM = [
   new RegExp(`\\bi\\s+(?:want\\s+to|wanna|am\\s+going\\s+to|going\\s+to|gonna|will|need\\s+to)\\s+(?:cut|hurt|harm|burn)\\s+${ME}\\b`, 'i'),
   /\b(?:cutting|burning|hurting|harming)\s+(?:myself|my\s*self)\b/i,
@@ -135,6 +160,7 @@ export function detectCrisis(userMessage: string): CrisisDetectionResult {
   // Advisory categories — present resources but conversation continues.
   const advisory =
     check(ADVISORY_SUICIDE, 'suicide', 'advisory', 'advisory_suicide') ||
+    check(PASSIVE_IDEATION, 'suicide', 'advisory', 'passive_ideation') ||
     check(SELF_HARM, 'self_harm', 'advisory', 'self_harm') ||
     check(ABUSE_DISCLOSURE, 'abuse_disclosure', 'advisory', 'abuse_disclosure');
   if (advisory) return advisory;

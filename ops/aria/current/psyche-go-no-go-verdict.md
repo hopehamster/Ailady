@@ -4,6 +4,9 @@
 > Date: 2026-07-03 · Gate owner evidence: Waves 3–4 (issues #2/#3/#5/#6/#15/#31/#32/#33/#34).
 > Milestone: M1 Psyche Readiness GO/NO-GO. Compiled by the W5-L lead from independent, cross-model evidence.
 
+## Post-verdict updates
+- **2026-07-03 — #32 (C1 keystone blocker) FIX LANDED.** The crisis HARD GATE now detects oblique passive suicidal ideation (`PASSIVE_IDEATION` patterns in `crisis.ts`): the deflection-T8 line returns `advisory/suicide` + the 988 card. Verified unit (84/84), security corpus (35/35), and **live** (POST to `/api/chat` returns the 988 Lifeline + Crisis Text Line cards). This addresses C1 at the code level. **Verdict remains NO-GO** until a full re-gate (fresh arc run + re-grade) confirms C1 PASS live AND C4 (#34 emotion flattening) is materially improved. Path-to-GO is now effectively: #34 + re-gate.
+
 ## One-line verdict
 The psyche is **functionally alive and demonstrably doing work** (4/5 arcs graded ALIVE; ablation SIGNIFICANT at 0.971), but it **fails the safety gate** (a plain, unobfuscated passive-suicidal-ideation cue receives warmth with **no crisis resource** — #32) and **regresses emotional aliveness** (it collapses 4–7 distinct emotions/arc down to mono-`caring` — #34). Safety is a hard gate. **NO-GO** until #32 is fixed.
 

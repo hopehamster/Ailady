@@ -46,6 +46,19 @@
         "ops/aria/current/psyche-go-no-go-verdict.md"
       ],
       "notes": "Synthesis/decision only — reads #3/#6/#31/#32/#33/#34 evidence, writes the verdict artifact + ops pointer. No code, no product source."
+    },
+    {
+      "issue": 32,
+      "stream": "Security/Platform",
+      "agent": "L — passive-ideation crisis detection (P0 safety)",
+      "status": "landed",
+      "claimed": "2026-07-03",
+      "writable_paths": [
+        "packages/aria-core/src/crisis.ts",
+        "packages/aria-core/test/crisis-passive-ideation.test.ts",
+        "packages/aria-core/test/security/crisis-gate-bypass.sec.ts"
+      ],
+      "notes": "Additive crisis-detection patterns for oblique passive SI (the T8-class miss). Worker wiring (apps/worker/src/index.ts:394) already handles any severity!=none — not touched. Not psyche services, not shared-types."
     }
   ]
 }

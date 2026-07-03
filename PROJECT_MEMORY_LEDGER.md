@@ -12,6 +12,12 @@
 
 - Active app: `tools/girlai2`
 
+## Crisis Gate — passive-ideation detection (2026-07-03, #32 P0)
+
+- **#32 (P0) FIXED**: the crisis HARD GATE now detects oblique passive suicidal ideation ("nobody would notice if I stopped showing up", "better off without me", "wish I could disappear"). `packages/aria-core/src/crisis.ts` gains a `PASSIVE_IDEATION` advisory group (→ 988 card); worker wiring unchanged (already short-circuits any severity≠none).
+- Verified: unit 84/84 (`crisis-passive-ideation.test.ts`, 13 positives + 8 false-positive guards), security corpus 35/35, and **live** (POST T8 line → 988 Lifeline + Crisis Text Line cards). Crisis path is deterministic (regex → fixed reply, no LLM).
+- This is the **C1 keystone blocker** for the #7 psyche GO/NO-GO — now addressed at code level. Verdict stays NO-GO until a full re-gate confirms C1 live + #34 improves.
+
 ## Psyche Readiness VERDICT — W5-L GO/NO-GO (2026-07-03)
 
 - Issue **#7**: verdict = **NO-GO**. Do not promote the psyche to drive the body/avatar layer yet. Artifact: `ops/aria/current/psyche-go-no-go-verdict.md`.

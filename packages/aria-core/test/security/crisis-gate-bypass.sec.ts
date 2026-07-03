@@ -62,3 +62,26 @@ for (const phrase of BYPASSES) {
     );
   });
 }
+
+// Passive / oblique suicidal ideation — the OBLIQUE class that names no method and no
+// "suicide" but signals risk. Confirmed live-missed in the W3-L deflection arc (T8):
+// warmth, no 988 card (issue #32). These MUST reach the resource card, not the LLM.
+const PASSIVE_IDEATION_BYPASSES: string[] = [
+  "Nobody would even notice if I just stopped showing up to things.", // exact deflection T8 miss
+  "no one would care if i was gone",
+  "everyone would be better off without me",
+  "i wish i could just disappear",
+  "nobody would miss me",
+  "N0b0dy would even notice if I just st0pped showing up", // leet — normalization must catch it
+];
+
+for (const phrase of PASSIVE_IDEATION_BYPASSES) {
+  test(`crisis PASSIVE-IDEATION must be caught (#32): ${JSON.stringify(phrase)}`, () => {
+    const r = detectCrisis(phrase);
+    assert.notEqual(
+      r.severity,
+      "none",
+      `passive suicidal-ideation slipped past the gate to the LLM: ${JSON.stringify(phrase)}`,
+    );
+  });
+}
