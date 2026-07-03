@@ -38,14 +38,18 @@
     {
       "issue": 7,
       "stream": "Psyche",
-      "agent": "L — W5-L GO/NO-GO verdict gate",
+      "agent": "L — W5-L GO/NO-GO re-gate after #32/#33/#34 fixes",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
-        "scripts/psyche/output/GO-NO-GO-*",
+        "scripts/psyche/output/arcs-regate-*",
+        "scripts/psyche/output/aliveness-report-regate-*",
+        "scripts/psyche/output/regression-regate-*",
+        "scripts/psyche/output/ablation-regate-*",
+        "scripts/psyche/regression/baseline.json",
         "ops/aria/current/psyche-go-no-go-verdict.md"
       ],
-      "notes": "Synthesis/decision only — reads #3/#6/#31/#32/#33/#34 evidence, writes the verdict artifact + ops pointer. No code, no product source."
+      "notes": "Re-gate: fresh arcs + re-grade + re-ablate + re-compile after the three code-level blockers landed. Re-freezes baseline to the post-fix known-good. Read-only over the harness. No product source."
     },
     {
       "issue": 34,

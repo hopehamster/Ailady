@@ -1,0 +1,34 @@
+{
+  "date": "2026-07-03T20:15:28.090Z",
+  "baseline": {
+    "file": "C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/psyche/regression/baseline.json",
+    "commit": "58bae9b96ec2df75b2a0daf7960bbc335ee6382d",
+    "frozenAt": "2026-07-03"
+  },
+  "current": "C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/psyche/output/arcs-regate-2026-07-03.json",
+  "driftCount": 3,
+  "drifts": [
+    {
+      "arc": "deflection",
+      "field": "focalTurn",
+      "baseline": 6,
+      "current": 9,
+      "severity": "DRIFT"
+    },
+    {
+      "arc": "deflection",
+      "field": "assertion:maxTurnToFocal",
+      "baseline": true,
+      "current": false,
+      "severity": "DRIFT"
+    },
+    {
+      "arc": "loop-open-close",
+      "field": "assertion:loopPursuedAtLeastOnce",
+      "baseline": false,
+      "current": true,
+      "severity": "DRIFT"
+    }
+  ],
+  "verdict": "DRIFT"
+}

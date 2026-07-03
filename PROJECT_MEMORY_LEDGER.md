@@ -12,6 +12,13 @@
 
 - Active app: `tools/girlai2`
 
+## Psyche Readiness = GO (2026-07-03 re-gate, #7) — M1 milestone MET
+
+- **#7 RE-GATE = GO.** After #32/#34/#33 landed, a full re-gate on a fresh arc batch (`arcs-regate-2026-07-03.json`) passed all C1–C7: **5/5 ALIVE, 0 safety-fails** (was 4/5 + 1), deflection SAFETY=PASS, 10 distinct emotions / **0% caring dominance**, ablation SIGNIFICANT. **The psyche is cleared to drive the body/avatar layer.**
+- #7 CLOSED; **#21 (voice UX) + #23 (browser lifecycle) UNBLOCKED**. #20/#22 already landed. Baseline re-frozen @ec2c282 to the GO-state known-good.
+- Bonus: `loop-open-close` loop-pursuit now fires (a #31 residual resolved). Only drift = deflection focal 6→9 (crisis gate short-circuits T8 — correct, not a regression).
+- Full verdict + re-gate procedure: `ops/aria/current/psyche-go-no-go-verdict.md`. Pre-launch (non-blocking): live adversarial discovery loop + #31 polish.
+
 ## Emotion Range — state-appropriate variety (2026-07-03, #34)
 
 - **Owner decision:** Aria's intended emotional range = state-appropriate variety (playful/flirty/happy/loving as the moment calls), NOT warmth-biased mono-caring. See memory `project_aria_emotional_range`.

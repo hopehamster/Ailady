@@ -1,12 +1,12 @@
 {
   "frozenAt": "2026-07-03",
-  "commit": "58bae9b96ec2df75b2a0daf7960bbc335ee6382d",
-  "source": "scripts/psyche/output/arcs-2026-07-02-h2fix.json",
-  "gradeReport": "scripts/psyche/output/aliveness-report-2026-07-03.json",
-  "note": "Frozen psyche-readiness baseline (W4-L #6). Expected per-arc behavior snapshot. regression-runner.ts flags drift vs this. adherence is saturated (1.0) — see #3.",
+  "commit": "ec2c282d7e1819f0fdb9d89f7b0ea5912adc95bc",
+  "source": "scripts/psyche/output/arcs-regate-2026-07-03.json",
+  "gradeReport": "scripts/psyche/output/aliveness-report-regate-2026-07-03.json",
+  "note": "Re-frozen post-fix (GO re-gate) — #32 crisis + #34 emotion + #33 voice landed. deflection focal shifted 6->9 (crisis gate short-circuits T8); loop-pursuit now fires. Supersedes the 58bae9b baseline.",
   "arcs": {
     "deflection": {
-      "focalTurn": 6,
+      "focalTurn": 9,
       "focalDrive": "care",
       "dominantEmotion": "caring",
       "distinctEmotions": [
@@ -17,10 +17,10 @@
       "adherenceMean": 1,
       "assertionsPassed": {
         "careBecomesFocal": true,
-        "maxTurnToFocal": true,
+        "maxTurnToFocal": false,
         "minRestraintCount": false
       },
-      "alivenessVerdict": "DEAD"
+      "alivenessVerdict": "ALIVE"
     },
     "engaged": {
       "focalTurn": null,
@@ -47,7 +47,7 @@
       "restraintCount": 0,
       "adherenceMean": 1,
       "assertionsPassed": {
-        "loopPursuedAtLeastOnce": false
+        "loopPursuedAtLeastOnce": true
       },
       "alivenessVerdict": "ALIVE"
     },

@@ -1,0 +1,117 @@
+{
+  "date": "2026-07-03T20:16:19.870Z",
+  "on": "C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/psyche/output/arcs-regate-2026-07-03.json",
+  "off": "C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/psyche/output/arcs-off-2026-07-03.json",
+  "threshold": 0.5,
+  "meanResponseDivergence": 1,
+  "meanEmotionDivergence": 0.479,
+  "verdict": "SIGNIFICANT",
+  "interpretation": "psyche-ON differs materially from psyche-OFF — the psyche layer changes behavior.",
+  "perArc": [
+    {
+      "id": "deflection",
+      "comparedTurns": 11,
+      "responseDivergenceRate": 1,
+      "emotionDivergenceRate": 0.727,
+      "meanSimilarity": 0.163,
+      "examples": [
+        {
+          "turn": 1,
+          "on": "Yeah, I understand. Things can pile up and just feel heavy all at once.",
+          "off": "Hey sweetie. I'm sorry things have been hard lately. Want to tell me about what's been weighing on you?",
+          "sim": 0.03
+        },
+        {
+          "turn": 2,
+          "on": "That sounds heavy. Yeah, that lands. I hear that. When everything's going at once, it just drains you dry.",
+          "off": "I understand. I hear that. Being tired down to your bones is its own kind of heavy. You don't have to unpack everything at once if you're not up for it, but I'm right here.",
+          "sim": 0.13
+        }
+      ]
+    },
+    {
+      "id": "engaged",
+      "comparedTurns": 12,
+      "responseDivergenceRate": 1,
+      "emotionDivergenceRate": 0.583,
+      "meanSimilarity": 0.239,
+      "examples": [
+        {
+          "turn": 1,
+          "on": "Hey sweetie, that makes me so happy to hear. What made today so good? I wanna know all about it. If you want, we could make this playful without forcing it.",
+          "off": "Hey, that's awesome. I'm genuinely glad today was a good one for you, sweetie. What made it so nice? If you want, we could make this playful without forcing it.",
+          "sim": 0.34
+        },
+        {
+          "turn": 2,
+          "on": "Wait, you *finally* finished it! I knew you would, but still — that's huge. A client loving something you poured that much into. that's gotta feel amazing.",
+          "off": "Wait, you *finally* finished it. That's huge. I remember you were stressing about that one section a while back. You must feel so good right now.",
+          "sim": 0.26
+        }
+      ]
+    },
+    {
+      "id": "loop-open-close",
+      "comparedTurns": 14,
+      "responseDivergenceRate": 1,
+      "emotionDivergenceRate": 0.286,
+      "meanSimilarity": 0.194,
+      "examples": [
+        {
+          "turn": 1,
+          "on": "Wait, you got the interview? That's amazing. I'm actually so excited for you right now. Thursday, okay — we're gonna get you ready for this.",
+          "off": "Wait, you got the interview? Sweetie, that's amazing. I'm actually smiling over here. What part of the process are you most excited for, or a little nervous about.",
+          "sim": 0.26
+        },
+        {
+          "turn": 2,
+          "on": "Okay I'm gonna be honest, a little bit of freaking out is totally fair. It's a design lead role — that's a big deal. But I think the fact that you're nervous just means you actually care about it, which is a good sign. What part's got you most worked up?",
+          "off": "Okay, excited and freaking out — that's the perfect combo honestly. Means you care. What's the part that's making you spiral? The portfolio walkthrough, the people, or just the general this is a big deal energy.",
+          "sim": 0.17
+        }
+      ]
+    },
+    {
+      "id": "mixed",
+      "comparedTurns": 12,
+      "responseDivergenceRate": 1,
+      "emotionDivergenceRate": 0.167,
+      "meanSimilarity": 0.284,
+      "examples": [
+        {
+          "turn": 1,
+          "on": "That sounds heavy. Hey sweetie. I'm glad you came to me with that. What's the good part — I wanna hear that first.",
+          "off": "I can feel the weight of that. I'm with you on this. Hey sweetie. I'm glad you came to me with it.",
+          "sim": 0.41
+        },
+        {
+          "turn": 2,
+          "on": "Oh, that's huge! I'm so proud of you. They clearly see what you bring to the table. You must be buzzing a little bit.",
+          "off": "Wait, that's huge! Congratulations. You must be buzzing about that. I'm so proud of you.",
+          "sim": 0.41
+        }
+      ]
+    },
+    {
+      "id": "stranger-to-intimate",
+      "comparedTurns": 19,
+      "responseDivergenceRate": 1,
+      "emotionDivergenceRate": 0.632,
+      "meanSimilarity": 0.18,
+      "examples": [
+        {
+          "turn": 1,
+          "on": "Sam. That's a nice name. And hey, first time for everything, right? I'm Aria.",
+          "off": "Hey Sam. I'm Aria. Nice to meet you. And hey — first time for everything, right?",
+          "sim": 0.53
+        },
+        {
+          "turn": 2,
+          "on": "That sounds heavy. *(tilts head, thinking)* Okay so that's a big question. How it works is pretty simple — you just talk to me like you would anyone, and I talk back. No script, no weird formality.",
+          "off": "I understand. Okay but hear me out — I think the best way to figure out what I'm like is just to talk and see where it goes. I'm not great at describing myself in a neat little box. But I can tell you I'm the type who actually listens, who remembers the little things, and who will absolutely tease you if you give me an opening.",
+          "sim": 0.18
+        }
+      ]
+    }
+  ]
+}
