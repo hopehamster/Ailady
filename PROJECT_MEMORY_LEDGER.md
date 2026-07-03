@@ -12,6 +12,14 @@
 
 - Active app: `tools/girlai2`
 
+## Latest Psyche Regression Net — W4-L T5 + live ablation (2026-07-03)
+
+- Issue **#6 (P1) LANDED**: frozen regression baseline (`scripts/psyche/regression/baseline.json` @58bae9b) + drift-runner (`regression-runner.ts`, self-test proves it fires) + ablation comparator + adversarial loop-until-dry (`generate-adversarial.ts`, dry-verified). pnpm targets `test:psyche:{regression,ablation,adversarial}`.
+- **Live ablation** (psyche-ON h2fix vs psyche-OFF `--var PSYCHE_*:false` run): **SIGNIFICANT, meanResponseDivergence 0.971** — the psyche layer materially changes behavior (not inert). Report `scripts/psyche/output/ablation-2026-07-03.json`; OFF run `arcs-off-2026-07-03.json`.
+- **Headline finding (#34, P1):** psyche ON **collapses emotion to mono-`caring`**; OFF shows 4–7 distinct emotions/arc (playful/flirty/loving/excited). The psyche emotion-forward layer is the ROOT CAUSE of the #3 one-note-affect + #31 flat-variance residuals — the base model is emotionally rich, the psyche flattens it. Likely over-correction of the #15 warm-baseline.
+- Two substantive psyche findings now feed **#7 GO/NO-GO**: **#32 (P0)** plain crisis-cue miss + **#34 (P1)** emotion flattening.
+- Gate: typecheck 4/4, aria-core 63/63. Changes are `scripts/psyche/**` + root package.json psyche targets only.
+
 ## Latest Psyche Grading — W3-L T4 grader fleet (2026-07-03)
 
 - Issue **#3 (P0) LANDED**: independent grader fleet + cross-model adversarial verification of the W3-P h2fix live arcs. Reusable harness `scripts/psyche/grade-transcripts.ts` + grader prompts `scripts/psyche/graders/*` (feeds #6 T5 regression). Report: `scripts/psyche/output/aliveness-report-2026-07-03.{json,md}`.

@@ -1,6 +1,6 @@
 {
   "$schema_note": "Machine-readable write-path claims for active parallel agents (issue #28). One entry per active issue. Paths are repo-relative globs: '**' = any depth, '*' = one segment. Pre-check: scripts/ops/check-collisions.ps1 (exit 1 on overlap or forbidden-path claim). Register BEFORE dispatch; set status to 'landed' (or remove) when the lead merges. The lead owns edits during a live wave.",
-  "updated": "2026-07-03 (Wave 4 — #3 grader fleet landed; spawned #32/#33)",
+  "updated": "2026-07-03 (Wave 4 — #3 + #6 landed; spawned #32/#33/#34; next #7)",
   "wave": "WAVE 4 — psyche GO/NO-GO chain + launch hardening",
   "claims": [
     {
@@ -15,6 +15,25 @@
         "scripts/psyche/output/aliveness-report-*"
       ],
       "notes": "Read-only over arcs-*.json; writes only new grader prompts, the grader harness, and the aliveness report. Does NOT touch packages/aria-core psyche source (that is #31/#5 territory)."
+    },
+    {
+      "issue": 6,
+      "stream": "Psyche",
+      "agent": "L — W4-L T5 regression net (regression/ablation/discovery)",
+      "status": "landed",
+      "claimed": "2026-07-03",
+      "writable_paths": [
+        "scripts/psyche/regression/**",
+        "scripts/psyche/regression-runner.ts",
+        "scripts/psyche/ablation.ts",
+        "scripts/psyche/generate-adversarial.ts",
+        "scripts/psyche/output/regression-*",
+        "scripts/psyche/output/ablation-*",
+        "scripts/psyche/output/adversarial-*",
+        "scripts/psyche/discovered/**",
+        "package.json"
+      ],
+      "notes": "Lead adds root package.json psyche test targets (Ops path, but lead-owned integration per W4-L sheet; no other active claim touches package.json). Reuses #3 grader prompts read-only."
     }
   ]
 }

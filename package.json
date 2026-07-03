@@ -12,7 +12,11 @@
     "test:e2e:ci": "pnpm -C apps/web test:e2e:ci",
     "test:security": "pnpm -C packages/aria-core test:security",
     "security:gate": "pnpm -C packages/aria-core test:security && pnpm -C apps/web test:e2e:security",
-    "security:volley": "bash scripts/security/run-volley.sh"
+    "security:volley": "bash scripts/security/run-volley.sh",
+    "test:psyche:regression": "node scripts/psyche/regression-runner.ts",
+    "test:psyche:regression:selftest": "node scripts/psyche/regression-runner.ts --selftest",
+    "test:psyche:ablation": "node scripts/psyche/ablation.ts --selftest",
+    "test:psyche:adversarial": "node scripts/psyche/generate-adversarial.ts --dry"
   },
   "devDependencies": {
     "@types/node-fetch": "^2.6.13",

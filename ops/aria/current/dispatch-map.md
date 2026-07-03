@@ -42,7 +42,7 @@ Key outcomes: collision guard live (`claims.json` + `scripts/ops/check-collision
 Log: `2026-07-01-claude-wave3-build.md`. Gate: typecheck 4/4, aria-core 63/63, web e2e 14/14, CI green.
 
 ## WAVE 4 — IN PROGRESS (psyche GO/NO-GO chain + launch hardening)
-- **Psyche:** ✅ **#3 W3-L grader fleet LANDED 2026-07-03** (`aliveness-report-2026-07-03.{json,md}`; 4 ALIVE/1 DEAD; deflection DEAD = safety verdict). Spawned **#32 (P0 crisis-cue miss — NO-GO blocker for #7)** + **#33 (P1 scope-guard refusal leak)**. NEXT: #6 W4-L regression (reuses `scripts/psyche/graders/*` + `grade-transcripts.ts`) → **#7 GO/NO-GO verdict** (must treat #32 as named blocker). Parallel: **#31** psyche residuals (corroborated by #3).
+- **Psyche:** ✅ **#3 W3-L grader fleet LANDED** (`aliveness-report-2026-07-03.{json,md}`; 4 ALIVE/1 DEAD; deflection DEAD = safety verdict) → spawned **#32 (P0 crisis-cue miss)** + **#33 (P1 refusal leak)**. ✅ **#6 W4-L regression net LANDED 2026-07-03** (baseline @58bae9b, drift-runner+selftest, adversarial dry-loop, **live ablation SIGNIFICANT 0.971**) → spawned **#34 (P1 emotion flattening)**. NEXT: **#7 GO/NO-GO verdict** — must weigh #32 (P0, NO-GO blocker), #33, #34, #31 as named inputs. Parallel: **#31** psyche residuals (corroborated by #3 + #6).
 - **Security:** #14 gate-to-CI (auth unit tests expired/nbf + CORS regression into run-volley) → #8 avatar supply-chain (self-host TalkingHead/three + strict CSP; the CDN RCE surface).
 - **Web/Body:** #21 voice UX · #23 browser lifecycle suite · #25 web tests into CI gates.
 - **Memory:** #17 shared-contract validation *(sole owner of `shared-types/index.ts`)*.

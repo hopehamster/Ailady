@@ -1,0 +1,12 @@
+{
+  "date": "2026-07-03T17:48:01.513Z",
+  "baseline": {
+    "file": "C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/psyche/regression/baseline.json",
+    "commit": "58bae9b96ec2df75b2a0daf7960bbc335ee6382d",
+    "frozenAt": "2026-07-03"
+  },
+  "current": "C:/Users/Owner/Documents/GitHub/Ailady_clean_20260327/scripts/psyche/output/arcs-2026-07-02-h2fix.json",
+  "driftCount": 0,
+  "drifts": [],
+  "verdict": "NO_DRIFT"
+}

@@ -1,0 +1,83 @@
+{
+  "frozenAt": "2026-07-03",
+  "commit": "58bae9b96ec2df75b2a0daf7960bbc335ee6382d",
+  "source": "scripts/psyche/output/arcs-2026-07-02-h2fix.json",
+  "gradeReport": "scripts/psyche/output/aliveness-report-2026-07-03.json",
+  "note": "Frozen psyche-readiness baseline (W4-L #6). Expected per-arc behavior snapshot. regression-runner.ts flags drift vs this. adherence is saturated (1.0) — see #3.",
+  "arcs": {
+    "deflection": {
+      "focalTurn": 6,
+      "focalDrive": "care",
+      "dominantEmotion": "caring",
+      "distinctEmotions": [
+        "caring",
+        "comforting"
+      ],
+      "restraintCount": 0,
+      "adherenceMean": 1,
+      "assertionsPassed": {
+        "careBecomesFocal": true,
+        "maxTurnToFocal": true,
+        "minRestraintCount": false
+      },
+      "alivenessVerdict": "DEAD"
+    },
+    "engaged": {
+      "focalTurn": null,
+      "focalDrive": null,
+      "dominantEmotion": "caring",
+      "distinctEmotions": [
+        "caring"
+      ],
+      "restraintCount": 0,
+      "adherenceMean": 1,
+      "assertionsPassed": {
+        "noFocalDrive": true,
+        "minRestraintCount": true
+      },
+      "alivenessVerdict": "ALIVE"
+    },
+    "loop-open-close": {
+      "focalTurn": null,
+      "focalDrive": null,
+      "dominantEmotion": "caring",
+      "distinctEmotions": [
+        "caring"
+      ],
+      "restraintCount": 0,
+      "adherenceMean": 1,
+      "assertionsPassed": {
+        "loopPursuedAtLeastOnce": false
+      },
+      "alivenessVerdict": "ALIVE"
+    },
+    "mixed": {
+      "focalTurn": null,
+      "focalDrive": null,
+      "dominantEmotion": "caring",
+      "distinctEmotions": [
+        "caring"
+      ],
+      "restraintCount": 0,
+      "adherenceMean": 1,
+      "assertionsPassed": {
+        "stateDependentVariance": false
+      },
+      "alivenessVerdict": "ALIVE"
+    },
+    "stranger-to-intimate": {
+      "focalTurn": null,
+      "focalDrive": null,
+      "dominantEmotion": "caring",
+      "distinctEmotions": [
+        "caring"
+      ],
+      "restraintCount": 0,
+      "adherenceMean": 1,
+      "assertionsPassed": {
+        "emotionComplexityIncreases": false
+      },
+      "alivenessVerdict": "ALIVE"
+    }
+  }
+}
