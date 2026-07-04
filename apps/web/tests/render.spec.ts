@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { test, expect } from "./fixtures/base";
 
-// Needs the self-hosted GLB (gitignored). Skip if absent (fresh clone / CI without a download step).
-const hasGlb = existsSync("public/avatars/avaturn.glb");
+// The default face is now a COMMITTED preset (public/preset/), so this always
+// exists — the avatar render tests always run (no gitignored-GLB download needed).
+const hasGlb = existsSync("public/preset/aria-default.glb");
 
 test.describe("avatar render", () => {
   test.skip(!hasGlb, "needs apps/web/public/avatars/avaturn.glb (run download-glbs.mjs)");

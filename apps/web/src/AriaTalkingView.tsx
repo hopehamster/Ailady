@@ -23,7 +23,9 @@ interface Msg {
 }
 
 const LS_KEY = "aria.avatar.preset";
-const SHOW_AVATAR = import.meta.env.DEV;
+// Her face ships to PROD now (2026-07-04): loadAvatarLibrary returns a committed
+// generic preset (public/preset/), so this is on everywhere — no longer dev-only.
+const SHOW_AVATAR = true;
 
 export function AriaTalkingView() {
   const [input, setInput] = useState("");

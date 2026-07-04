@@ -17,6 +17,13 @@ export interface AvatarPreset {
 // UI, so these local paths never ship to prod.
 const sample = (file: string) => `/avatars/${file}.glb`;
 
+// The COMMITTED generic default face (2026-07-04). Lives in public/preset/ (NOT
+// gitignored) so it ships to prod — Aria has a face WITHOUT the hand-built R2
+// library. A pre-approved sample avatar (no real-person likeness → the consent/
+// deepfake problem stays designed-out). Swap for the real Aria later (#20) by
+// pointing loadAvatarLibrary at `GET /api/avatars` over the R2 library.
+const DEFAULT_PRESET: AvatarPreset = { id: "aria", name: "Aria", glbUrl: "/preset/aria-default.glb" };
+
 const DEV_PRESETS: AvatarPreset[] = [
   { id: "ava", name: "Ava", glbUrl: sample("avaturn") },
   { id: "bri", name: "Bri", glbUrl: sample("brunette") },
@@ -34,5 +41,8 @@ const DEV_PRESETS: AvatarPreset[] = [
  *   const r = await fetch("/api/avatars"); return ((await r.json()).presets) as AvatarPreset[];
  */
 export async function loadAvatarLibrary(): Promise<AvatarPreset[]> {
-  return DEV_PRESETS;
+  // Default (dev + PROD) = the committed generic face, so she has a face everywhere.
+  // Dev also exposes the sample gallery (gitignored GLBs) for the picker/lab.
+  // PROD later: swap the body to `const r = await fetch("/api/avatars"); return (await r.json()).presets`.
+  return import.meta.env.DEV ? [DEFAULT_PRESET, ...DEV_PRESETS] : [DEFAULT_PRESET];
 }

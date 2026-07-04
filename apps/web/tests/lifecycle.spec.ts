@@ -7,7 +7,9 @@ import { test, expect } from "./fixtures/base";
 // hook, fallback UI + retry, visibilitychange start/stop, StrictMode-safe mounts).
 // The jsErrors auto-fixture additionally fails any spec on unexpected console errors.
 
-const hasGlb = existsSync("public/avatars/avaturn.glb");
+// Committed preset (public/preset/) is the default face — always present, so the
+// lifecycle specs always run.
+const hasGlb = existsSync("public/preset/aria-default.glb");
 
 const mockChat = async (page: import("@playwright/test").Page) => {
   await page.route("**/api/chat", (route) =>
@@ -88,8 +90,9 @@ test.describe("lifecycle", () => {
   test("avatar load failure: fallback UI, then retry recovers", async ({ page, talking }) => {
     test.slow(!!process.env.CI, "failed load + real load");
     // Fail ONLY the first GLB fetch; the retry must find a working network.
+    // Matches any avatar GLB (the committed /preset/ default or a dev /avatars/ sample).
     let glbRequests = 0;
-    await page.route("**/avatars/*.glb", (route) => {
+    await page.route("**/*.glb", (route) => {
       glbRequests += 1;
       if (glbRequests === 1) return route.abort("failed");
       return route.continue();
