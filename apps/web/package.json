@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --grep-invert \"@real|@visual|@security\"",
     "test:e2e:security": "playwright test --grep \"@security\"",

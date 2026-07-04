@@ -34,6 +34,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: CI,
   retries: CI ? 2 : 0,
+  // Hang discipline (#25): explicit per-test + per-action budgets so a stalled
+  // GLB load / dead worker DIES FAST with a trace (on retry) instead of eating
+  // the job timeout with nothing to debug. 45s covers the slowest legit spec
+  // (avatar paint on SwiftShader) with margin.
+  timeout: 45_000,
   // Serial. Every spec mounts the avatar (a 13.8MB self-hosted GLB); running many workers
   // in parallel saturates the Vite dev server and stalls the GLB loads past timeout. The
   // suite is small, so serial is both reliable and fast enough.
@@ -47,6 +52,11 @@ export default defineConfig({
     trace: "on-first-retry",
     video: "on-first-retry",
     screenshot: "only-on-failure",
+    // #25 hang discipline: individual actions/navigations fail inside the test
+    // timeout so the failure names the stalled step (with trace) rather than
+    // the whole test evaporating on a generic timeout.
+    actionTimeout: 15_000,
+    navigationTimeout: 20_000,
   },
   projects: [
     {

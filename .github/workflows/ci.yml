@@ -55,8 +55,21 @@ jobs:
       - name: Unit tests (all workspace packages)
         run: pnpm -r --if-present test
 
+      # #14: files are listed EXPLICITLY in test:security (not a glob) — node exits
+      # nonzero on a missing file, so renamed/moved security suites FAIL the gate
+      # instead of silently matching nothing (empty glob exits 0; verified).
       - name: Security unit gate (deterministic half of `pnpm security:gate`)
-        run: pnpm -C packages/aria-core test:security
+        run: pnpm -C packages/aria-core test:security 2>&1 | tee security-gate.log
+
+      # #14: archive the security output as evidence on EVERY run (not just failure).
+      - name: Upload security gate log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-gate-log
+          path: security-gate.log
+          retention-days: 30
+          if-no-files-found: warn
 
   e2e:
     name: Web E2E (Playwright, mocked backbone)
@@ -82,7 +95,8 @@ jobs:
 
       # Avatar GLBs are gitignored (30MB; see .gitignore) — the render/mood specs
       # need them, so CI pulls them from the private `ci-assets-v1` release.
-      # Replaced by R2 self-hosting at #8.
+      # (#8 self-hosted the ENGINE — three/TalkingHead under public/vendor, committed;
+      # the GLB avatar ASSETS move to R2 with #20 once the prod library exists.)
       - name: Download avatar assets (gitignored GLBs)
         env:
           GH_TOKEN: ${{ github.token }}
