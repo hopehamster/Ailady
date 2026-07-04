@@ -7,16 +7,17 @@
     <meta name="theme-color" content="#0A1628" />
     <meta name="description" content="Aria — your companion, always here." />
     <title>Aria</title>
-    <!-- `three` is the runtime peer of TalkingHead (which TalkingHeadDriver loads by a
-         SHA-pinned CDN URL). These npm specifiers are pinned to the IMMUTABLE version
-         three@0.180.0 (npm versions can't be republished). Verified in spikes/avatar-derisk/.
-         TODO(prod, pre-launch): self-host three + talkinghead from our own origin/R2,
-         drop this importmap, and add a strict CSP `script-src`. Tracked in the security gate. -->
+    <!-- SELF-HOSTED (#8, 2026-07-04): `three` (the runtime peer of TalkingHead) and the
+         TalkingHead engine are served from OUR origin — /public/vendor/ — vendored from the
+         immutable npm three@0.180.0 tgz + the SHA-pinned TalkingHead commit 67a210b. No CDN
+         module loading remains (the June volley's one MEDIUM: a CDN ESM is an RCE surface
+         for an intimate-companion app). Strict CSP ships via public/_headers (prod);
+         the Vite dev server stays CSP-free for HMR. -->
     <script type="importmap">
       {
         "imports": {
-          "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm",
-          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+          "three": "/vendor/three/three.module.js",
+          "three/addons/": "/vendor/three/addons/"
         }
       }
     </script>

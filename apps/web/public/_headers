@@ -1,13 +1,15 @@
 # Cloudflare Pages response headers for the deployed web app (PROD only — Vite dev
 # does not serve this, so HMR is unaffected). Audit 2026-06-22 F3/F5.
 #
-# CSP bounds the script surface to our own origin + the pinned jsDelivr CDN (where
-# three + TalkingHead currently load from), and locks down everything else. The
-# 'unsafe-inline' on script-src is the interim cost of the inline <importmap>;
-# the FULL fix is to self-host three + TalkingHead, drop the importmap, and tighten
-# script-src to 'self' (no unsafe-inline, no CDN) — tracked as the F3 pre-launch item.
+# F3 CLOSED (#8, 2026-07-04): three + TalkingHead are now SELF-HOSTED under
+# /vendor/ (immutable npm three@0.180.0 + SHA-pinned TalkingHead 67a210b), so
+# script-src drops the jsDelivr CDN entirely and replaces 'unsafe-inline' with
+# the ONE hash of the inline <importmap> (importmaps must be inline). Recompute
+# the hash when the importmap changes:
+#   node -e "const m=require('fs').readFileSync('dist/index.html','utf8').match(/<script type=\"importmap\">([\s\S]*?)<\/script>/);console.log('sha256-'+require('crypto').createHash('sha256').update(m[1]).digest('base64'))"
+# connect-src keeps https:/wss: for the LiveAvatar (LiveKit) streaming path.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'sha256-nAG3xy0rRET2ecuPDHRx6qjQE+p+98x1xfv8G0NqT2c='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY

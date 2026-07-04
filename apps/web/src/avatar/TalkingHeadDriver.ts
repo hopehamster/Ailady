@@ -2,16 +2,22 @@ import type { AvatarDriver, AvatarSpeakInput } from "./AvatarDriver";
 import { bodyPlanFor, type TalkingHeadMood } from "./emotionMap";
 
 // Primary driver: Avaturn T2 GLB rendered client-side via TalkingHead.js (Three.js).
-// Proven in spikes/avatar-derisk/. TalkingHead is loaded at runtime from the CDN by its
-// FULL URL (via a variable, so neither Vite's dep scanner nor TS tries to resolve it as a
-// bundled module). Its internal `import ... from "three"` resolves through the document
-// importmap in index.html. TODO(prod): self-host this instead of the CDN.
-// Pinned to the immutable v1.7.0 COMMIT SHA (not the movable @1.7 tag) so the upstream
-// can't be force-moved under us — supply-chain hardening (security review 2026-06-22).
-// TODO(prod, pre-launch): self-host this + three from our own origin/R2 and add a strict
-// CSP; a CDN module is a remote-code-execution surface for an intimate-companion app.
-const TALKINGHEAD_URL =
-  "https://cdn.jsdelivr.net/gh/met4citizen/TalkingHead@67a210b91486a42e58d38fd5682fbfc6754f67bd/modules/talkinghead.mjs";
+// Proven in spikes/avatar-derisk/. SELF-HOSTED (#8, 2026-07-04): the engine is served
+// from OUR origin at /vendor/talkinghead/ (vendored from the immutable TalkingHead
+// commit 67a210b, the same SHA previously CDN-pinned), alongside its lipsync-en.mjs
+// (dynamically imported relative to the engine's own URL). Loaded via a variable so
+// neither Vite's dep scanner nor TS tries to resolve it as a bundled module; its
+// internal `import ... from "three"` resolves through the LOCAL importmap in
+// index.html (/vendor/three/). No CDN module loading remains — the June volley's
+// MEDIUM (CDN ESM = an RCE surface) is closed; strict CSP ships via public/_headers.
+//
+// URL is built at RUNTIME from window.location.origin: Vite rewrites root-relative
+// dynamic imports (`?import`) and refuses to serve /public files as modules, but it
+// leaves absolute URLs alone (which is why the CDN form worked). A runtime-computed
+// absolute same-origin URL + @vite-ignore => a raw native import the browser fetches
+// directly from /public, with the importmap resolving its bare `three` specifiers.
+const talkingHeadUrl = (): string =>
+  `${window.location.origin}/vendor/talkinghead/talkinghead.mjs`;
 
 export class TalkingHeadDriver implements AvatarDriver {
   private head: any = null;
@@ -23,7 +29,7 @@ export class TalkingHeadDriver implements AvatarDriver {
 
   async mount(container: HTMLElement): Promise<void> {
     this.container = container;
-    const mod: any = await import(/* @vite-ignore */ TALKINGHEAD_URL);
+    const mod: any = await import(/* @vite-ignore */ talkingHeadUrl());
     const TalkingHead = mod.TalkingHead;
     this.head = new TalkingHead(container, {
       // Unused until Cartesia: we never call speakText(), so no TTS key ships client-side.
