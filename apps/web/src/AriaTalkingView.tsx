@@ -35,6 +35,8 @@ export function AriaTalkingView() {
   // whether the avatar GLB loaded. Read via [data-aria-emotion].
   const [lastEmotion, setLastEmotion] = useState<string>("neutral");
   const [lastIntensity, setLastIntensity] = useState<number>(0.2);
+  // #24 retry affordance: the last user text that failed to send, so the UI can offer "Try again".
+  const [retryText, setRetryText] = useState<string | null>(null);
   const driverRef = useRef<AvatarDriver | null>(null);
 
   // Load the chosen face — the same preset "Create Aria" persists, so the face carries over.
@@ -52,11 +54,16 @@ export function AriaTalkingView() {
     };
   }, []);
 
-  async function send() {
-    const text = input.trim();
+  async function send(retry?: string) {
+    const text = (retry ?? input).trim();
     if (!text || busy) return;
-    setInput("");
-    setMsgs((m) => [...m, { who: "you", text }]);
+    // Fresh send: clear the box + show the user's bubble. Retry: the bubble is already
+    // there, so we just re-attempt the same text.
+    if (!retry) {
+      setInput("");
+      setMsgs((m) => [...m, { who: "you", text }]);
+    }
+    setRetryText(null);
     setBusy(true);
 
     // Resume the AudioContext INSIDE the user gesture (browser autoplay policy).
@@ -80,11 +87,15 @@ export function AriaTalkingView() {
         method: "POST",
         headers: { "content-type": "application/json", ...devHeaders() },
         body: JSON.stringify(req),
+        // #24 slow-request state: a stalled request aborts → chatThrownFailure() network copy.
+        signal: AbortSignal.timeout(30_000),
       });
       const data = (await r.json().catch(() => null)) as ChatResponse | null;
       if (!r.ok || !data || data.success === false) {
         const failure = chatHttpFailure(r.status, r.headers.get("retry-after"));
         setMsgs((m) => [...m, { who: "aria", text: failure.message }]);
+        // Auth/banned aren't retryable in place (session gone / conversation closed); the rest are.
+        if (failure.kind !== "auth" && failure.kind !== "banned") setRetryText(text);
         return;
       }
 
@@ -111,8 +122,12 @@ export function AriaTalkingView() {
         }
       }
     } catch (e) {
-      console.error("chat send failed:", e);
+      // Handled + surfaced to the user (warm copy + retry) — a warning, not an error, so it
+      // doesn't read as a crash (mirrors the TTS catch). The jsErrors test fixture treats
+      // console.error as a failure; a caught, user-recovered network fault isn't one.
+      console.warn("chat send failed:", e);
       setMsgs((m) => [...m, { who: "aria", text: chatThrownFailure(e).message }]);
+      setRetryText(text); // network/timeout/abort — offer a retry
     } finally {
       setBusy(false);
     }
@@ -157,6 +172,26 @@ export function AriaTalkingView() {
           </div>
         ))}
       </div>
+
+      {retryText && !busy && (
+        <div style={{ marginBottom: 8 }}>
+          <button
+            onClick={() => void send(retryText)}
+            data-testid="retry-send"
+            style={{
+              padding: "6px 14px",
+              borderRadius: 8,
+              border: "1px solid #C9A84C",
+              background: "transparent",
+              color: "#C9A84C",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            ↻ Try again
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8 }}>
         <input

@@ -65,4 +65,48 @@ test.describe("talking loop (mocked)", () => {
     await talking.send("hi");
     await expect(page.getByText(/give me 17 seconds/i)).toBeVisible();
   });
+
+  test("a network failure surfaces warm copy, not a crash (#24)", async ({ page, talking }) => {
+    // route.abort() throws a fetch TypeError — the same catch path a 30s timeout aborts into.
+    await page.route("**/api/chat", (route) => route.abort("failed"));
+    await talking.goto();
+    await talking.send("hi");
+    await expect(page.getByText(/can't reach you|lost you/i)).toBeVisible();
+    await expect(page.getByText(/failed to fetch|TypeError|ERR_/)).toHaveCount(0);
+  });
+
+  test("a malformed 200 response degrades gracefully, no crash (#24)", async ({ page, talking }) => {
+    await page.route("**/api/chat", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "not json at all" }),
+    );
+    await talking.goto();
+    await talking.send("hi");
+    await expect(page.getByText(/didn't get through|try once more/i)).toBeVisible();
+  });
+
+  test("a failed send offers a retry that recovers (#24)", async ({ page, talking }) => {
+    let attempt = 0;
+    await page.route("**/api/chat", (route) => {
+      attempt += 1;
+      if (attempt === 1) {
+        return route.fulfill({ status: 500, contentType: "application/json", body: '{"success":false}' });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ success: true, messageId: "m2", response: "recovered reply", emotion: "loving", emotionIntensity: 0.5 }),
+      });
+    });
+    await page.route("**/api/tts", (route) =>
+      route.fulfill({ status: 503, contentType: "application/json", body: '{"success":false}' }),
+    );
+    await talking.goto();
+    await talking.send("hi");
+    await expect(page.getByText(/hiccuped on my side/i)).toBeVisible();
+    const retry = page.getByTestId("retry-send");
+    await expect(retry).toBeVisible();
+    await retry.click();
+    await expect(page.getByText("recovered reply")).toBeVisible();
+    await expect(retry).toHaveCount(0); // retry affordance clears after a successful resend
+  });
 });
