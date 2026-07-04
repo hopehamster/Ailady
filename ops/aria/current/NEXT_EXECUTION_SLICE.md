@@ -4,23 +4,20 @@ Date: 2026-07-03
 
 ## Title
 
-Simulated-sentience psyche polish (owner-approved plan)
+Core-first app completion (owner reset 2026-07-04)
 
 ## Goal
 
-Execute the psyche-polish plan at `~/.claude/plans/i-want-psyche-polish-humble-fairy.md` — survival-rooted consensus psyche (owner's model of mind: programs, situational consensus, background-emotion programs, band-not-max), Fable-5 as brain + grader, psyche-state → words, persistent inner life, autonomous fitness loop. **Prior gates MET:** psyche GO (#7 re-gate 2026-07-03); #32/#33/#34 landed.
+Complete the shippable Aria app — the core experience + launch gates — per the **EXECUTION RESET** at the top of `~/.claude/plans/i-want-psyche-polish-humble-fairy.md`. **Psyche-polish #35–38 is DEFERRED (P2, fringe)** — psyche already passed GO (#7). Autonomous: owner at START + END only; **wall→pivot→return** (log a blocker, label `blocked`, move on, re-scan each cycle).
 
-**Execution brakes (binding, in order):** Phase -1 tracker reconcile (this update) → Phase 0 sub-issues 0B–0D, each checkpointed → **HARD STOP after Phase 2A for owner sign-off before 2B** → fitness loop stops at band or budget.
+**Core end-state:** sign in → talk → see her face → hear her voice → she remembers.
 
-The immediate queue is:
+The core-first queue (dependency-ordered; status as of 2026-07-04):
 
-1. 0B — Fable-5 preflight (Node + workerd test route) → function-time Anthropic flags → model repoint
-2. 0C — `brain-bench.ts` (synchronous, provider-tagged) + explicit flip gate + safety re-validation vs the Fable brain
-3. 0D — 🎭 coverage arcs (celebration, playful-banter, waning-bond) + Fable grader backend + blinding + crisis-turn capture + B0/B1 baselines
-4. Phase 1 — inner-state block (psyche → words)
-5. Phase 2A — continuation root + bond-vitality governor → **owner checkpoint**
-
-Parallel (unblocked by the GO): #21 voice UX, #23 browser lifecycle (Web/Body stream); #8, #14 (Security).
+- ✅ **#24 Frontend error UX** — retry + timeout + network/malformed tests (`dca41fa`, web e2e 17/17). CLOSED.
+- ⛔ **#20 Production avatar body — BLOCKED**: needs hand-built Avaturn T2 GLB assets → R2 → `GET /api/avatars` (operator task, `avatarLibrary.ts` L31-34). **Voice audibility is coupled to this** (voice uses the avatar's AudioContext). The visible core (face + voice) can't complete without these assets.
+- **Buildable next (autonomous):** #17 memory-hydration correctness → #8 self-host TalkingHead/three + strict CSP (launch gate; also un-couples the CDN) → #23/#25 lifecycle+CI tests → #14 security→CI → #26 release → #27 observability.
+- **Owner decision that unblocks the visible core:** provide/direct the avatar GLB assets, AND decide whether voice should run standalone in prod (audio-only, decouple from the face) or stay face-coupled.
 
 ## Files Allowed To Change
 
