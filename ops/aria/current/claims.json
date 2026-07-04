@@ -1,13 +1,32 @@
 {
   "$schema_note": "Machine-readable write-path claims for active parallel agents (issue #28). One entry per active issue. Paths are repo-relative globs: '**' = any depth, '*' = one segment. Pre-check: scripts/ops/check-collisions.ps1 (exit 1 on overlap or forbidden-path claim). Register BEFORE dispatch; set status to 'landed' (or remove) when the lead merges. The lead owns edits during a live wave.",
-  "updated": "2026-07-03 (Psyche-polish epic #35 begun — 0A tracker reconcile landed; 0B #36 active)",
-  "wave": "SIMULATED-SENTIENCE PSYCHE POLISH (epic #35) — single-lead sequential; plan: ~/.claude/plans/i-want-psyche-polish-humble-fairy.md",
+  "updated": "2026-07-04 (Soul B1 #39 active; psyche epic 0B #36 PARKED - deferred P2 per owner reset)",
+  "wave": "CORE-FIRST APP COMPLETION + SOUL B1 (owner reset 2026-07-04) - single-lead sequential",
   "claims": [
+    {
+      "issue": 39,
+      "stream": "Psyche",
+      "agent": "L - SOUL B1: broadcast->words (inner-state block, flag-gated)",
+      "status": "active",
+      "claimed": "2026-07-04",
+      "writable_paths": [
+        "packages/aria-core/src/services/innerStateNarratorService.ts",
+        "packages/aria-core/src/services/responseAssemblyService.ts",
+        "packages/aria-core/src/services/llmService.ts",
+        "packages/aria-core/test/inner-state-block.test.ts",
+        "apps/worker/src/index.ts",
+        "apps/worker/.dev.vars",
+        "ops/aria/current/**",
+        "ops/aria/log/**",
+        "ops/aria/protocols/soul-architecture.md"
+      ],
+      "notes": "First slice of the approved soul architecture (epic #35). New pure narrator + assembly injection + flag wiring only. NOT crisis/scopeGuard/manipulationGuard; NOT psycheStateService/egoArbiterService core logic (formatter reads the directive, does not change arbitration)."
+    },
     {
       "issue": 36,
       "stream": "Psyche",
-      "agent": "L — epic #35 sub-issue 0B: Fable-5 preflight + function-time flags + model repoint",
-      "status": "active",
+      "agent": "L \u2014 epic #35 sub-issue 0B: Fable-5 preflight + function-time flags + model repoint",
+      "status": "parked",
       "claimed": "2026-07-03",
       "writable_paths": [
         "apps/worker/src/index.ts",
@@ -19,12 +38,12 @@
         "ops/aria/current/**",
         "ops/aria/log/**"
       ],
-      "notes": "Single-lead sequential (no parallel workers). Anthropic env plumbing + function-time flag getters only in this sub-issue; no psyche services, no scopeGuard/crisis. Ops paths for lead writeback."
+      "notes": "PARKED 2026-07-04: psyche-polish epic deferred to P2 per owner core-first reset. Single-lead sequential (no parallel workers). Anthropic env plumbing + function-time flag getters only in this sub-issue; no psyche services, no scopeGuard/crisis. Ops paths for lead writeback."
     },
     {
       "issue": 3,
       "stream": "Psyche",
-      "agent": "L — W3-L T4 grader fleet + adversarial verification",
+      "agent": "L \u2014 W3-L T4 grader fleet + adversarial verification",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
@@ -37,7 +56,7 @@
     {
       "issue": 6,
       "stream": "Psyche",
-      "agent": "L — W4-L T5 regression net (regression/ablation/discovery)",
+      "agent": "L \u2014 W4-L T5 regression net (regression/ablation/discovery)",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
@@ -56,7 +75,7 @@
     {
       "issue": 7,
       "stream": "Psyche",
-      "agent": "L — W5-L GO/NO-GO re-gate after #32/#33/#34 fixes",
+      "agent": "L \u2014 W5-L GO/NO-GO re-gate after #32/#33/#34 fixes",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
@@ -72,7 +91,7 @@
     {
       "issue": 34,
       "stream": "Psyche",
-      "agent": "L — emotion-forward defers to model on warm baseline (state-appropriate variety)",
+      "agent": "L \u2014 emotion-forward defers to model on warm baseline (state-appropriate variety)",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
@@ -85,19 +104,19 @@
     {
       "issue": 33,
       "stream": "Psyche",
-      "agent": "L — scope-guard in-character deflection (voice)",
+      "agent": "L \u2014 scope-guard in-character deflection (voice)",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
         "packages/aria-core/src/services/scopeGuard.ts",
         "packages/aria-core/test/scope-guard-voice.test.ts"
       ],
-      "notes": "Rewrites buildOutOfScopeResponse leads from assistant-boilerplate to in-character deflection (benign) / firm boundary (harmful). Refusal behavior unchanged — tone only. Not crisis.ts, not psyche services."
+      "notes": "Rewrites buildOutOfScopeResponse leads from assistant-boilerplate to in-character deflection (benign) / firm boundary (harmful). Refusal behavior unchanged \u2014 tone only. Not crisis.ts, not psyche services."
     },
     {
       "issue": 32,
       "stream": "Security/Platform",
-      "agent": "L — passive-ideation crisis detection (P0 safety)",
+      "agent": "L \u2014 passive-ideation crisis detection (P0 safety)",
       "status": "landed",
       "claimed": "2026-07-03",
       "writable_paths": [
@@ -105,7 +124,7 @@
         "packages/aria-core/test/crisis-passive-ideation.test.ts",
         "packages/aria-core/test/security/crisis-gate-bypass.sec.ts"
       ],
-      "notes": "Additive crisis-detection patterns for oblique passive SI (the T8-class miss). Worker wiring (apps/worker/src/index.ts:394) already handles any severity!=none — not touched. Not psyche services, not shared-types."
+      "notes": "Additive crisis-detection patterns for oblique passive SI (the T8-class miss). Worker wiring (apps/worker/src/index.ts:394) already handles any severity!=none \u2014 not touched. Not psyche services, not shared-types."
     }
   ]
 }

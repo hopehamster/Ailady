@@ -54,6 +54,11 @@ export interface BuildResponseAssemblyArgs {
    * => byte-identical. Adds a 1-line inner-tone hint to the working window so the
    * rendered text matches the avatar emotion the ego intends this turn. */
   intendedEmotion?: string;
+  /** SOUL B1 (#39) — the psyche's structured want rendered as an inner-state
+   * block (innerStateNarratorService). Empty/undefined => filtered out =>
+   * byte-identical. Placed before the tone hint in the working window: the
+   * WANT, then its color. */
+  innerStateBlock?: string;
 }
 
 export interface ResponseAssembly {
@@ -81,6 +86,7 @@ export function buildResponseAssembly({
   policySignals,
   policyContext,
   intendedEmotion,
+  innerStateBlock,
 }: BuildResponseAssemblyArgs): ResponseAssembly {
   const effectiveRecentMessages =
     route === 'fast' ? recentMessages.slice(-8) : recentMessages;
@@ -156,7 +162,13 @@ export function buildResponseAssembly({
     ? `[Inner tone for this turn: ${intendedEmotion}. Let it color your words naturally — never name the feeling, just let it show.]`
     : '';
 
-  const workingWindow = [chatModeBlock, policyDirectivesBlock, policyEnhancersBlock, intendedEmotionBlock]
+  const workingWindow = [
+    chatModeBlock,
+    policyDirectivesBlock,
+    policyEnhancersBlock,
+    innerStateBlock ?? '',
+    intendedEmotionBlock,
+  ]
     .map((s) => s.trim())
     .filter((s) => s.length > 0)
     .join('\n\n');

@@ -40,6 +40,7 @@ import {
 import { getRelationshipStage } from './ariaRelationshipService';
 import { arbitrate, applyEgoBias } from './egoArbiterService';
 import type { EgoDirective } from './egoArbiterService';
+import { renderInnerState } from './innerStateNarratorService';
 import { dominantDrive } from './psycheStateService';
 import {
   scoreDirectiveAdherence,
@@ -472,6 +473,12 @@ function psychePlanBiasEnabled(): boolean {
 }
 function psycheEmotionForwardEnabled(): boolean {
   return (process.env.PSYCHE_EMOTION_FORWARD_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+// SOUL B1 (#39): the arbiter's structured want (move + held thread + restraint)
+// rendered into the prompt. Default OFF -> renderInnerState never called ->
+// byte-identical. Baseline-defer inside the narrator protects the #34 win.
+function psycheInnerStateEnabled(): boolean {
+  return (process.env.PSYCHE_INNER_STATE_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 const ANTHROPIC_PRIMARY_ENABLED =
   // PHASE-0 decouple: default OFF so the OPENAI_COMPAT provider is primary (not
@@ -2717,6 +2724,18 @@ export async function generateAIResponse(
       intendedEmotion:
         psycheEmotionForwardEnabled() && egoDirective && egoDirective.assertEmotion !== false
           ? egoDirective.intendedEmotion
+          : undefined,
+      // SOUL B1 (#39) — broadcast -> words. The pursued open-loop id resolves to
+      // its topic here (memory-side lookup) so the held thread lands as language,
+      // not telemetry. Narrator handles baseline-defer/yield internally.
+      innerStateBlock:
+        psycheInnerStateEnabled() && egoDirective
+          ? renderInnerState(egoDirective, {
+              pursuedTopic: egoDirective.pursueOpenLoopId
+                ? memory?.openLoops?.find((l) => l.id === egoDirective.pursueOpenLoopId)
+                    ?.topic ?? null
+                : null,
+            })
           : undefined,
     });
 
