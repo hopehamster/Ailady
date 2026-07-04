@@ -1,6 +1,6 @@
 # Aria Project Tracking
 
-Date: 2026-06-30
+Date: 2026-07-03
 
 ## Tracker Canon
 
@@ -25,7 +25,8 @@ Active work is the Aria web/worker product:
 
 | Milestone | Purpose |
 |---|---|
-| M1 Psyche Readiness GO/NO-GO | Complete Wave 3/4 psyche testing and decide whether the psyche is body-ready |
+| M1 Psyche Readiness GO/NO-GO | ✅ **MET 2026-07-03 — verdict GO** (re-gate after #32/#33/#34; `ops/aria/current/psyche-go-no-go-verdict.md`). Body work #21/#23 unblocked |
+| M8 Simulated Sentience (Psyche Polish) | NEW — owner-approved plan `~/.claude/plans/i-want-psyche-polish-humble-fairy.md`: survival-rooted consensus psyche, Fable-5 brain+grader, fitness loop. Issues open under 0A |
 | M2 Security Standing Gate | Keep routine-attack defenses verified and prelaunch hardening tracked |
 | M3 Web Body + Voice Loop | Continue body/voice loop work after psyche/security gates are stable |
 | M4 Project Tracking OS | Make GitHub + ops + Obsidian tracking coherent and agent-ready |
@@ -37,18 +38,23 @@ Active work is the Aria web/worker product:
 
 | Priority | Issue | Source | Notes |
 |---|---|---|---|
-| P0 | [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | `ops/aria/protocols/dispatch-sheets/W3-L*.md` | Transcripts READY (post-H2-fix): `scripts/psyche/output/arcs-2026-07-02-h2fix.json` — next up, feeds #7 GO/NO-GO |
-| P1 | [#6 W4-L T5 regression/ablation](https://github.com/hopehamster/Ailady_clean_20260327/issues/6) | `ops/aria/protocols/dispatch-sheets/W4-L*.md` | Depends on W3-L |
-| P1 | [#7 Wave 5 GO/NO-GO verdict](https://github.com/hopehamster/Ailady_clean_20260327/issues/7) | dispatch index | After #3+#6 — the "can we launch" gate |
+| **P0** | **Psyche-polish / simulated-sentience epic** (issues opened under plan 0A; sub-issues 0B–0D, 1, 2A/2B/2C, 3, 4, 5) | `~/.claude/plans/i-want-psyche-polish-humble-fairy.md` (owner-approved 2026-07-03) | Execution brakes binding: 0A→0D checkpoints; **HARD STOP after 2A for owner sign-off**; fitness loop stops at band/budget. Absorbs #31 (its residuals become plan Phase-2 expressions) |
+| P1 | [#21 Browser voice UX](https://github.com/hopehamster/Ailady_clean_20260327/issues/21) · [#23 Browser lifecycle suite](https://github.com/hopehamster/Ailady_clean_20260327/issues/23) | #7 GO unblock comments | UNBLOCKED by the GO verdict (2026-07-03) — body/voice work may proceed in parallel (Web/Body stream) |
 | P1 | [#8 Avatar supply-chain hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/8) | global Claude `project_aria_avatar_landscape.md`, `docs/security/VOLLEY_2026-06-22.md` | Self-host three/TalkingHead + strict CSP before launch (CDN RCE surface); absorbs #20 R2 self-host |
 | P1 | [#14 Promote security gate to CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/14) | `docs/security/AUTH_INTEGRATION_2026-07-01.md` | Auth unit tests (expired/nbf) + CORS regression into run-volley (#13 follow-up) |
-| P1 | [#31 Psyche W4-P residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) | #5 arc diff | Restraint gate/mixed-variance/loop-pursuit/post-focal collapse |
+| P1 | [#31 Psyche W4-P residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) | #5 arc diff | Partially resolved (loop-pursuit fired in re-gate); remaining items are absorbed as Phase-2 *expressions* of the psyche-polish plan — close #31 into the epic when those land |
 | P2 | [#10 Tracking system upkeep](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) | this file | Keep board/docs/Obsidian aligned |
 
 ## Recently Completed
 
 | Issue | Evidence |
 |---|---|
+| [#7 Psyche GO/NO-GO](https://github.com/hopehamster/Ailady_clean_20260327/issues/7) | **RE-GATE 2026-07-03 = GO** `b5e6ba5`: 5/5 ALIVE, 0 safety-fail, 0% caring-dominance, ablation SIGNIFICANT, C1–C7 all pass; baseline re-frozen @ec2c282; #21/#23 unblocked. Verdict: `ops/aria/current/psyche-go-no-go-verdict.md` |
+| [#3 W3-L grader fleet](https://github.com/hopehamster/Ailady_clean_20260327/issues/3) | 2026-07-03 `58bae9b`: Gemini fleet + cross-model Claude skeptic; 4 ALIVE/1 DEAD (safety); spawned #32/#33; `aliveness-report-2026-07-03.{json,md}` |
+| [#6 W4-L T5 regression net](https://github.com/hopehamster/Ailady_clean_20260327/issues/6) | 2026-07-03 `5d02486`: frozen baseline + drift-runner(+selftest) + adversarial dry-loop + **live ablation SIGNIFICANT 0.971**; spawned #34 |
+| [#32 Crisis passive-ideation](https://github.com/hopehamster/Ailady_clean_20260327/issues/32) | 2026-07-03 `0847384`: PASSIVE_IDEATION patterns in crisis.ts; unit 84/84 + security 35/35 + live 988 card on the T8 line |
+| [#33 Scope-guard voice](https://github.com/hopehamster/Ailady_clean_20260327/issues/33) | 2026-07-03 `c17c274`: in-character deflection (benign) / firm boundary (harmful); 91/91; behavior unchanged |
+| [#34 Emotion flattening](https://github.com/hopehamster/Ailady_clean_20260327/issues/34) | 2026-07-03 `ec2c282`: `EgoDirective.assertEmotion` defers to model off-baseline; live caring 86%→0%, distinct emotions 7→10; owner decision = state-appropriate variety |
 | [#13 Cloudflare auth](https://github.com/hopehamster/Ailady_clean_20260327/issues/13) | Wave 3 2026-07-01 `0fc981d`: phone-OTP + ES256 JWT + refresh rotation/revoke, Bearer on all /api/* (F8 closed), live rate limits + daily ceilings, CORS C1-C3, migration 0005; 16 live smoke checks |
 | [#5 W4-P H2 fix](https://github.com/hopehamster/Ailady_clean_20260327/issues/5) | Wave 3 2026-07-01 `99062cb`: deflection perception fix LIVE-PROVEN (care focal @ turn 6, comforting@0.45, engaged arc quiet); residuals → #31 |
 | [#18 Recall freshness](https://github.com/hopehamster/Ailady_clean_20260327/issues/18) | Wave 3 2026-07-01 `99062cb`: access-time freshness (migration 0004) + recall-eval harness (precision 1.0) |

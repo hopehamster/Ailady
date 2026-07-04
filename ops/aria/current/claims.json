@@ -1,8 +1,26 @@
 {
   "$schema_note": "Machine-readable write-path claims for active parallel agents (issue #28). One entry per active issue. Paths are repo-relative globs: '**' = any depth, '*' = one segment. Pre-check: scripts/ops/check-collisions.ps1 (exit 1 on overlap or forbidden-path claim). Register BEFORE dispatch; set status to 'landed' (or remove) when the lead merges. The lead owns edits during a live wave.",
-  "updated": "2026-07-03 (Wave 4 — #3 + #6 landed; spawned #32/#33/#34; next #7)",
-  "wave": "WAVE 4 — psyche GO/NO-GO chain + launch hardening",
+  "updated": "2026-07-03 (Psyche-polish epic #35 begun — 0A tracker reconcile landed; 0B #36 active)",
+  "wave": "SIMULATED-SENTIENCE PSYCHE POLISH (epic #35) — single-lead sequential; plan: ~/.claude/plans/i-want-psyche-polish-humble-fairy.md",
   "claims": [
+    {
+      "issue": 36,
+      "stream": "Psyche",
+      "agent": "L — epic #35 sub-issue 0B: Fable-5 preflight + function-time flags + model repoint",
+      "status": "active",
+      "claimed": "2026-07-03",
+      "writable_paths": [
+        "apps/worker/src/index.ts",
+        "apps/worker/.dev.vars",
+        "apps/worker/wrangler.toml",
+        "packages/aria-core/src/services/llmService.ts",
+        "packages/aria-core/src/services/providerExecutionService.ts",
+        "packages/aria-core/test/**",
+        "ops/aria/current/**",
+        "ops/aria/log/**"
+      ],
+      "notes": "Single-lead sequential (no parallel workers). Anthropic env plumbing + function-time flag getters only in this sub-issue; no psyche services, no scopeGuard/crisis. Ops paths for lead writeback."
+    },
     {
       "issue": 3,
       "stream": "Psyche",

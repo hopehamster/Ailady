@@ -141,22 +141,27 @@ After material work:
 
 # Next Execution Slice
 
-Date: 2026-07-01
+Date: 2026-07-03
 
 ## Title
 
-Execute the first web-first launch gates
+Simulated-sentience psyche polish (owner-approved plan)
 
 ## Goal
 
-Move from audited roadmap to executable progress by closing the highest-leverage launch gates for the web/worker pivot.
+Execute the psyche-polish plan at `~/.claude/plans/i-want-psyche-polish-humble-fairy.md` — survival-rooted consensus psyche (owner's model of mind: programs, situational consensus, background-emotion programs, band-not-max), Fable-5 as brain + grader, psyche-state → words, persistent inner life, autonomous fitness loop. **Prior gates MET:** psyche GO (#7 re-gate 2026-07-03); #32/#33/#34 landed.
+
+**Execution brakes (binding, in order):** Phase -1 tracker reconcile (this update) → Phase 0 sub-issues 0B–0D, each checkpointed → **HARD STOP after Phase 2A for owner sign-off before 2B** → fitness loop stops at band or budget.
 
 The immediate queue is:
 
-1. adjudicate production CORS against the current auth model
-2. install root CI/security gate enforcement
-3. start Wave 3 psyche readiness execution
-4. integrate the Cloudflare auth spike plan into the main-worker roadmap
+1. 0B — Fable-5 preflight (Node + workerd test route) → function-time Anthropic flags → model repoint
+2. 0C — `brain-bench.ts` (synchronous, provider-tagged) + explicit flip gate + safety re-validation vs the Fable brain
+3. 0D — 🎭 coverage arcs (celebration, playful-banter, waning-bond) + Fable grader backend + blinding + crisis-turn capture + B0/B1 baselines
+4. Phase 1 — inner-state block (psyche → words)
+5. Phase 2A — continuation root + bond-vitality governor → **owner checkpoint**
+
+Parallel (unblocked by the GO): #21 voice UX, #23 browser lifecycle (Web/Body stream); #8, #14 (Security).
 
 ## Files Allowed To Change
 
