@@ -318,16 +318,40 @@ function estCostUsd(model: string, tokIn: number, tokOut: number): number {
   return (tokIn * row.in + tokOut * row.out) / 1e6;
 }
 
+// #27 — privacy-safe error taxonomy for logs. Categories + a BOUNDED infra
+// message only; NEVER user/message content (the intimate-data boundary:
+// docs/observability/OBSERVABILITY.md).
+function errCategory(err: unknown): string {
+  const s = String(err);
+  if (/timeout|abort/i.test(s)) return "timeout";
+  if (/fetch|network|econn|socket|dns/i.test(s)) return "network";
+  if (/d1|sqlite|sql|database/i.test(s)) return "db";
+  if (/401|403|unauthorized|token|jwt/i.test(s)) return "auth";
+  if (/429|rate/i.test(s)) return "rate-limit";
+  return "internal";
+}
+const errLog = (reqId: string, err: unknown) => ({
+  reqId,
+  cat: errCategory(err),
+  error: String(err).slice(0, 200),
+});
+
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     // #13 — CORS conditions C1-C3 are enforced at this single seam so EVERY
     // response (api, auth, preflight, 404, errors) carries the same policy.
-    const res = await routeRequest(request, env, ctx);
-    return withCors(res, request, env);
+    // #27 — per-request id at the SAME seam: every error log carries reqId and
+    // every response echoes x-request-id, so a user report ("it broke at 9:14")
+    // correlates to exact log lines without logging any content.
+    const reqId = crypto.randomUUID().slice(0, 8);
+    const res = await routeRequest(request, env, ctx, reqId);
+    const out = new Response(res.body, res); // fresh Response => mutable headers
+    out.headers.set("x-request-id", reqId);
+    return withCors(out, request, env);
   },
 };
 
-async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, reqId: string): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: SECURITY_HEADERS });
@@ -535,7 +559,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
             extracted.scoring.topics,
             extracted.scoring.userImportance,
             extracted.scoring.aiImportance,
-          ).catch((err) => console.error("semantic index failed", { uid, turnId, error: String(err) })),
+          ).catch((err) => console.error("semantic index failed", { uid, turnId, ...errLog(reqId, err) })),
         );
 
         // Phase 1e — minimal per-turn spend trace (estimate; see COST_PER_M note).
@@ -567,7 +591,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
         };
         return json(res);
       } catch (err) {
-        console.error("chat turn failed", { error: String(err) });
+        console.error("chat turn failed", errLog(reqId, err));
         // Don't echo the raw error to the client — it can carry internal URLs/keys.
         // The full error is in the server log above.
         return json({ success: false, error: "brain_error" }, 500);
@@ -625,7 +649,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
           max_session_duration: d.max_session_duration,
         });
       } catch (err) {
-        console.error("avatar session failed", { error: String(err) });
+        console.error("avatar session failed", errLog(reqId, err));
         return json({ success: false, error: "avatar_error" }, 500);
       }
     }
@@ -676,7 +700,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
           // Log detail server-side only; the client gets a generic error (no upstream
           // status/body leak — Cartesia's error semantics stay private).
           const detail = (await ct.text().catch(() => "")).slice(0, 200);
-          console.error("cartesia tts failed", { status: ct.status, detail });
+          console.error("cartesia tts failed", { reqId, cat: "provider", status: ct.status, detail });
           return json({ success: false, error: "tts_upstream" }, 502);
         }
         const bytes = new Uint8Array(await ct.arrayBuffer());
@@ -694,7 +718,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
         };
         return json(res);
       } catch (err) {
-        console.error("tts error", { error: String(err) });
+        console.error("tts error", errLog(reqId, err));
         return json({ success: false, error: "tts_error" }, 500);
       }
     }
@@ -716,7 +740,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
         const qdrantOk = await deleteSemanticMemoryForUser(uid);
         return json({ success: true, uid, purged: { d1: true, qdrant: qdrantOk, r2: "n/a" } });
       } catch (err) {
-        console.error("account delete failed", { error: String(err) });
+        console.error("account delete failed", errLog(reqId, err));
         return json({ success: false, error: "delete_failed" }, 500);
       }
     }
@@ -734,7 +758,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext): 
         const data = await exportAllUserData(env.DB, uid, Date.now());
         return json({ success: true, data });
       } catch (err) {
-        console.error("account export failed", { error: String(err) });
+        console.error("account export failed", errLog(reqId, err));
         return json({ success: false, error: "export_failed" }, 500);
       }
     }
