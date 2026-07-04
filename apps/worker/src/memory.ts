@@ -146,6 +146,15 @@ function parseObject(value: unknown): Record<string, unknown> | undefined {
   return undefined;
 }
 
+/** Parse an array column, returning it only if it is ACTUALLY an array (#17). A malformed
+ * column that parses to a non-array (object/scalar) would otherwise cast straight through
+ * the caller's `?? []` and crash a downstream `.map`/`.filter`. Mirrors parseObject's guard
+ * for the array columns. */
+function parseArray(value: unknown): unknown[] | undefined {
+  const parsed = parseJson(value);
+  return Array.isArray(parsed) ? parsed : undefined;
+}
+
 /**
  * Hydrate the IntelligentMemory for a user from D1 (fat-doc row + scored-message
  * child rows), in one batched read. Returns null when the user has no stored
@@ -206,12 +215,12 @@ export async function compileIntelligentMemory(
 
   const memory = {
     userId: uid,
-    coreFacts: parseJson(row.core_facts_json) ?? [],
-    emotionalMoments: parseJson(row.emotional_moments_json) ?? [],
-    conversationSummaries: parseJson(row.conversation_summaries_json) ?? [],
-    recentContext: parseJson(row.recent_context_json) ?? [],
+    coreFacts: parseArray(row.core_facts_json) ?? [],
+    emotionalMoments: parseArray(row.emotional_moments_json) ?? [],
+    conversationSummaries: parseArray(row.conversation_summaries_json) ?? [],
+    recentContext: parseArray(row.recent_context_json) ?? [],
     scoredMessages,
-    openLoops: parseJson(row.open_loops_json) ?? [],
+    openLoops: parseArray(row.open_loops_json) ?? [],
     pacingProfile: obj(row.pacing_profile_json, "pacingProfile"),
     sessionArc: obj(row.session_arc_json, "sessionArc"),
     proactiveConfig: obj(row.proactive_config_json, "proactiveConfig"),
