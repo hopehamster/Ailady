@@ -1,0 +1,143 @@
+# PRODUCTION deploy config (#26) — used ONLY via:
+#   pnpm release:preflight   (validates this file; REFUSES dev/placeholder values)
+#   wrangler deploy -c wrangler.production.toml
+#
+# The dev config stays wrangler.toml (wrangler dev). This file is the complete
+# prod truth: named envs don't inherit [vars] in wrangler, so a separate full
+# config is clearer than [env.production] duplication inside the dev file.
+#
+# FILL-BEFORE-FIRST-DEPLOY (preflight rejects the placeholders):
+#   - database_id: `wrangler d1 create aria-prod` → paste the id
+#   - ALLOWED_ORIGINS: the real web origin(s)
+# Secrets (wrangler secret put -c wrangler.production.toml <NAME>) — REQUIRED:
+#   OPENAI_COMPAT_API_KEY, PHONE_HASH_SALT, TURNSTILE_SECRET_KEY,
+#   PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN, PLIVO_VERIFY_APP_UUID, ADMIN_TOKEN
+# Optional (graceful no-op when absent): GEMINI_API_KEY, QDRANT_URL,
+#   QDRANT_API_KEY, CARTESIA_API_KEY, CARTESIA_VOICE_ID, LIVEAVATAR_API_KEY.
+# DEV_SHARED_SECRET is NOT set in prod (dev gate stays dev-only).
+
+name = "aria-worker"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+ENV = "production"
+OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
+OPENAI_COMPAT_MODEL = "deepseek-chat"
+# CORS allowlist (C1): EXACT prod origins only. Preflight rejects localhost here.
+ALLOWED_ORIGINS = "REPLACE_WITH_PROD_ORIGIN"
+JWT_ISSUER = "https://auth.aria.app"
+JWT_AUDIENCE = "aria-client"
+ACCESS_TOKEN_TTL_SEC = "900"
+REFRESH_TOKEN_TTL_SEC = "2592000"
+OTP_TTL_SEC = "300"
+# REAL vendor in prod. getVendor() fails CLOSED (503) if secrets are missing —
+# never a mock bypass outside dev.
+OTP_VENDOR = "plivo"
+OTP_SEND_IP_DAILY_MAX = "20"
+OTP_VERIFY_PHONE_MAX_FAILS = "10"
+OTP_VERIFY_PHONE_WINDOW_SEC = "900"
+OTP_VERIFY_PHONE_LOCK_SEC = "900"
+CHAT_UID_DAILY_MAX = "500"
+# Psyche + safety posture: same as the GO baseline.
+PSYCHE_FOUNDATION_ENABLED = "true"
+PSYCHE_ARBITER_ENABLED = "true"
+PSYCHE_PLAN_BIAS_ENABLED = "true"
+PSYCHE_EMOTION_FORWARD_ENABLED = "true"
+# SOUL B1 (#39): OFF until the flag-ON live-arc smoke passes.
+PSYCHE_INNER_STATE_ENABLED = "false"
+MANIPULATION_GUARD_ENABLED = "true"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "aria-prod"
+database_id = "REPLACE_WITH_PROD_D1_ID"
+migrations_dir = "migrations"
+
+# Rate limits — identical values to dev (proven under volley); namespace_ids
+# 3001+ so prod counters never share buckets with any dev/staging deploy.
+
+[[unsafe.bindings]]
+name = "CHAT_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "3001"
+simple = { limit = 30, period = 60 }
+
+[[unsafe.bindings]]
+name = "CHAT_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "3002"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "TTS_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "3003"
+simple = { limit = 40, period = 60 }
+
+[[unsafe.bindings]]
+name = "TTS_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "3004"
+simple = { limit = 12, period = 60 }
+
+[[unsafe.bindings]]
+name = "AVATAR_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "3005"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "AVATAR_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "3006"
+simple = { limit = 3, period = 60 }
+
+[[unsafe.bindings]]
+name = "ACCOUNT_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "3007"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "ACCOUNT_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "3008"
+simple = { limit = 3, period = 60 }
+
+[[unsafe.bindings]]
+name = "OTP_SEND_BURST"
+type = "ratelimit"
+namespace_id = "3009"
+simple = { limit = 1, period = 10 }
+
+[[unsafe.bindings]]
+name = "OTP_SEND_PER_MINUTE"
+type = "ratelimit"
+namespace_id = "3010"
+simple = { limit = 3, period = 60 }
+
+[[unsafe.bindings]]
+name = "OTP_SEND_IP_BURST"
+type = "ratelimit"
+namespace_id = "3011"
+simple = { limit = 3, period = 60 }
+
+[[unsafe.bindings]]
+name = "VERIFY_BURST"
+type = "ratelimit"
+namespace_id = "3012"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "VERIFY_IP_BURST"
+type = "ratelimit"
+namespace_id = "3013"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "REFRESH_IP_BURST"
+type = "ratelimit"
+namespace_id = "3014"
+simple = { limit = 20, period = 60 }

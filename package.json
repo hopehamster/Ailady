@@ -13,6 +13,8 @@
     "test:security": "pnpm -C packages/aria-core test:security",
     "security:gate": "pnpm -C packages/aria-core test:security && pnpm -C apps/web test:e2e:security",
     "security:volley": "bash scripts/security/run-volley.sh",
+    "release:preflight": "node scripts/release/preflight.mjs",
+    "release:smoke": "bash scripts/release/smoke.sh",
     "test:psyche:regression": "node scripts/psyche/regression-runner.ts",
     "test:psyche:regression:selftest": "node scripts/psyche/regression-runner.ts --selftest",
     "test:psyche:ablation": "node scripts/psyche/ablation.ts --selftest",
