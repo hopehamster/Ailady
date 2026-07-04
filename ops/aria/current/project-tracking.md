@@ -36,14 +36,16 @@ Active work is the Aria web/worker product:
 
 ## Current Work Items
 
+> **2026-07-04 owner reset:** core-first app completion (see `ops/aria/current/ARIA_MASTER_ROADMAP.md` — SHELL + SOUL). The buildable core queue was executed to EMPTY on 2026-07-04 (9 issues shipped: #24 #17-slice #39 #8 #14 #25 #26 #27 #23). What remains is owner-gated + one post-deploy item.
+
 | Priority | Issue | Source | Notes |
 |---|---|---|---|
-| **P0** | **Psyche-polish / simulated-sentience epic** (issues opened under plan 0A; sub-issues 0B–0D, 1, 2A/2B/2C, 3, 4, 5) | `~/.claude/plans/i-want-psyche-polish-humble-fairy.md` (owner-approved 2026-07-03) | Execution brakes binding: 0A→0D checkpoints; **HARD STOP after 2A for owner sign-off**; fitness loop stops at band/budget. Absorbs #31 (its residuals become plan Phase-2 expressions) |
-| P1 | [#21 Browser voice UX](https://github.com/hopehamster/Ailady_clean_20260327/issues/21) · [#23 Browser lifecycle suite](https://github.com/hopehamster/Ailady_clean_20260327/issues/23) | #7 GO unblock comments | UNBLOCKED by the GO verdict (2026-07-03) — body/voice work may proceed in parallel (Web/Body stream) |
-| P1 | [#8 Avatar supply-chain hardening](https://github.com/hopehamster/Ailady_clean_20260327/issues/8) | global Claude `project_aria_avatar_landscape.md`, `docs/security/VOLLEY_2026-06-22.md` | Self-host three/TalkingHead + strict CSP before launch (CDN RCE surface); absorbs #20 R2 self-host |
-| P1 | [#14 Promote security gate to CI](https://github.com/hopehamster/Ailady_clean_20260327/issues/14) | `docs/security/AUTH_INTEGRATION_2026-07-01.md` | Auth unit tests (expired/nbf) + CORS regression into run-volley (#13 follow-up) |
-| P1 | [#31 Psyche W4-P residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) | #5 arc diff | Partially resolved (loop-pursuit fired in re-gate); remaining items are absorbed as Phase-2 *expressions* of the psyche-polish plan — close #31 into the epic when those land |
-| P2 | [#10 Tracking system upkeep](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) | this file | Keep board/docs/Obsidian aligned |
+| **P0 (owner)** | **Avatar GLB assets → #20 prod face** | owner decision 2026-07-04 ("I'll provide GLBs") | The ONLY blocker on "see her face" in prod; drop-in pipeline (R2 + /api/avatars + gate flip) builds the day assets land |
+| **P0 (owner)** | **First prod deploy go/no-go** | `docs/release/RELEASE.md` (#26 shipped) | One command sequence: provision → preflight → migrate → deploy → smoke. Preflight guard proven |
+| P1 | [#40 Billing (single-tier paywall)](https://github.com/hopehamster/Ailady_clean_20260327/issues/40) | launch-gate gap (roadmap A3) | Webhooks need the deployed origin — full build post-deploy; design/stub may land earlier |
+| P1 | Soul track resume: #39 flag-ON live-arc smoke → then B2+ per `ops/aria/protocols/soul-architecture.md` | epic #35 (P2-deferred; B1 SHIPPED `9ee8ad8`) | **HARD STOP: owner sign-off before B2 (consensus rewrite)** |
+| P2 | [#21 Browser voice UX](https://github.com/hopehamster/Ailady_clean_20260327/issues/21) | owner: voice deferred 2026-07-04 | Coupled to the avatar's AudioContext; revisit with the face or on a decouple decision |
+| P2 | [#31 Psyche W4-P residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) · [#10 Tracking upkeep](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) | #5 arc diff / this file | #31 residuals = soul-track B2 expressions; close into the epic when they land |
 
 ## Recently Completed
 
