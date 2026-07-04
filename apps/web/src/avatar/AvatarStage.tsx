@@ -48,7 +48,9 @@ export function AvatarStage({ avatarUrl, emotion, emotionIntensity, onReady, onE
           setStatus("error");
           onErrorRef.current?.("mount", err);
         }
-        console.error("AvatarStage.mount:", err);
+        // Handled + surfaced (status=error → fallback UI + retry) — warn, not error
+        // (#24 precedent: a caught, user-recovered fault isn't a crash).
+        console.warn("AvatarStage.mount:", err);
       }
     })();
     return () => {
@@ -82,7 +84,8 @@ export function AvatarStage({ avatarUrl, emotion, emotionIntensity, onReady, onE
           setStatus("error");
           onErrorRef.current?.("load", err);
         }
-        console.error("AvatarStage.loadAvatar:", err);
+        // Handled + surfaced (fallback UI + retry) — warn, not error (#24 precedent).
+        console.warn("AvatarStage.loadAvatar:", err);
       }
     })();
     return () => {
