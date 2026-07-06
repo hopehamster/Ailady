@@ -89,3 +89,10 @@ git status --porcelain | Set-Content .claude/.session-marker   # acknowledge cur
 git status; git log --oneline -3
 ```
 Confirm: expected message, ONLY intended files committed, do-not-touch files still unstaged.
+
+## Step 8 — Sync tracking (GitHub board + Obsidian) — #10
+Run the deterministic tracking sync (NOT a blocking session hook — it hits the network + qmd, too slow/flaky for Stop/SessionEnd; it belongs here, where work is already durable):
+```bash
+pnpm sync:tracking      # closed-issues → board Done · mirror ops/aria/log/*.md → aria-mind/work/sessions/ + qmd reindex
+```
+Safe + idempotent (never deletes/commits). Judgment stays manual: this does NOT set Todo↔In-Progress, write log content, or post evidence comments (Step 6 does that). After a milestone/status change, also update the item's Status/Priority/Track on the board via `gh project item-edit` (Projects board = `gh project`, owner `hopehamster`, project 4).

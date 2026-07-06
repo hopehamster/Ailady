@@ -16,6 +16,7 @@
     "release:preflight": "node scripts/release/preflight.mjs",
     "release:smoke": "bash scripts/release/smoke.sh",
     "aria:talk": "node scripts/aria/talk.mjs",
+    "sync:tracking": "bash scripts/sync-tracking.sh",
     "test:psyche:regression": "node scripts/psyche/regression-runner.ts",
     "test:psyche:regression:selftest": "node scripts/psyche/regression-runner.ts --selftest",
     "test:psyche:ablation": "node scripts/psyche/ablation.ts --selftest",
