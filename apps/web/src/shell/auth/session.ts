@@ -8,8 +8,12 @@ export type AuthMode = "dev" | "otp";
 export interface AuthSession {
   uid: string;
   mode: AuthMode;
-  /** Bearer token from the real OTP verify endpoint. Absent for the dev-mock session. */
+  /** ES256 access token from the OTP verify endpoint. Absent for the dev-mock session. */
   token?: string;
+  /** Opaque rotating refresh token (prod OTP session) — traded for a fresh access token on 401. */
+  refreshToken?: string;
+  /** Wall-clock ms when the access token expires (for pre-emptive/же 401-driven refresh). */
+  expiresAtMs?: number;
   createdAtMs: number;
 }
 
@@ -23,10 +27,13 @@ export function loadSession(): AuthSession | null {
     if (typeof s.uid !== "string" || !s.uid) return null;
     if (s.mode !== "dev" && s.mode !== "otp") return null;
     if (s.token !== undefined && typeof s.token !== "string") return null;
+    if (s.refreshToken !== undefined && typeof s.refreshToken !== "string") return null;
     return {
       uid: s.uid,
       mode: s.mode,
       token: s.token,
+      refreshToken: s.refreshToken,
+      expiresAtMs: typeof s.expiresAtMs === "number" ? s.expiresAtMs : undefined,
       createdAtMs: typeof s.createdAtMs === "number" ? s.createdAtMs : 0,
     };
   } catch {

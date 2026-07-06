@@ -104,6 +104,10 @@ export interface AuthEnv {
   PLIVO_AUTH_ID?: string;
   PLIVO_AUTH_TOKEN?: string;
   PLIVO_VERIFY_APP_UUID?: string;
+  // Twilio Verify (OTP_VENDOR=twilio) — the vendor we have live creds for.
+  TWILIO_ACCOUNT_SID?: string;
+  TWILIO_AUTH_TOKEN?: string;
+  TWILIO_VERIFY_SERVICE_SID?: string;
   TURNSTILE_SECRET_KEY?: string;
   ADMIN_TOKEN?: string;
 }
