@@ -99,6 +99,9 @@ export interface AuthEnv {
   OTP_VERIFY_PHONE_MAX_FAILS?: string;
   OTP_VERIFY_PHONE_WINDOW_SEC?: string;
   OTP_VERIFY_PHONE_LOCK_SEC?: string;
+  // STAGING ONLY (OTP_VENDOR=mock + ENV=staging): deterministic OTP code so the
+  // full auth flow is Playwright-drivable. Ignored in prod (mock never selected there).
+  MOCK_OTP_CODE?: string;
   // Secrets (required in prod, optional in dev — see AUTH_INTEGRATION doc).
   PHONE_HASH_SALT?: string;
   PLIVO_AUTH_ID?: string;

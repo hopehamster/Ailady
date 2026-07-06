@@ -1,6 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const CI = !!process.env.CI;
+// #42 self-driven authed-loop harness: when ARIA_STAGING_URL points at the deployed
+// staging worker (Turnstile test keys + deterministic mock OTP), the authed-loop spec
+// drives the REAL sign-in + chat + voice + memory against it — no local server needed.
+const STAGING = process.env.ARIA_STAGING_URL;
 
 // Headless Chrome disables software WebGL by default → the TalkingHead/Three.js avatar
 // canvas renders BLANK. These flags enable it (verified: lights up the real GPU via ANGLE,
@@ -16,7 +20,9 @@ const GL_ARGS = [
 // Boot the web dev server always; the worker ONLY locally — CI has no gitignored
 // apps/worker/.dev.vars, so wrangler would hang/timeout there. Mocked specs route-mock
 // /api/*, and @real specs are CI-skipped, so CI needs no worker.
-const webServer = CI
+const webServer = STAGING
+  ? [] // staging spec hits the live deployed origin — no local server to boot
+  : CI
   ? [{ command: "pnpm dev", url: "http://127.0.0.1:5173", reuseExistingServer: false, timeout: 120_000 }]
   : [
       {
@@ -30,7 +36,9 @@ const webServer = CI
 
 export default defineConfig({
   testDir: "./tests",
-  globalSetup: "./tests/global-setup.ts",
+  // globalSetup warms up the local dev server's avatar chunks — skip it when driving
+  // the deployed staging origin (no local server to warm).
+  globalSetup: STAGING ? undefined : "./tests/global-setup.ts",
   fullyParallel: true,
   forbidOnly: CI,
   retries: CI ? 2 : 0,
@@ -48,7 +56,7 @@ export default defineConfig({
   // local-only anyway (per-OS baselines).
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.35 } },
   use: {
-    baseURL: "http://127.0.0.1:5173",
+    baseURL: STAGING ?? "http://127.0.0.1:5173",
     trace: "on-first-retry",
     video: "on-first-retry",
     screenshot: "only-on-failure",

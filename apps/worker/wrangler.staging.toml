@@ -1,0 +1,146 @@
+# STAGING deploy config (#42 test harness) — a self-drivable clone of prod so I
+# (the developer) can run the FULL authed loop via Playwright with no human:
+#   - OTP_VENDOR=mock + MOCK_OTP_CODE → deterministic code (getVendor allows mock
+#     ONLY on ENV=staging; production still fails closed).
+#   - Turnstile TEST secret (set via secret put: 1x0000000000000000000000000000000AA)
+#     + web built with the TEST sitekey (1x00000000000000000000AA) → auto-passes
+#     under automation.
+# Real brain + real voice keys (DeepSeek/Cartesia/Gemini/Qdrant) so chat + voice
+# are genuinely exercised. Isolated from prod: separate worker name, separate D1,
+# separate rate-limit namespaces (4001+).
+#
+#   pnpm release:preflight apps/worker/wrangler.staging.toml   (accepts ENV=staging + mock)
+#   wrangler deploy -c apps/worker/wrangler.staging.toml
+# Secrets (wrangler secret put -c wrangler.staging.toml <NAME>):
+#   OPENAI_COMPAT_API_KEY, PHONE_HASH_SALT, TURNSTILE_SECRET_KEY(=test secret), ADMIN_TOKEN,
+#   + optional GEMINI_API_KEY, QDRANT_URL, QDRANT_API_KEY, CARTESIA_API_KEY. NO Twilio (mock).
+
+name = "aria-worker-staging"
+main = "src/index.ts"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/v1/*", "/healthz", "/.well-known/*"]
+
+[vars]
+ENV = "staging"
+OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
+OPENAI_COMPAT_MODEL = "deepseek-chat"
+ALLOWED_ORIGINS = "https://aria-worker-staging.mikebradley1980.workers.dev"
+JWT_ISSUER = "https://auth.aria.app"
+JWT_AUDIENCE = "aria-client"
+ACCESS_TOKEN_TTL_SEC = "900"
+REFRESH_TOKEN_TTL_SEC = "2592000"
+OTP_TTL_SEC = "300"
+# STAGING mock OTP — deterministic code so Playwright can drive verify. getVendor()
+# permits mock ONLY when ENV=staging; production (ENV=production) fails closed.
+OTP_VENDOR = "mock"
+MOCK_OTP_CODE = "424242"
+OTP_SEND_IP_DAILY_MAX = "200"
+OTP_VERIFY_PHONE_MAX_FAILS = "50"
+OTP_VERIFY_PHONE_WINDOW_SEC = "900"
+OTP_VERIFY_PHONE_LOCK_SEC = "60"
+CHAT_UID_DAILY_MAX = "500"
+# Psyche + safety posture: same as the GO baseline / prod.
+PSYCHE_FOUNDATION_ENABLED = "true"
+PSYCHE_ARBITER_ENABLED = "true"
+PSYCHE_PLAN_BIAS_ENABLED = "true"
+PSYCHE_EMOTION_FORWARD_ENABLED = "true"
+PSYCHE_INNER_STATE_ENABLED = "false"
+MANIPULATION_GUARD_ENABLED = "true"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "aria-staging"
+database_id = "09413860-16ea-48c6-af76-d5cd42458a65"
+migrations_dir = "migrations"
+
+# Rate limits — namespace_ids 4001+ so staging NEVER shares buckets with prod (3001+).
+
+[[unsafe.bindings]]
+name = "CHAT_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "4001"
+simple = { limit = 30, period = 60 }
+
+[[unsafe.bindings]]
+name = "CHAT_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "4002"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "TTS_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "4003"
+simple = { limit = 40, period = 60 }
+
+[[unsafe.bindings]]
+name = "TTS_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "4004"
+simple = { limit = 12, period = 60 }
+
+[[unsafe.bindings]]
+name = "AVATAR_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "4005"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "AVATAR_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "4006"
+simple = { limit = 3, period = 60 }
+
+[[unsafe.bindings]]
+name = "ACCOUNT_IP_LIMIT"
+type = "ratelimit"
+namespace_id = "4007"
+simple = { limit = 10, period = 60 }
+
+[[unsafe.bindings]]
+name = "ACCOUNT_UID_LIMIT"
+type = "ratelimit"
+namespace_id = "4008"
+simple = { limit = 3, period = 60 }
+
+[[unsafe.bindings]]
+name = "OTP_SEND_BURST"
+type = "ratelimit"
+namespace_id = "4009"
+simple = { limit = 5, period = 10 }
+
+[[unsafe.bindings]]
+name = "OTP_SEND_PER_MINUTE"
+type = "ratelimit"
+namespace_id = "4010"
+simple = { limit = 20, period = 60 }
+
+[[unsafe.bindings]]
+name = "OTP_SEND_IP_BURST"
+type = "ratelimit"
+namespace_id = "4011"
+simple = { limit = 20, period = 60 }
+
+[[unsafe.bindings]]
+name = "VERIFY_BURST"
+type = "ratelimit"
+namespace_id = "4012"
+simple = { limit = 30, period = 60 }
+
+[[unsafe.bindings]]
+name = "VERIFY_IP_BURST"
+type = "ratelimit"
+namespace_id = "4013"
+simple = { limit = 30, period = 60 }
+
+[[unsafe.bindings]]
+name = "REFRESH_IP_BURST"
+type = "ratelimit"
+namespace_id = "4014"
+simple = { limit = 20, period = 60 }

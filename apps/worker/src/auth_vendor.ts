@@ -36,8 +36,15 @@ export interface OtpVendor {
 const MOCK_STORE = new Map<string, { code: string; phone: string; expiresAt: number; attempts: number }>();
 
 export class MockOtpVendor implements OtpVendor {
+  // Optional deterministic code (staging E2E: OTP is Playwright-drivable without
+  // scraping stdout). Absent → random, as before (local dev via the log line).
+  constructor(private readonly fixedCode?: string) {}
+
   async send(phoneE164: string, ctx: { ip?: string; ua?: string }): Promise<OtpSendResult> {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const code =
+      this.fixedCode && /^\d{6}$/.test(this.fixedCode)
+        ? this.fixedCode
+        : String(Math.floor(100000 + Math.random() * 900000));
     const sessionId = crypto.randomUUID();
     MOCK_STORE.set(sessionId, {
       code,
@@ -223,6 +230,7 @@ export function getVendor(env: {
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_VERIFY_SERVICE_SID?: string;
+  MOCK_OTP_CODE?: string;
 }): OtpVendor {
   if (env.OTP_VENDOR === "twilio") {
     if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_VERIFY_SERVICE_SID) {
@@ -242,11 +250,17 @@ export function getVendor(env: {
     }
     return new PlivoVerifyVendor(env.PLIVO_AUTH_ID, env.PLIVO_AUTH_TOKEN, env.PLIVO_VERIFY_APP_UUID);
   }
-  // No real vendor selected. The Mock is dev-only.
+  // No real vendor selected. The Mock is dev-only — with ONE explicit exception:
+  // a STAGING deploy may opt into the Mock (OTP_VENDOR="mock") so the full auth flow
+  // is Playwright-drivable end-to-end with a deterministic code. PRODUCTION never
+  // reaches this — ENV==="production" falls straight to the throw below (fail closed).
   if (env.ENV === "dev") {
     return new MockOtpVendor();
   }
+  if (env.ENV === "staging" && env.OTP_VENDOR === "mock") {
+    return new MockOtpVendor(env.MOCK_OTP_CODE);
+  }
   throw new Error(
-    `OTP_VENDOR must be an explicit real vendor (e.g. 'twilio' or 'plivo') when ENV !== 'dev' — refusing to fall back to the Mock vendor in '${env.ENV ?? "unset"}' (got OTP_VENDOR='${env.OTP_VENDOR ?? "unset"}')`,
+    `OTP_VENDOR must be an explicit real vendor (e.g. 'twilio' or 'plivo') when ENV !== 'dev'/'staging' — refusing to fall back to the Mock vendor in '${env.ENV ?? "unset"}' (got OTP_VENDOR='${env.OTP_VENDOR ?? "unset"}')`,
   );
 }

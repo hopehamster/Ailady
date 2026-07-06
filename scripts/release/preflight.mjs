@@ -24,7 +24,12 @@ if (env !== 'production' && env !== 'staging') {
   failures.push(`ENV is "${env}" — must be "production" or "staging" (dev unlocks mock OTP + dev gates)`);
 }
 const vendor = grab('OTP_VENDOR');
-if (vendor === 'mock') failures.push('OTP_VENDOR is "mock" — real vendor required outside dev');
+// Mock is allowed ONLY on staging (Playwright-drivable auth harness); production must
+// use a real vendor. getVendor() enforces the same (ENV==="staging" && mock) — this
+// keeps the config gate in lockstep with the runtime gate.
+if (vendor === 'mock' && env !== 'staging') {
+  failures.push(`OTP_VENDOR is "mock" but ENV is "${env}" — mock is staging-only; production requires a real vendor`);
+}
 
 const dbId = grab('database_id');
 if (!dbId || /placeholder|REPLACE/i.test(dbId)) {

@@ -64,27 +64,37 @@ export function Turnstile({ onToken, resetSignal = 0 }: Props) {
   const onTokenRef = useRef(onToken);
   onTokenRef.current = onToken;
 
-  // Render the widget once the script + sitekey are ready.
+  // Render the widget once the script + container are ready. We call render()
+  // DIRECTLY (no turnstile.ready() wrapper) and POLL for readiness: verified on
+  // staging that a direct render() issues a token under automation, while the
+  // ready()-wrapped path silently failed to mount (its errors were swallowed).
   useEffect(() => {
     if (!TURNSTILE_ENABLED) return;
     let live = true;
-    void loadScript()
-      .then(() => {
-        if (!live || !containerRef.current || !window.turnstile) return;
-        window.turnstile.ready(() => {
-          if (!live || !containerRef.current || !window.turnstile || widgetIdRef.current) return;
+    void loadScript().catch(() => {
+      /* script blocked/offline — SignIn still shows the field; send will 403 and re-arm */
+    });
+    const iv = setInterval(() => {
+      if (!live || widgetIdRef.current) {
+        clearInterval(iv);
+        return;
+      }
+      if (window.turnstile && containerRef.current) {
+        clearInterval(iv);
+        try {
           widgetIdRef.current = window.turnstile.render(containerRef.current, {
             sitekey: SITEKEY as string,
             callback: (token) => onTokenRef.current(token),
             "expired-callback": () => onTokenRef.current(""), // token aged out → clear it
           });
-        });
-      })
-      .catch(() => {
-        /* script blocked/offline — SignIn still shows the field; send will 403 and re-arm */
-      });
+        } catch {
+          /* transient — the next mount / reset re-arms */
+        }
+      }
+    }, 150);
     return () => {
       live = false;
+      clearInterval(iv);
       if (widgetIdRef.current && window.turnstile) {
         try {
           window.turnstile.remove(widgetIdRef.current);
