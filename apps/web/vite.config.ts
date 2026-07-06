@@ -12,6 +12,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": "http://127.0.0.1:8787",
+      "/v1": "http://127.0.0.1:8787", // #42 auth endpoints (/v1/auth/otp/send|verify, /v1/auth/refresh)
     },
   },
 });

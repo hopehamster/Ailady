@@ -22,7 +22,12 @@ export type AuthErrorKind =
   | "network"
   | "unknown";
 
-export type RequestCodeResult = { ok: true } | { ok: false; error: AuthErrorKind };
+// The worker's OTP flow is SESSION-BASED: send returns a `sessionId` that verify
+// consumes (verify never re-sees the phone). So requestCode returns the sessionId
+// for SignIn to thread into verifyCode. Turnstile token is passed on send (prod).
+export type RequestCodeResult =
+  | { ok: true; sessionId: string; expiresInSec: number }
+  | { ok: false; error: AuthErrorKind };
 
 export type VerifyCodeResult =
   | { ok: true; session: AuthSession }
@@ -31,10 +36,10 @@ export type VerifyCodeResult =
 export interface AuthAdapter {
   /** Diagnostic label ("dev-mock" | "otp-api"). */
   readonly name: string;
-  /** Ask the backend to text a one-time code to `phone`. */
-  requestCode(phone: string): Promise<RequestCodeResult>;
-  /** Trade phone + code for a session. */
-  verifyCode(phone: string, code: string): Promise<VerifyCodeResult>;
+  /** Ask the backend to text a one-time code to `phone`; returns the session pointer. */
+  requestCode(phone: string, turnstileToken?: string): Promise<RequestCodeResult>;
+  /** Trade the send-issued sessionId + code for a session. */
+  verifyCode(sessionId: string, code: string): Promise<VerifyCodeResult>;
 }
 
 export function getAuthAdapter(): AuthAdapter {

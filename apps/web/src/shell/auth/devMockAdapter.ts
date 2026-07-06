@@ -14,13 +14,15 @@ export const DEV_OTP_CODE = "000000";
 export const devMockAdapter: AuthAdapter = {
   name: "dev-mock",
 
-  async requestCode(phone) {
+  // Session-based to match the real adapter's interface: requestCode hands back a
+  // synthetic sessionId, verifyCode takes it. Turnstile token ignored in dev (the
+  // worker's dev gate bypasses Turnstile; SignIn renders no widget without a sitekey).
+  async requestCode(phone, _turnstileToken) {
     if (!looksLikePhone(phone)) return { ok: false, error: "invalid-phone" };
-    return { ok: true };
+    return { ok: true, sessionId: "dev-session", expiresInSec: 300 };
   },
 
-  async verifyCode(phone, code) {
-    if (!looksLikePhone(phone)) return { ok: false, error: "invalid-phone" };
+  async verifyCode(_sessionId, code) {
     if (code.trim() !== DEV_OTP_CODE) return { ok: false, error: "invalid-code" };
     const session: AuthSession = {
       uid: import.meta.env.VITE_DEV_UID ?? "dev-user",

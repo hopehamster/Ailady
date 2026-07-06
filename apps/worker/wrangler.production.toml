@@ -23,12 +23,26 @@ main = "src/index.ts"
 compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
 
+# SINGLE-ORIGIN (#42): the worker serves the built SPA from ../web/dist so the web
+# and the API share one origin — client calls to /api/* + /v1/* are same-origin
+# (no CORS, no CSP connect-src churn). run_worker_first lists every worker route;
+# everything else is served as a static asset (SPA fallback for client routes).
+# dist/_headers (Vite copies public/) carries the CSP onto the served HTML.
+# Build the web (pnpm -C apps/web build) BEFORE `wrangler deploy -c` — deploy uploads this dir.
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*", "/v1/*", "/healthz", "/.well-known/*"]
+
 [vars]
 ENV = "production"
 OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
 OPENAI_COMPAT_MODEL = "deepseek-chat"
 # CORS allowlist (C1): EXACT prod origins only. Preflight rejects localhost here.
-ALLOWED_ORIGINS = "REPLACE_WITH_PROD_ORIGIN"
+# Single-origin deploy → same-origin calls need no CORS; this value satisfies preflight
+# and future-proofs any cross-origin client. Custom domain adds here later, no redeploy.
+ALLOWED_ORIGINS = "https://aria-worker.mikebradley1980.workers.dev"
 JWT_ISSUER = "https://auth.aria.app"
 JWT_AUDIENCE = "aria-client"
 ACCESS_TOKEN_TTL_SEC = "900"

@@ -1,6 +1,6 @@
 import type { AvatarDriver } from "./AvatarDriver";
 import type { TtsResponse } from "@aria/shared-types";
-import { devHeaders } from "../devAuth";
+import { apiFetch } from "../api";
 
 // The ONE place a chat reply becomes spoken audio + lip-sync timing. Slice A returns
 // a SILENT buffer + text-derived word timings (mouth moves, no sound — the proven
@@ -127,9 +127,9 @@ export async function synthesizeSpeech(
   if (!ctx) return null;
 
   try {
-    const r = await fetch("/api/tts", {
+    const r = await apiFetch("/api/tts", {
       method: "POST",
-      headers: { "content-type": "application/json", ...devHeaders() },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ text }),
     });
     if (r.ok) {

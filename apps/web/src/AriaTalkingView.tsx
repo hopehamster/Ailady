@@ -4,7 +4,7 @@ import { AvatarStage } from "./avatar/AvatarStage";
 import type { AvatarDriver } from "./avatar/AvatarDriver";
 import { loadAvatarLibrary } from "./avatar/avatarLibrary";
 import { synthesizeSpeech } from "./avatar/speech";
-import { devHeaders } from "./devAuth";
+import { apiFetch } from "./api";
 import { chatHttpFailure, chatThrownFailure } from "./errors/chatErrors";
 
 // The talking loop: type to Aria → her rendered face shows the reply's emotion → her
@@ -85,9 +85,9 @@ export function AriaTalkingView() {
           timeZoneName: Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       };
-      const r = await fetch("/api/chat", {
+      const r = await apiFetch("/api/chat", {
         method: "POST",
-        headers: { "content-type": "application/json", ...devHeaders() },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(req),
         // #24 slow-request state: a stalled request aborts → chatThrownFailure() network copy.
         signal: AbortSignal.timeout(30_000),
