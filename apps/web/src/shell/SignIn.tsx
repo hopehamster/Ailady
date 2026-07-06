@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { AuthSession } from "./auth/session";
 import { getAuthAdapter } from "./auth/authService";
 import { Turnstile, TURNSTILE_ENABLED } from "./auth/Turnstile";
+import { COUNTRIES, DEFAULT_COUNTRY, toE164, type Country } from "./auth/countries";
 import { authFailureCopy } from "../errors/authErrors";
 
 // Auth-gated entry (#42): phone entry → OTP entry → session. Talks only to the
@@ -18,6 +19,7 @@ interface Props {
 
 export function SignIn({ onSignedIn }: Props) {
   const [step, setStep] = useState<Step>("phone");
+  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [sessionId, setSessionId] = useState("");
@@ -34,7 +36,10 @@ export function SignIn({ onSignedIn }: Props) {
     if (pending) return;
     setPending(true);
     setError(null);
-    const res = await adapter.requestCode(phone, turnstileToken || undefined);
+    // Combine the selected country's dial code with the typed number → +E.164,
+    // which the worker's normalizeE164 accepts directly for any country.
+    const e164 = toE164(country.dial, phone);
+    const res = await adapter.requestCode(e164, turnstileToken || undefined);
     setPending(false);
     if (res.ok) {
       setSessionId(res.sessionId);
@@ -83,17 +88,51 @@ export function SignIn({ onSignedIn }: Props) {
         {step === "phone" ? (
           <form onSubmit={(e) => void submitPhone(e)} style={{ display: "contents" }}>
             <label className="signin-label">
-              Phone number
-              <input
+              Country
+              <select
                 className="signin-input"
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="+1 555 010 0123"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                autoFocus
-              />
+                value={country.code}
+                onChange={(e) =>
+                  setCountry(COUNTRIES.find((c) => c.code === e.target.value) ?? DEFAULT_COUNTRY)
+                }
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.code + c.dial} value={c.code}>
+                    {c.flag} {c.name} (+{c.dial})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="signin-label">
+              Phone number
+              <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    padding: "0 12px",
+                    borderRadius: 8,
+                    border: "1px solid #374151",
+                    background: "#0b1220",
+                    color: "#9ca3af",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  +{country.dial}
+                </span>
+                <input
+                  className="signin-input"
+                  style={{ flex: 1 }}
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel-national"
+                  placeholder="555 010 0123"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  autoFocus
+                />
+              </div>
             </label>
             <Turnstile onToken={setTurnstileToken} resetSignal={turnstileReset} />
             <p className="signin-error" role="alert" data-aria-auth-error>
