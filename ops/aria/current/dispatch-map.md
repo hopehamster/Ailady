@@ -1,6 +1,8 @@
 # Multi-Agent Dispatch Map (live)
 
-> Turns the roadmap + the live GitHub issue queue into a parallel-wave view: what a lead can dispatch to bounded stream workers **right now** without path collision. Regenerate the wave view from `gh issue list` when the queue shifts. Ownership + collision rules: `ops/aria/protocols/web-first-multi-agent-execution.md`. Milestones ↔ roadmap phases: `ops/aria/current/web-roadmap.md`. Updated 2026-07-01.
+> Turns the roadmap + the live GitHub issue queue into a parallel-wave view: what a lead can dispatch to bounded stream workers **right now** without path collision. Regenerate the wave view from `gh issue list` when the queue shifts. Ownership + collision rules: `ops/aria/protocols/web-first-multi-agent-execution.md`.
+>
+> **⚠ Wave tables below are STALE (2026-07-01, pre-deploy). Current truth: `NEXT_EXECUTION_SLICE.md` + `project-tracking.md` (reconciled 2026-07-06 — first deploy SHIPPED, #42 closed, M8/M9 milestones created).** The **Streams → owned paths** table below is still valid for collision-safe parallel work; the specific wave assignments are not. Regenerate from the live board before a multi-agent dispatch. Execution is currently **single-lead** (M9 Aria depth), so the wave view is dormant.
 
 ## Streams → owned paths (disjoint = parallel-safe)
 | Stream | Owned paths |

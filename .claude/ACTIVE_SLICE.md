@@ -141,121 +141,43 @@ After material work:
 
 # Next Execution Slice
 
-Date: 2026-07-03
+Date: 2026-07-06
 
 ## Title
 
-Core-first app completion (owner reset 2026-07-04)
+Post-deploy: Aria depth (M9) — make HER good; billing (M8) is the queued revenue gate
 
-## Goal
+## Where we are (reality, reconciled 2026-07-06)
 
-Complete the shippable Aria app — the core experience + launch gates — per the **EXECUTION RESET** at the top of `~/.claude/plans/i-want-psyche-polish-humble-fairy.md`. **Psyche-polish #35–38 is DEFERRED (P2, fringe)** — psyche already passed GO (#7). Autonomous: owner at START + END only; **wall→pivot→return** (log a blocker, label `blocked`, move on, re-scan each cycle).
+**The first production deploy SHIPPED and is verified.** Aria is LIVE:
+- **Prod:** https://aria-worker.mikebradley1980.workers.dev (single-origin worker serves the SPA + API; worker `1d842f2a`).
+- **Staging:** https://aria-worker-staging.mikebradley1980.workers.dev (ENV=staging, Turnstile TEST keys + deterministic mock OTP — a self-drivable clone).
+- Full authed loop (sign-in → chat → emote → voice → memory-across-reload) proven end-to-end by the committed `apps/web/tests/authed-loop.spec.ts` (green vs staging) — **no human needed**. Prod real-user token issuance confirmed.
+- **#42 CLOSED** (the M0 integration + first deploy). The one remaining item is a shared/observed real-SMS delivery check (co-check via `wrangler tail`, ~30s), not blocking.
 
-**Core end-state:** sign in → talk → see her face → hear her voice → she remembers.
+**New capability:** `pnpm aria:talk` — talk to Aria server-side, bypassing sign-in (staging mock-OTP HTTP flow → real `/api/chat`). This is the fast loop for working on her personality; it found #43.
 
-The core-first queue (dependency-ordered; status as of 2026-07-04):
+## Current focus — M9 SOUL / Aria Depth (owner direction: "work on Aria")
 
-- ✅ **#24 Frontend error UX** — retry + timeout + network/malformed tests (`dca41fa`, web e2e 17/17). CLOSED.
-- ⛔ **#20 Production avatar body — BLOCKED**: needs hand-built Avaturn T2 GLB assets → R2 → `GET /api/avatars` (operator task, `avatarLibrary.ts` L31-34). **Voice audibility is coupled to this** (voice uses the avatar's AudioContext). The visible core (face + voice) can't complete without these assets.
-- **Buildable next (autonomous):** #17 memory-hydration correctness → #8 self-host TalkingHead/three + strict CSP (launch gate; also un-couples the CDN) → #23/#25 lifecycle+CI tests → #14 security→CI → #26 release → #27 observability.
-- **Owner decision that unblocks the visible core:** provide/direct the avatar GLB assets, AND decide whether voice should run standalone in prod (audio-only, decouple from the face) or stay face-coupled.
+Live testing (`aria:talk`) surfaced 3 real conversation defects → **#43** (P1). The through-line: the base brain + persona layer are her ceiling. Priority order within M9:
 
-## Files Allowed To Change
+1. **E1 earned-weight economy** (the sycophancy fix — #43 defect #2, tied to the SOUL v1.1 HARVEST in `soul-architecture.md`). Highest-leverage, structural, additive + flag-gated (re-prove I1–I9). **Recommended next build.** Owner-approved design; no B2/H3 gate needed for E1 alone.
+2. **#39 B1 broadcast→words** — SHIPPED but flag-OFF (`PSYCHE_INNER_STATE_ENABLED=false`). Flip-on live-arc smoke (measure with `aria:talk`).
+3. **#43 defects #1 (hallucinated callbacks) + #3 (canned openers)** — root cause is largely the base brain + the DO-NOT-TOUCH `conversationPolicyService.ts`. Best addressed by the **brain swap** (#37 0C bench) — a better brain lifts all three at once. `conversationPolicyService.ts` edits need explicit owner go (safety/policy-critical + possible owner WIP).
 
-For this slice, choose one issue and stay inside its assigned paths.
+**HARD-STOP owner gates in M9:** B2 consensus rewrite (#35 epic) + H3 identity-core content (prime values + genesis anchor). Do NOT start those autonomously.
 
-Ops/roadmap:
+## Queued after Aria depth
 
-- `PROJECT_MEMORY_LEDGER.md`
-- `.codex/*`
-- `.claude/CATCHUP.md`
-- `.claude/ACTIVE_SLICE.md`
-- `.claude/GUARDRAILS.md`
-- `ops/aria/current/*`
-- `ops/aria/protocols/*`
-- `ops/aria/log/YYYY-MM-DD-*.md`
-- `.github/workflows/*`
+- **M8 #40 Billing** (single-tier paywall) — the revenue gate. Now unblocked (deployed origin exists for Stripe/RevenueCat webhooks). P1.
+- **M5 #21 voice UX** (P1) · **M5 #20 avatar** (P1, owner provides hand-built GLBs) · **M1 #17 memory contracts** (P1).
+- **M4 #10 tracking sync, #29 dirty-tree** (P2) · **#41 knowledge-ops** (backlog, P2).
 
-Security/platform issue paths:
+## Operating rules
+Autonomous: owner at start + end; wall → pivot → return. I am the primary tester — self-drive via Playwright + `aria:talk` + the staging harness; never a blind solo owner test (`browser-product-primary-tester.md` two-person-team contract). Model: Opus for psyche design/safety calls, Sonnet for mechanical execution, Fable-5 for her voice/copy.
 
-- `apps/worker/**`
-- `apps/web/tests/security/**`
-- `spikes/cloudflare-auth-spike-A/**`
-- `scripts/security/**`
-- `docs/security/**`
-
-Psyche issue paths:
-
-- `packages/aria-core/src/services/psyche*`
-- `packages/aria-core/src/services/egoArbiterService.ts`
-- `packages/aria-core/src/services/psycheMetricsService.ts`
-- `packages/aria-core/test/*psyche*`
-- `packages/aria-core/test/phase-a-diagnosis.test.ts`
-- `scripts/psyche/**`
-- `ops/aria/protocols/dispatch-sheets/**`
-
-Web/body issue paths:
-
-- `apps/web/src/**`
-- `apps/web/tests/**`
-- `apps/web/public/**`
-
-## Files Not To Change
-
-- old reference repo `C:\Users\Owner\Documents\GitHub\Ailady`
-- unrelated dirty-tree product files outside the selected issue
-- generated dependency folders
-- Flutter/mobile files unless the selected issue explicitly targets `tools/girlai2`
-
-## Invariants To Preserve
-
-- Web/worker root workspace is the active execution surface.
-- `tools/girlai2` is legacy/mobile context unless explicitly selected.
-- GitHub Project `Aria Product OS` is the execution board.
-- No issue is Done without verification evidence.
-- No multi-agent parallel work may use overlapping write paths.
-- Checkpoints must be scoped.
-
-## Recommended Next Issue Order
-
-1. #1 — Adjudicate worker CORS risk against June security volley context.
-2. Install Root CI For Typecheck, Unit, E2E CI, And Security Gate.
-3. Integrate Cloudflare Auth Spike Into Main Worker.
-4. #2 — W3-P live arcs.
-5. #4 — W3-M D1 schema reconciliation.
-
-## Acceptance Criteria
-
-- The selected GitHub issue has a clear evidence comment.
-- Relevant roadmap/tracking docs are updated.
-- Verification command is run or the blocker is documented.
-- Adapter files are regenerated when canonical packets/slices change.
-- Scoped checkpoint commit is created for completed docs/config/tracking work.
-
-## Verification Commands
-
-Use the explicit pnpm path in this environment:
-
-```powershell
-$env:Path = 'C:\Program Files\nodejs;C:\Users\Owner\AppData\Roaming\npm;' + $env:Path
-& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' -r --if-present typecheck
-& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' -r --if-present test
-& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' -C apps/web test:e2e:ci
-& 'C:\Users\Owner\AppData\Roaming\npm\pnpm.cmd' security:gate
-```
-
-For docs/tracking-only updates, replace product gates with:
-
-```powershell
-& 'C:\Program Files\GitHub CLI\gh.exe' issue list --repo hopehamster/Ailady_clean_20260327 --state open --limit 100 --json number,title,labels,milestone,url
-& 'C:\Program Files\GitHub CLI\gh.exe' project item-list 4 --owner hopehamster --format json --limit 100
-& 'C:\Program Files\Git\cmd\git.exe' diff -- ops/aria .codex .claude PROJECT_MEMORY_LEDGER.md
-```
-
-## Checkpoint Instruction
-
-Use `scripts/checkpoint-work.ps1` with explicit `-OnlyPaths`. Do not include unrelated pre-existing dirty files.
-
+## Files allowed to change
+Pick one issue, stay inside its stream's paths. Do-not-touch: `conversationPolicyService.ts`, `truthKernelService.ts`, `ARIA_CURRENT_TASK_BOARD.md`, `*adminsdk*`.
 
 
 ## Execution Checklist

@@ -1,6 +1,6 @@
 # Aria Project Tracking
 
-Date: 2026-07-03
+Date: 2026-07-06 (reconciled — first deploy shipped, board cleaned, M8/M9 milestones added)
 
 ## Tracker Canon
 
@@ -23,29 +23,35 @@ Active work is the Aria web/worker product:
 
 ## Active Milestones
 
-| Milestone | Purpose |
+> Milestone numbers are the GitHub milestones (github.com/hopehamster/Ailady_clean_20260327/milestones). M1–M7 = the pre-deploy build (mostly ✅). M8–M9 = post-deploy forward work (created 2026-07-06).
+
+| Milestone | Status / Purpose |
 |---|---|
-| M1 Psyche Readiness GO/NO-GO | ✅ **MET 2026-07-03 — verdict GO** (re-gate after #32/#33/#34; `ops/aria/current/psyche-go-no-go-verdict.md`). Body work #21/#23 unblocked |
-| M8 Simulated Sentience (Psyche Polish) | NEW — owner-approved plan `~/.claude/plans/i-want-psyche-polish-humble-fairy.md`: survival-rooted consensus psyche, Fable-5 brain+grader, fitness loop. Issues open under 0A |
-| M2 Security Standing Gate | Keep routine-attack defenses verified and prelaunch hardening tracked |
-| M3 Web Body + Voice Loop | Continue body/voice loop work after psyche/security gates are stable |
-| M4 Project Tracking OS | Make GitHub + ops + Obsidian tracking coherent and agent-ready |
-| M5 Web Production Shell | Turn the browser lab bench into a production-quality web app |
-| M6 Production Auth + Launch Gate | Replace dev auth with production worker auth, CORS, rate limits, and deploy safeguards |
-| M7 Beta Observability + Release | Add release, observability, incident, and beta readiness discipline |
+| M1 Psyche Readiness GO/NO-GO | ✅ **MET 2026-07-03 — verdict GO**. 1 open: #17 (memory contracts) |
+| M2 Security Standing Gate | ✅ complete |
+| M3 Web Body + Voice Loop | ✅ complete (#8 self-host + CSP) |
+| M4 Project Tracking OS | open: #10 (sync, P2), #29 (dirty-tree, P2) |
+| M5 Web Production Shell | open: #20 (avatar, P1), #21 (voice, P1) |
+| M6 Production Auth + Launch Gate | ✅ complete — **#42 first deploy SHIPPED + closed 2026-07-06** |
+| M7 Beta Observability + Release | ✅ complete (runbooks); automated alerting is the remaining ops gap |
+| **M8 Post-Launch: Revenue + Experience** | NEW — #40 billing (revenue gate) + completing the shipped experience |
+| **M9 SOUL — Aria Depth** | NEW — psyche polish / SOUL v1.1 harvest: #35 (epic), #36–39, #31, #43. **HARD-STOP owner gate before B2 + H3** |
 
 ## Current Work Items
 
-> **2026-07-04 owner reset:** core-first app completion (see `ops/aria/current/ARIA_MASTER_ROADMAP.md` — SHELL + SOUL). The buildable core queue was executed to EMPTY on 2026-07-04 (9 issues shipped: #24 #17-slice #39 #8 #14 #25 #26 #27 #23). What remains is owner-gated + one post-deploy item.
+> **2026-07-06 — FIRST DEPLOY SHIPPED + board reconciled.** Aria is LIVE (prod `aria-worker.mikebradley1980.workers.dev`, single-origin). The M0 prod integration + deploy (**#42**) is CLOSED — real OTP sign-in, Bearer+refresh, Turnstile, single-origin, country selector; full authed loop proven via the committed staging harness (`authed-loop.spec.ts`, `pnpm aria:talk`). Full current state + focus in `NEXT_EXECUTION_SLICE.md`. Two new milestones created: **M8 Post-Launch (Revenue + Experience)**, **M9 SOUL — Aria Depth**.
 
-| Priority | Issue | Source | Notes |
+**Current focus = M9 SOUL / Aria Depth** (owner: "work on Aria"). Live testing found #43 (3 conversation defects).
+
+| Priority | Issue | Milestone | Notes |
 |---|---|---|---|
-| **P0 (owner)** | **Avatar GLB assets → #20 prod face** | owner decision 2026-07-04 ("I'll provide GLBs") | The ONLY blocker on "see her face" in prod; drop-in pipeline (R2 + /api/avatars + gate flip) builds the day assets land |
-| **P0 (owner)** | **First prod deploy go/no-go** | `docs/release/RELEASE.md` (#26 shipped) | One command sequence: provision → preflight → migrate → deploy → smoke. Preflight guard proven |
-| P1 | [#40 Billing (single-tier paywall)](https://github.com/hopehamster/Ailady_clean_20260327/issues/40) | launch-gate gap (roadmap A3) | Webhooks need the deployed origin — full build post-deploy; design/stub may land earlier |
-| P1 | Soul track resume: #39 flag-ON live-arc smoke → then B2+ per `ops/aria/protocols/soul-architecture.md` | epic #35 (P2-deferred; B1 SHIPPED `9ee8ad8`) | **HARD STOP: owner sign-off before B2 (consensus rewrite)** |
-| P2 | [#21 Browser voice UX](https://github.com/hopehamster/Ailady_clean_20260327/issues/21) | owner: voice deferred 2026-07-04 | Coupled to the avatar's AudioContext; revisit with the face or on a decouple decision |
-| P2 | [#31 Psyche W4-P residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) · [#10 Tracking upkeep](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) | #5 arc diff / this file | #31 residuals = soul-track B2 expressions; close into the epic when they land |
+| **P1 (NOW)** | E1 earned-weight economy (sycophancy fix) → #43 | M9 | Recommended next build; structural, additive + flag-gated (re-prove I1–I9). Design in `soul-architecture.md` v1.1 HARVEST. No B2/H3 gate needed for E1 alone |
+| P1 | [#39 B1 broadcast→words](https://github.com/hopehamster/Ailady_clean_20260327/issues/39) flag-ON smoke | M9 | SHIPPED but `PSYCHE_INNER_STATE_ENABLED=false`; flip + measure via `aria:talk` |
+| P1 | [#43 conversation quality](https://github.com/hopehamster/Ailady_clean_20260327/issues/43) (callbacks/openers) | M9 | Root cause = base brain + DO-NOT-TOUCH `conversationPolicyService.ts`; best via brain swap (#37) |
+| P1 | [#40 Billing paywall](https://github.com/hopehamster/Ailady_clean_20260327/issues/40) | M8 | Revenue gate; now unblocked (deployed origin exists). Queued after Aria depth |
+| P1 | [#20 avatar](https://github.com/hopehamster/Ailady_clean_20260327/issues/20) (owner GLBs) · [#21 voice](https://github.com/hopehamster/Ailady_clean_20260327/issues/21) · [#17 memory](https://github.com/hopehamster/Ailady_clean_20260327/issues/17) | M5/M1 | Complete the shipped experience |
+| — | HARD-STOP owner gates: B2 consensus (#35) · H3 identity-core content | M9 | Do NOT start autonomously |
+| P2 | [#31 residuals](https://github.com/hopehamster/Ailady_clean_20260327/issues/31) · [#10 sync](https://github.com/hopehamster/Ailady_clean_20260327/issues/10) · [#29 dirty-tree](https://github.com/hopehamster/Ailady_clean_20260327/issues/29) · [#41 knowledge-ops](https://github.com/hopehamster/Ailady_clean_20260327/issues/41) | M9/M4/backlog | Cleanup + backlog |
 
 ## Recently Completed
 
