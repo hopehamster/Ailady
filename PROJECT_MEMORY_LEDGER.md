@@ -18,7 +18,8 @@
 - E1 slice implemented in the root workspace: `DrivePerception` gained optional `approvalEarned` / `approvalCheap`; `memoryService.classifyApprovalEvent()` deterministically marks generic approval as cheap and honesty/pushback/specific-substance approval as earned; `psycheStateService` makes explicitly cheap approval non-nutritive for `recognition` discharge while legacy perceptions remain unchanged when the optional bits are absent.
 - Worker config/bridge now includes `PSYCHE_EARNED_WEIGHT_ENABLED`, explicitly `"false"` in dev/staging/prod wrangler configs. Production behavior remains baseline until the flag is flipped.
 - Verification: E1 RED tests failed as expected pre-fix; after implementation `packages/aria-core` test = **109/109 pass** (including new I9 property tests), `packages/aria-core test:security` = **35/35 pass**, and `pnpm -r typecheck` = **4/4 workspaces clean**.
-- Remaining E1 work: staging flag-on smoke with `pnpm aria:talk`, then decide whether to flip staging/prod; B1 `PSYCHE_INNER_STATE_ENABLED` is still OFF and remains a separate smoke item. B2 consensus and H3 identity-core remain owner-gated.
+- Baseline staging `pnpm aria:talk` after the commit (staging still on old flag-OFF deploy) reproduced #43: she over-endorsed quitting work for a town food-delivery startup, backpedaled when challenged instead of holding a grounded honesty line, and emitted a truncated callback ("we can also pick up the thread about i've been thinking..."). This is the baseline for E1/B1/brain-swap smoke.
+- Remaining E1 work: staging flag-on deploy/smoke with `pnpm aria:talk`, then decide whether to flip prod; current shell lacks Cloudflare auth (`wrangler whoami` says not authenticated), so Codex could not deploy staging. B1 `PSYCHE_INNER_STATE_ENABLED` is still OFF and remains a separate smoke item. B2 consensus and H3 identity-core remain owner-gated.
 
 ## Psyche Readiness = GO (2026-07-03 re-gate, #7) — M1 milestone MET
 
