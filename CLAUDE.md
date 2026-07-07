@@ -15,6 +15,7 @@
 - **I am the primary tester** (`browser-product-primary-tester.md`) — verify browser behavior myself via Playwright (`pnpm -C apps/web test:e2e:ci`; `@real` specs for live), never punt to the user.
 - **Multi-agent dispatch:** for parallel work, read `ops/aria/current/dispatch-map.md` (live parallel-wave map by stream) + `ops/aria/protocols/web-first-multi-agent-execution.md` (ownership + collision rules). One lead + bounded stream workers on disjoint paths.
 - Use Skill / Agent / Workflow tools for orchestration; the mined-synthesis canon is authoritative over training.
+- **Extract-approach learning law** (`~/.claude/rules/extract-approach-learning-law.md`): after any non-trivial solve, run the `extract-approach` skill and drop a `docs/learnings/` field-report note before moving on — a solve without its learnings note is unfinished.
 - `/aria-checkpoint` is explicit + human-invoked: it requires an **issue number + a writable-path list**, commits only those paths, and **never auto-commits from a hook**. Never sweep the intentionally-dirty tree.
 
 ## Quality gates
