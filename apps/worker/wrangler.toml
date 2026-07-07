@@ -56,6 +56,7 @@ PSYCHE_FOUNDATION_ENABLED = "true"       # drive/ego state accrues in memory
 PSYCHE_ARBITER_ENABLED = "true"          # the ego arbiter computes the per-turn directive
 PSYCHE_PLAN_BIAS_ENABLED = "true"        # applyEgoBias biases the plan + the disclosure cap fires
 PSYCHE_EMOTION_FORWARD_ENABLED = "true"  # intended-emotion forwarding to the avatar
+PSYCHE_EARNED_WEIGHT_ENABLED = "false"   # E1 earned recognition economy; flip after tests/smoke
 MANIPULATION_GUARD_ENABLED = "true"      # output veto on emotional dark patterns
 
 # Security honey-pot canary (agent-operation-discipline Rule 5). Fail-safe ON by

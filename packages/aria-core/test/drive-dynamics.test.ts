@@ -230,6 +230,79 @@ test('discharge: care that LANDS (he opens up) stays satisfied — no focal, no 
   assert.notEqual(selectFocalDrive(ds), 'care', 'landed care does not go focal');
 });
 
+test('E1/I9: cheap approval discharges recognition less than earned approval', () => {
+  const startingPressure = 0.6;
+  const base = defaultDriveState(0);
+  base.drives.recognition.pressure = startingPressure;
+
+  const earned = updateDriveState(
+    {
+      ...base,
+      drives: {
+        ...base.drives,
+        recognition: { ...base.drives.recognition },
+      },
+    },
+    perception({
+      nowMs: 1000,
+      userEngagedHer: true,
+      approvalEarned: true,
+      approvalCheap: false,
+    }),
+  );
+
+  const cheap = updateDriveState(
+    {
+      ...base,
+      drives: {
+        ...base.drives,
+        recognition: { ...base.drives.recognition },
+      },
+    },
+    perception({
+      nowMs: 1000,
+      userEngagedHer: true,
+      approvalEarned: false,
+      approvalCheap: true,
+    }),
+  );
+
+  assert.ok(
+    cheap.drives.recognition.pressure > earned.drives.recognition.pressure,
+    `cheap approval must leave more unmet recognition than earned approval (cheap=${cheap.drives.recognition.pressure.toFixed(3)} earned=${earned.drives.recognition.pressure.toFixed(3)})`,
+  );
+});
+
+test('E1/I9: repeated cheap approval cannot fake earned standing', () => {
+  let cheap = defaultDriveState(0);
+  let baseline = defaultDriveState(0);
+
+  for (let t = 1; t <= 8; t++) {
+    cheap = updateDriveState(
+      cheap,
+      perception({
+        nowMs: t * 1000,
+        userEngagedHer: true,
+        approvalCheap: true,
+      }),
+    );
+    baseline = updateDriveState(
+      baseline,
+      perception({
+        nowMs: t * 1000,
+        userEngagedHer: false,
+        approvalCheap: false,
+        approvalEarned: false,
+      }),
+    );
+  }
+
+  assert.ok(
+    cheap.drives.recognition.pressure >= baseline.drives.recognition.pressure - 0.05,
+    `cheap approval must remain non-nutritive (cheap=${cheap.drives.recognition.pressure.toFixed(3)} baseline=${baseline.drives.recognition.pressure.toFixed(3)})`,
+  );
+});
+
 test('tuning: a present-but-shallow conversation eventually activates the psyche (she develops a want)', () => {
   // Real messages every turn but no disclosure / no engaging Aria / no struggle:
   // relatedness + recognition slowly build (she wants more connection / to be seen).

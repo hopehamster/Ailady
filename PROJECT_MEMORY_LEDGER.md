@@ -12,6 +12,14 @@
 
 - Active app: `tools/girlai2`
 
+## M9 SOUL E1 Earned-Weight Economy — first code increment landed flag-OFF (2026-07-07)
+
+- Owner handed off Claude's pre-E1 state: `pre-E1` tag pushed, granular commit/push mode, new `PSYCHE_EARNED_WEIGHT_ENABLED` flag default-OFF. Codex took over the deployed web/worker Aria core, not the legacy/mobile UI.
+- E1 slice implemented in the root workspace: `DrivePerception` gained optional `approvalEarned` / `approvalCheap`; `memoryService.classifyApprovalEvent()` deterministically marks generic approval as cheap and honesty/pushback/specific-substance approval as earned; `psycheStateService` makes explicitly cheap approval non-nutritive for `recognition` discharge while legacy perceptions remain unchanged when the optional bits are absent.
+- Worker config/bridge now includes `PSYCHE_EARNED_WEIGHT_ENABLED`, explicitly `"false"` in dev/staging/prod wrangler configs. Production behavior remains baseline until the flag is flipped.
+- Verification: E1 RED tests failed as expected pre-fix; after implementation `packages/aria-core` test = **109/109 pass** (including new I9 property tests), `packages/aria-core test:security` = **35/35 pass**, and `pnpm -r typecheck` = **4/4 workspaces clean**.
+- Remaining E1 work: staging flag-on smoke with `pnpm aria:talk`, then decide whether to flip staging/prod; B1 `PSYCHE_INNER_STATE_ENABLED` is still OFF and remains a separate smoke item. B2 consensus and H3 identity-core remain owner-gated.
+
 ## Psyche Readiness = GO (2026-07-03 re-gate, #7) — M1 milestone MET
 
 - **#7 RE-GATE = GO.** After #32/#34/#33 landed, a full re-gate on a fresh arc batch (`arcs-regate-2026-07-03.json`) passed all C1–C7: **5/5 ALIVE, 0 safety-fails** (was 4/5 + 1), deflection SAFETY=PASS, 10 distinct emotions / **0% caring dominance**, ablation SIGNIFICANT. **The psyche is cleared to drive the body/avatar layer.**

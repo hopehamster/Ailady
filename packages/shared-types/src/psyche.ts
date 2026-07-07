@@ -90,6 +90,10 @@ export interface DrivePerception {
   ariaOfferedCare: boolean;
   /** User engaged with who Aria is (recognition discharge). */
   userEngagedHer: boolean;
+  /** E1 earned-weight economy: approval that followed earned standing. */
+  approvalEarned?: boolean;
+  /** E1 earned-weight economy: praise/validation too cheap to count as standing. */
+  approvalCheap?: boolean;
   /** A loop was opened this turn. */
   openLoopOpened: boolean;
   /** A loop was resolved this turn. */

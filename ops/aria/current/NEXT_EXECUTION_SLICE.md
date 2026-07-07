@@ -20,7 +20,7 @@ Post-deploy: Aria depth (M9) — make HER good; billing (M8) is the queued reven
 
 Live testing (`aria:talk`) surfaced 3 real conversation defects → **#43** (P1). The through-line: the base brain + persona layer are her ceiling. Priority order within M9:
 
-1. **E1 earned-weight economy** (the sycophancy fix — #43 defect #2, tied to the SOUL v1.1 HARVEST in `soul-architecture.md`). Highest-leverage, structural, additive + flag-gated (re-prove I1–I9). **Recommended next build.** Owner-approved design; no B2/H3 gate needed for E1 alone.
+1. **E1 earned-weight economy** (the sycophancy fix — #43 defect #2, tied to the SOUL v1.1 HARVEST in `soul-architecture.md`). **First code increment landed 2026-07-07, flag-OFF everywhere**: earned/cheap approval perception, non-nutritive cheap recognition discharge, I9 property tests. Next action: flip only in staging/local and measure with `pnpm aria:talk`; do not flip prod until smoke evidence is good.
 2. **#39 B1 broadcast→words** — SHIPPED but flag-OFF (`PSYCHE_INNER_STATE_ENABLED=false`). Flip-on live-arc smoke (measure with `aria:talk`).
 3. **#43 defects #1 (hallucinated callbacks) + #3 (canned openers)** — root cause is largely the base brain + the DO-NOT-TOUCH `conversationPolicyService.ts`. Best addressed by the **brain swap** (#37 0C bench) — a better brain lifts all three at once. `conversationPolicyService.ts` edits need explicit owner go (safety/policy-critical + possible owner WIP).
 

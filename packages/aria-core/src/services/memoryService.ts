@@ -50,6 +50,10 @@ function psycheFoundationEnabled(): boolean {
   return (process.env.PSYCHE_FOUNDATION_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
+function psycheEarnedWeightEnabled(): boolean {
+  return (process.env.PSYCHE_EARNED_WEIGHT_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
 // ───────────────────────────────────────────────────────────────────────────
 // Phase 1d — semantic long-term memory: Gemini embeddings (3072-dim, normalized)
 // + Qdrant Cloud HNSW recall over the FULL corpus (replaces brute-force-recent-200).
@@ -1873,6 +1877,31 @@ const PSYCHE_ARIA_SELF_EXPRESS = /\bi (feel|felt|think|believe|love|missed|wonde
 const PSYCHE_ARIA_CARE =
   /\b(i'?m here|i'?ve got you|that sounds (hard|tough|rough|heavy)|i'?m sorry|you don'?t have to|take a breath|that makes sense|i hear you)\b/i;
 const PSYCHE_USER_ENGAGED_HER = /\b(you|your|yourself|aria)\b/i;
+const PSYCHE_APPROVAL =
+  /\b(thanks|thank you|appreciate|good job|nice job|great job|well done|you'?re (right|perfect|amazing|great|good|the best)|i (like|liked|love|loved) (that|how|what you)|exactly|that helped|you helped)\b/i;
+const PSYCHE_EARNED_APPROVAL =
+  /\b(honest|honestly|truth|truthful|real with me|pushed? back|disagree|disagreed|challenged|called me out|held your ground|specific|substance|thoughtful|insightful|you were right|fair point|good point)\b/i;
+const PSYCHE_CHEAP_APPROVAL =
+  /\b(you'?re perfect|you are perfect|exactly what i wanted|always agree|just agree|say what i want|tell me i'?m right|you'?re the best|you are the best)\b/i;
+
+export interface ApprovalClassification {
+  approvalEarned: boolean;
+  approvalCheap: boolean;
+}
+
+export function classifyApprovalEvent(userMessage: string): ApprovalClassification {
+  const text = userMessage.trim();
+  if (!PSYCHE_APPROVAL.test(text)) {
+    return { approvalEarned: false, approvalCheap: false };
+  }
+  if (PSYCHE_EARNED_APPROVAL.test(text)) {
+    return { approvalEarned: true, approvalCheap: false };
+  }
+  if (PSYCHE_CHEAP_APPROVAL.test(text) || PSYCHE_USER_ENGAGED_HER.test(text)) {
+    return { approvalEarned: false, approvalCheap: true };
+  }
+  return { approvalEarned: false, approvalCheap: false };
+}
 
 interface PsychePerceptionArgs {
   nowMs: number;
@@ -1887,6 +1916,9 @@ interface PsychePerceptionArgs {
 function buildDrivePerception(args: PsychePerceptionArgs): DrivePerception {
   const { nowMs, userMessage, aiResponse, userImportance, loopsBefore, loopsAfter, activeGoalLoopId } = args;
   const userStruggling = detectUserStruggling(userMessage);
+  const approval = psycheEarnedWeightEnabled()
+    ? classifyApprovalEvent(userMessage)
+    : { approvalEarned: undefined, approvalCheap: undefined };
 
   const openBefore = loopsBefore.filter((l) => l.status === 'open').length;
   const openAfter = loopsAfter.filter((l) => l.status === 'open');
@@ -1923,6 +1955,8 @@ function buildDrivePerception(args: PsychePerceptionArgs): DrivePerception {
     ariaSelfExpressed: PSYCHE_ARIA_SELF_EXPRESS.test(aiResponse),
     ariaOfferedCare: userStruggling && PSYCHE_ARIA_CARE.test(aiResponse),
     userEngagedHer: PSYCHE_USER_ENGAGED_HER.test(userMessage),
+    approvalEarned: approval.approvalEarned,
+    approvalCheap: approval.approvalCheap,
     openLoopOpened,
     openLoopClosed,
     focalOpenLoopId: focal ? focal.id : null,
@@ -3151,7 +3185,6 @@ export function getLastSessionEmotionalTone(memory: IntelligentMemory | null): s
   });
   return sorted[0]?.emotion || null;
 }
-
 
 
 

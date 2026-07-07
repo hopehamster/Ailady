@@ -64,6 +64,7 @@ PSYCHE_PLAN_BIAS_ENABLED = "true"
 PSYCHE_EMOTION_FORWARD_ENABLED = "true"
 # SOUL B1 (#39): OFF until the flag-ON live-arc smoke passes.
 PSYCHE_INNER_STATE_ENABLED = "false"
+PSYCHE_EARNED_WEIGHT_ENABLED = "false"
 MANIPULATION_GUARD_ENABLED = "true"
 
 [[d1_databases]]

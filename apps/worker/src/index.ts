@@ -65,6 +65,8 @@ export interface Env extends AuthEnv {
   PSYCHE_EMOTION_FORWARD_ENABLED?: string;
   /** SOUL B1 (#39) — inner-state block: the arbiter's want reaches the words. */
   PSYCHE_INNER_STATE_ENABLED?: string;
+  /** SOUL E1 (#43) — earned-weight recognition economy; default OFF. */
+  PSYCHE_EARNED_WEIGHT_ENABLED?: string;
   MANIPULATION_GUARD_ENABLED?: string;
   /** Slice B — Cartesia TTS (server-side only). Absent => /api/tts returns 503 and
    * the web falls back to the silent lip-sync stub. Pick a warm female voice from the
@@ -289,6 +291,7 @@ function bridgeEnv(env: Env): void {
     "PSYCHE_PLAN_BIAS_ENABLED",
     "PSYCHE_EMOTION_FORWARD_ENABLED",
     "PSYCHE_INNER_STATE_ENABLED",
+    "PSYCHE_EARNED_WEIGHT_ENABLED",
     "MANIPULATION_GUARD_ENABLED",
   ] as const) {
     const v = env[k];

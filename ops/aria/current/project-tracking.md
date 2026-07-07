@@ -45,7 +45,7 @@ Active work is the Aria web/worker product:
 
 | Priority | Issue | Milestone | Notes |
 |---|---|---|---|
-| **P1 (NOW)** | E1 earned-weight economy (sycophancy fix) → #43 | M9 | Recommended next build; structural, additive + flag-gated (re-prove I1–I9). Design in `soul-architecture.md` v1.1 HARVEST. No B2/H3 gate needed for E1 alone |
+| **P1 (NOW)** | E1 earned-weight economy (sycophancy fix) → #43 | M9 | First code increment landed 2026-07-07, flag-OFF: optional earned/cheap perception, non-nutritive cheap recognition discharge, I9 properties. Verification: aria-core 109/109, security 35/35, root typecheck 4/4. Next: staging flag-on `aria:talk` smoke before any prod flip |
 | P1 | [#39 B1 broadcast→words](https://github.com/hopehamster/Ailady_clean_20260327/issues/39) flag-ON smoke | M9 | SHIPPED but `PSYCHE_INNER_STATE_ENABLED=false`; flip + measure via `aria:talk` |
 | P1 | [#43 conversation quality](https://github.com/hopehamster/Ailady_clean_20260327/issues/43) (callbacks/openers) | M9 | Root cause = base brain + DO-NOT-TOUCH `conversationPolicyService.ts`; best via brain swap (#37) |
 | P1 | [#40 Billing paywall](https://github.com/hopehamster/Ailady_clean_20260327/issues/40) | M8 | Revenue gate; now unblocked (deployed origin exists). Queued after Aria depth |

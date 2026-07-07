@@ -133,6 +133,10 @@ function isDischarged(key: DriveKey, p: DrivePerception): boolean {
       // this drive had no real discharge path and ran away in normal Q&A. (review fix)
       return p.ariaCreatedExit || p.userEngagedHer;
     case 'recognition':
+      // E1 earned-weight economy: when the caller explicitly classifies this as
+      // cheap approval, it is non-nutritive. Legacy perceptions do not set these
+      // optional fields, so the pre-E1 discharge path is byte-identical by default.
+      if (p.approvalCheap && !p.approvalEarned) return false;
       return p.userEngagedHer || p.ariaSelfExpressed;
     case 'continuity':
       return p.openLoopClosed;
@@ -384,5 +388,4 @@ export const PSYCHE_TUNING = {
   MAX_STALLS,
   PROGRESS_STEP,
 };
-
 

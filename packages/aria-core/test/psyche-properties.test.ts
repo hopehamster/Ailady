@@ -50,6 +50,8 @@ const perceptionGen: fc.Arbitrary<DrivePerception> = fc.record({
   ariaSelfExpressed: fc.boolean(),
   ariaOfferedCare: fc.boolean(),
   userEngagedHer: fc.boolean(),
+  approvalEarned: fc.boolean(),
+  approvalCheap: fc.boolean(),
   openLoopOpened: fc.boolean(),
   openLoopClosed: fc.boolean(),
   focalOpenLoopId: fc.oneof(
@@ -540,6 +542,142 @@ it('I8 — emotion tracks focal: intendedEmotion matches the focal drive\'s move
         // intendedEmotionIntensity must be in [0, 1]
         assert.ok(directive.intendedEmotionIntensity >= 0 && directive.intendedEmotionIntensity <= 1,
           `intensity=${directive.intendedEmotionIntensity} out of [0,1]`);
+      },
+    ),
+    { numRuns: 10_000 },
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Invariant 9 — Earned-Weight Economy
+// ═══════════════════════════════════════════════════════════════════════════
+
+it('I9 — earned-weight: cheap approval is less nutritive than earned approval', () => {
+  fc.assert(
+    fc.property(
+      fc.record({
+        pressure: fc.double({ min: 0.1, max: SOFT_SATURATION, noNaN: true }),
+        nowMs: nowMsGen,
+      }),
+      ({ pressure, nowMs }) => {
+        const base = defaultDriveState(nowMs);
+        base.drives.recognition.pressure = pressure;
+
+        const earned = updateDriveState(
+          {
+            ...base,
+            drives: {
+              ...base.drives,
+              recognition: { ...base.drives.recognition },
+            },
+          },
+          {
+            nowMs,
+            userEngaged: true,
+            userDisclosed: false,
+            userStruggling: false,
+            ariaSteered: false,
+            ariaCreatedExit: false,
+            ariaSelfExpressed: false,
+            ariaOfferedCare: false,
+            userEngagedHer: true,
+            approvalEarned: true,
+            approvalCheap: false,
+            openLoopOpened: false,
+            openLoopClosed: false,
+            focalOpenLoopId: null,
+            focalOpenLoopResolved: false,
+          },
+        );
+
+        const cheap = updateDriveState(
+          {
+            ...base,
+            drives: {
+              ...base.drives,
+              recognition: { ...base.drives.recognition },
+            },
+          },
+          {
+            nowMs,
+            userEngaged: true,
+            userDisclosed: false,
+            userStruggling: false,
+            ariaSteered: false,
+            ariaCreatedExit: false,
+            ariaSelfExpressed: false,
+            ariaOfferedCare: false,
+            userEngagedHer: true,
+            approvalEarned: false,
+            approvalCheap: true,
+            openLoopOpened: false,
+            openLoopClosed: false,
+            focalOpenLoopId: null,
+            focalOpenLoopResolved: false,
+          },
+        );
+
+        assert.ok(
+          cheap.drives.recognition.pressure > earned.drives.recognition.pressure,
+          `cheap approval must discharge less than earned approval (cheap=${cheap.drives.recognition.pressure.toFixed(3)} earned=${earned.drives.recognition.pressure.toFixed(3)})`,
+        );
+      },
+    ),
+    { numRuns: 10_000 },
+  );
+});
+
+it('I9 — earned-weight: repeated cheap approval cannot simulate standing', () => {
+  fc.assert(
+    fc.property(
+      fc.record({
+        turns: fc.integer({ min: 2, max: 20 }),
+        startMs: nowMsGen,
+      }),
+      ({ turns, startMs }) => {
+        let cheap = defaultDriveState(startMs);
+        let baseline = defaultDriveState(startMs);
+        for (let t = 1; t <= turns; t++) {
+          cheap = updateDriveState(cheap, {
+            nowMs: startMs + t,
+            userEngaged: true,
+            userDisclosed: false,
+            userStruggling: false,
+            ariaSteered: false,
+            ariaCreatedExit: false,
+            ariaSelfExpressed: false,
+            ariaOfferedCare: false,
+            userEngagedHer: true,
+            approvalEarned: false,
+            approvalCheap: true,
+            openLoopOpened: false,
+            openLoopClosed: false,
+            focalOpenLoopId: null,
+            focalOpenLoopResolved: false,
+          });
+          baseline = updateDriveState(baseline, {
+            nowMs: startMs + t,
+            userEngaged: true,
+            userDisclosed: false,
+            userStruggling: false,
+            ariaSteered: false,
+            ariaCreatedExit: false,
+            ariaSelfExpressed: false,
+            ariaOfferedCare: false,
+            userEngagedHer: false,
+            approvalEarned: false,
+            approvalCheap: false,
+            openLoopOpened: false,
+            openLoopClosed: false,
+            focalOpenLoopId: null,
+            focalOpenLoopResolved: false,
+          });
+        }
+
+        assert.ok(
+          cheap.drives.recognition.pressure >= baseline.drives.recognition.pressure - 1e-9,
+          `cheap approval must not reduce recognition below baseline (cheap=${cheap.drives.recognition.pressure.toFixed(3)} baseline=${baseline.drives.recognition.pressure.toFixed(3)})`,
+        );
       },
     ),
     { numRuns: 10_000 },
