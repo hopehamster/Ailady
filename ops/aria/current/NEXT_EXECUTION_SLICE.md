@@ -33,7 +33,7 @@ Live testing (`aria:talk`) surfaced 3 real conversation defects → **#43** (P1)
 - **M4 #10 tracking sync, #29 dirty-tree** (P2) · **#41 knowledge-ops** (backlog, P2).
 
 ## Operating rules
-Autonomous: owner at start + end; wall → pivot → return. I am the primary tester — self-drive via Playwright + `aria:talk` + the staging harness; never a blind solo owner test (`browser-product-primary-tester.md` two-person-team contract). Model: Opus for psyche design/safety calls, Sonnet for mechanical execution, Fable-5 for her voice/copy.
+Autonomous: owner at start + end; wall → pivot → return. I am the primary tester — self-drive via Playwright + `aria:talk` + the staging harness; never a blind solo owner test (`browser-product-primary-tester.md` two-person-team contract). Use Claude's global Playwright resources as part of the testing canon: `C:\Users\Owner\.claude\skills\playwright-best-practices\SKILL.md` and `C:\Users\Owner\.claude\rules\playwright-as-browser-control*`. Model: Opus for psyche design/safety calls, Sonnet for mechanical execution, Fable-5 for her voice/copy.
 
 ## Files allowed to change
 Pick one issue, stay inside its stream's paths. Do-not-touch: `conversationPolicyService.ts`, `truthKernelService.ts`, `ARIA_CURRENT_TASK_BOARD.md`, `*adminsdk*`.
