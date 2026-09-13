@@ -12,7 +12,8 @@ import { useEffect, useRef } from "react";
 // The parent bumps `resetSignal` after each send attempt to re-execute the widget
 // and mint a fresh token, so a retry never reuses a stale/consumed one.
 
-const SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY;
+const PROD_SITEKEY = "0x4AAAAAADw0jxFeotLTfZPj";
+const SITEKEY = import.meta.env.VITE_TURNSTILE_SITEKEY || (import.meta.env.PROD ? PROD_SITEKEY : undefined);
 const SCRIPT_SRC = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
 
 interface TurnstileApi {
