@@ -15,6 +15,7 @@ import {
 import {
   ensureUser,
   getRecentTurns,
+  getPersonaFacts,
   persistTurn,
   compileIntelligentMemory,
   persistTurnAndMemory,
@@ -44,6 +45,13 @@ export interface Env extends AuthEnv {
   OPENAI_COMPAT_BASE_URL: string;
   OPENAI_COMPAT_MODEL: string;
   OPENAI_COMPAT_API_KEY: string;
+  /** Aria v0.5 owner-test endpoint. Token is a Worker secret, never a public var. */
+  ARIA_CHAT_ENABLED?: string;
+  ARIA_HF_ENDPOINT_URL?: string;
+  ARIA_HF_MODEL?: string;
+  ARIA_HF_INFERENCE_TOKEN?: string;
+  ARIA_HF_TIMEOUT_MS?: string;
+  ARIA_OWNER_UIDS?: string;
   /** Phase-0 dev gate so /api/chat isn't open. Real auth lands in Phase 3. */
   DEV_SHARED_SECRET?: string;
   /** HeyGen LiveAvatar key (server-side only). Phase 0.5 sandbox de-risk. */
@@ -67,6 +75,9 @@ export interface Env extends AuthEnv {
   PSYCHE_INNER_STATE_ENABLED?: string;
   /** SOUL E1 (#43) — earned-weight recognition economy; default OFF. */
   PSYCHE_EARNED_WEIGHT_ENABLED?: string;
+  /** P2 (#63) — hydrate persona facts from D1 instead of the hardcoded identity
+   *  section of the system prompt; default OFF (prompt byte-identical when off). */
+  PSYCHE_PERSONA_FACTS_FROM_D1_ENABLED?: string;
   MANIPULATION_GUARD_ENABLED?: string;
   /** Slice B — Cartesia TTS (server-side only). Absent => /api/tts returns 503 and
    * the web falls back to the silent lip-sync stub. Pick a warm female voice from the
@@ -163,7 +174,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", ...SECURITY_HEADERS },
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...SECURITY_HEADERS },
   });
 }
 
@@ -223,6 +234,139 @@ async function authenticate(request: Request, env: Env): Promise<{ uid: string }
 const MAX_BODY_BYTES = 64 * 1024; // any JSON body larger than this is not a real request
 const MAX_UID_LEN = 128; // x-dev-uid is persisted as the D1 uid key — bound it
 const TURN_ID_RE = /^[A-Za-z0-9_-]{1,64}$/; // x-turn-id becomes D1 row ids — bound + charset
+const ARIA_VLLM_MAX_MESSAGE_CHARS = 4000;
+const ARIA_VLLM_MAX_HISTORY_MESSAGES = 20;
+const ARIA_VLLM_MAX_CONTEXT_CHARS = 24000;
+const ARIA_VLLM_DEFAULT_TIMEOUT_MS = 120000;
+const ARIA_VLLM_MODEL_REVISION = "afcf738fc216f3f05054cae9d02a23787d15c3a4";
+const ARIA_UPSTREAM_DIAGNOSTIC_CHARS = 500;
+
+type AriaVllmMessage = { role: "user" | "assistant"; content: string };
+
+class AriaUpstreamError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly phase: string,
+    readonly bodyPreview?: string,
+  ) {
+    super(message);
+    this.name = "AriaUpstreamError";
+  }
+}
+
+function ariaChatEnabled(env: Env): boolean {
+  return (env.ARIA_CHAT_ENABLED ?? "false").toLowerCase() === "true";
+}
+
+function ownerAllowed(env: Env, uid: string): boolean | "unconfigured" {
+  if (env.ENV === "dev" && !env.ARIA_OWNER_UIDS) return true;
+  const allowed = (env.ARIA_OWNER_UIDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (allowed.length === 0) return "unconfigured";
+  return allowed.includes(uid);
+}
+
+function loadAriaVllmConfig(env: Env): {
+  endpointUrl: string;
+  model: string;
+  token: string;
+  timeoutMs: number;
+} | Response {
+  const endpointUrl = (env.ARIA_HF_ENDPOINT_URL ?? "").trim().replace(/\/+$/, "");
+  const model = (env.ARIA_HF_MODEL ?? "").trim();
+  const token = (env.ARIA_HF_INFERENCE_TOKEN ?? "").trim();
+  const timeoutMs = Number.parseInt(env.ARIA_HF_TIMEOUT_MS ?? "", 10) || ARIA_VLLM_DEFAULT_TIMEOUT_MS;
+  if (!endpointUrl || !model || !token) {
+    return json({ success: false, error: "aria_unconfigured" }, 503);
+  }
+  if (!/^https:\/\/[A-Za-z0-9.-]+\.endpoints\.huggingface\.cloud$/.test(endpointUrl)) {
+    return json({ success: false, error: "aria_unconfigured" }, 503);
+  }
+  return { endpointUrl, model, token, timeoutMs: Math.min(Math.max(timeoutMs, 1000), ARIA_VLLM_DEFAULT_TIMEOUT_MS) };
+}
+
+function trimAriaHistory(history: AriaVllmMessage[], message: string): AriaVllmMessage[] {
+  const messages = [...history.slice(-ARIA_VLLM_MAX_HISTORY_MESSAGES), { role: "user" as const, content: message }];
+  let total = messages.reduce((n, item) => n + item.content.length, 0);
+  while (messages.length > 1 && total > ARIA_VLLM_MAX_CONTEXT_CHARS) {
+    const removed = messages.shift();
+    total -= removed?.content.length ?? 0;
+  }
+  return messages;
+}
+
+async function callAriaVllm(
+  config: { endpointUrl: string; model: string; token: string; timeoutMs: number },
+  messages: AriaVllmMessage[],
+): Promise<{ text: string; promptTokens?: number; completionTokens?: number; upstreamStatus: number }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  try {
+    const response = await fetch(`${config.endpointUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${config.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        temperature: 0.7,
+        top_p: 0.9,
+        repetition_penalty: 1.08,
+        max_tokens: 220,
+        chat_template_kwargs: { enable_thinking: false },
+        stream: false,
+      }),
+      signal: controller.signal,
+      redirect: "manual",
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => "");
+      throw new AriaUpstreamError(
+        `aria_upstream_status_${response.status}`,
+        response.status,
+        "hf_chat_completions",
+        raw.slice(0, ARIA_UPSTREAM_DIAGNOSTIC_CHARS),
+      );
+    }
+    const raw = await response.text();
+    let payload: {
+      choices?: Array<{ message?: { content?: unknown } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    try {
+      payload = JSON.parse(raw) as typeof payload;
+    } catch {
+      throw new AriaUpstreamError(
+        "aria_upstream_non_json_success",
+        response.status,
+        "parse_hf_response",
+        raw.slice(0, ARIA_UPSTREAM_DIAGNOSTIC_CHARS),
+      );
+    }
+    const text = payload.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || text.trim().length === 0) {
+      throw new AriaUpstreamError(
+        "aria_upstream_empty_response",
+        response.status,
+        "parse_hf_response",
+        raw.slice(0, ARIA_UPSTREAM_DIAGNOSTIC_CHARS),
+      );
+    }
+    return {
+      text,
+      promptTokens: payload.usage?.prompt_tokens,
+      completionTokens: payload.usage?.completion_tokens,
+      upstreamStatus: response.status,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** Reject oversized bodies before parsing (declared content-length; the chat/tts
  * field-level caps below remain the authoritative bound after parse). */
@@ -370,6 +514,142 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, r
     if (url.pathname === "/v1/me" && request.method === "GET") return handleMe(request, env);
     if (url.pathname === "/v1/admin/keys/rotate" && request.method === "POST") return handleAdminRotate(request, env);
 
+    if (url.pathname === "/api/aria/chat" && request.method === "POST") {
+      if (!ariaChatEnabled(env)) {
+        return json({ success: false, error: "aria_offline", detail: "Aria is offline for owner testing right now." }, 503);
+      }
+      const contentType = request.headers.get("content-type") ?? "";
+      if (!contentType.toLowerCase().includes("application/json")) {
+        return json({ success: false, error: "unsupported_media_type" }, 415);
+      }
+      const ipLimited = await rateLimitGate(env, env.CHAT_IP_LIMIT, "aria_chat_ip:" + clientIp(request));
+      if (ipLimited) return ipLimited;
+      const auth = await authenticate(request, env);
+      if (auth instanceof Response) return auth;
+      const owner = ownerAllowed(env, auth.uid);
+      if (owner === "unconfigured") return json({ success: false, error: "aria_owner_unconfigured" }, 503);
+      if (!owner) return json({ success: false, error: "not_allowed" }, 403);
+      const oversized = bodyTooLarge(request);
+      if (oversized) return oversized;
+
+      let body: ChatRequest;
+      try {
+        body = (await request.json()) as ChatRequest;
+      } catch {
+        return json({ success: false, error: "bad_request" }, 400);
+      }
+      if (!body || typeof body.message !== "string" || body.message.trim().length === 0) {
+        return json({ success: false, error: "message_required" }, 400);
+      }
+      const message = body.message.trim();
+      if (message.length > ARIA_VLLM_MAX_MESSAGE_CHARS) {
+        return json({ success: false, error: "message_too_long" }, 413);
+      }
+      const uidLimited = await rateLimitGate(env, env.CHAT_UID_LIMIT, "aria_chat_uid:" + auth.uid);
+      if (uidLimited) return uidLimited;
+
+      const config = loadAriaVllmConfig(env);
+      if (config instanceof Response) return config;
+
+      const turnIdHeader = request.headers.get("x-turn-id");
+      const turnId = turnIdHeader && TURN_ID_RE.test(turnIdHeader) ? turnIdHeader : crypto.randomUUID();
+      const nowMs = Date.now();
+      try {
+        await ensureUser(env.DB, auth.uid, nowMs);
+        if ((await getUserBan(env.DB, auth.uid)).banned) return suspended();
+
+        const crisis = detectCrisis(message);
+        if (crisis.severity !== "none" && crisis.category) {
+          const resources = CRISIS_RESOURCES[crisis.category] ?? CRISIS_RESOURCES.severe_distress;
+          await persistTurn(env.DB, auth.uid, "user", message, nowMs, {}, `${turnId}_user`);
+          await persistTurn(env.DB, auth.uid, "assistant", ARIA_CRISIS_REPLY, nowMs + 1, {
+            emotion: "concerned", emotionTrigger: "concerned", emotionIntensity: 0.6, modelUsed: "crisis-gate",
+          }, `${turnId}_assistant`);
+          const res: ChatResponse = {
+            success: true,
+            messageId: turnId,
+            response: ARIA_CRISIS_REPLY,
+            emotion: "concerned",
+            emotionTrigger: "concerned",
+            emotionIntensity: 0.6,
+            crisis: {
+              severity: crisis.severity,
+              category: crisis.category,
+              resources: { items: resources },
+              ariaReply: ARIA_CRISIS_REPLY,
+            },
+          };
+          return json(res);
+        }
+
+        const history = await getRecentTurns(env.DB, auth.uid, ARIA_VLLM_MAX_HISTORY_MESSAGES);
+        const messages = trimAriaHistory(history, message);
+        const genStart = Date.now();
+        const upstream = await callAriaVllm(config, messages);
+        const text = upstream.text.trim();
+
+        await persistTurn(env.DB, auth.uid, "user", message, nowMs, {}, `${turnId}_user`);
+        await persistTurn(env.DB, auth.uid, "assistant", text, nowMs + 1, {
+          emotion: "warm",
+          emotionTrigger: "warm",
+          emotionIntensity: 0.45,
+          modelUsed: `hf-vllm:${config.model}@${ARIA_VLLM_MODEL_REVISION}`,
+        }, `${turnId}_assistant`);
+
+        console.info("aria.vllm_turn", {
+          reqId,
+          uid: auth.uid,
+          turnId,
+          model: config.model,
+          genMs: Date.now() - genStart,
+          promptTokens: upstream.promptTokens,
+          completionTokens: upstream.completionTokens,
+          upstreamStatus: upstream.upstreamStatus,
+        });
+
+        const res: ChatResponse = {
+          success: true,
+          messageId: turnId,
+          response: text,
+          emotion: "warm",
+          emotionTrigger: "warm",
+          emotionIntensity: 0.45,
+          qualityMeta: {
+            route: "hf-managed-vllm",
+            model: config.model,
+            revision: ARIA_VLLM_MODEL_REVISION,
+            promptTokens: upstream.promptTokens,
+            completionTokens: upstream.completionTokens,
+          },
+        };
+        return json(res);
+      } catch (err) {
+        const upstreamErr = err instanceof AriaUpstreamError ? err : null;
+        console.error("aria vllm turn failed", {
+          ...errLog(reqId, err),
+          phase: upstreamErr?.phase,
+          upstreamStatus: upstreamErr?.status,
+          upstreamBodyPreview: upstreamErr?.bodyPreview,
+        });
+        const cat = errCategory(err);
+        if (cat === "timeout") return json({ success: false, error: "aria_timeout", requestId: reqId, phase: "hf_chat_completions" }, 504);
+        if (upstreamErr?.status === 429) {
+          return json({ success: false, error: "rate_limited", requestId: reqId, phase: upstreamErr.phase, upstreamStatus: upstreamErr.status }, 429);
+        }
+        if (upstreamErr) {
+          const status = upstreamErr.status === 503 ? 503 : 502;
+          return json({
+            success: false,
+            error: "aria_upstream_error",
+            requestId: reqId,
+            phase: upstreamErr.phase,
+            upstreamStatus: upstreamErr.status,
+          }, status);
+        }
+        return json({ success: false, error: "aria_upstream_error", requestId: reqId }, 502);
+      }
+    }
+
     if (url.pathname === "/api/chat" && request.method === "POST") {
       // SECURITY (#13): identity = verified Bearer `sub` via authenticate();
       // the x-dev-uid path survives ONLY in dev behind devGate (volley F8 closed).
@@ -488,6 +768,14 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, r
         bridgeEnv(env);
         const history = await getRecentTurns(env.DB, uid, 20);
         const memory = await compileIntelligentMemory(env.DB, uid);
+        // #63 — flag-gated: hydrate Aria's persona FACTS from D1 so buildSystemPrompt
+        // renders them as self-knowledge instead of the hardcoded identity section
+        // (the brain-swap-safe path). Default OFF ⇒ personaFacts undefined ⇒ the
+        // prompt is byte-identical to today. Failure to read is non-fatal (empty).
+        const personaFacts =
+          (env.PSYCHE_PERSONA_FACTS_FROM_D1_ENABLED ?? "false").toLowerCase() === "true"
+            ? await getPersonaFacts(env.DB).catch(() => [])
+            : undefined;
         const genStart = Date.now();
         const ai = await generateAIResponse(
           body.message,
@@ -499,7 +787,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, r
           undefined, // userEnvCtx
           undefined, // featureSettings
           turnId,
-          { memory }, // Phase 1b — inject the hydrated long-term memory
+          { memory, personaFacts }, // Phase 1b memory + #63 flag-gated persona facts
         );
         // Phase 1c — the per-turn memory extraction (importance scoring + fact/
         // emotion extraction, gated by the write-gate) runs SYNCHRONOUSLY before the
