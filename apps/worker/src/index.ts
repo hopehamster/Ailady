@@ -15,7 +15,6 @@ import {
 import {
   ensureUser,
   getRecentTurns,
-  getPersonaFacts,
   persistTurn,
   compileIntelligentMemory,
   persistTurnAndMemory,
@@ -768,14 +767,6 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, r
         bridgeEnv(env);
         const history = await getRecentTurns(env.DB, uid, 20);
         const memory = await compileIntelligentMemory(env.DB, uid);
-        // #63 — flag-gated: hydrate Aria's persona FACTS from D1 so buildSystemPrompt
-        // renders them as self-knowledge instead of the hardcoded identity section
-        // (the brain-swap-safe path). Default OFF ⇒ personaFacts undefined ⇒ the
-        // prompt is byte-identical to today. Failure to read is non-fatal (empty).
-        const personaFacts =
-          (env.PSYCHE_PERSONA_FACTS_FROM_D1_ENABLED ?? "false").toLowerCase() === "true"
-            ? await getPersonaFacts(env.DB).catch(() => [])
-            : undefined;
         const genStart = Date.now();
         const ai = await generateAIResponse(
           body.message,
@@ -787,7 +778,7 @@ async function routeRequest(request: Request, env: Env, ctx: ExecutionContext, r
           undefined, // userEnvCtx
           undefined, // featureSettings
           turnId,
-          { memory, personaFacts }, // Phase 1b memory + #63 flag-gated persona facts
+          { memory }, // Phase 1b memory (IntelligentMemory hydrated from D1)
         );
         // Phase 1c — the per-turn memory extraction (importance scoring + fact/
         // emotion extraction, gated by the write-gate) runs SYNCHRONOUSLY before the

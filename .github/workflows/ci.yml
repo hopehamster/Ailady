@@ -102,7 +102,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p apps/web/public/avatars
-          gh release download ci-assets-v1 --dir apps/web/public/avatars --pattern '*.glb'
+          # The sample avatar GLBs are OPTIONAL. apps/web/public/preset/aria-default.glb
+          # is committed and is what the app loads by default; specs that need a sample
+          # avatar self-skip when it is absent (tests/lifecycle.spec.ts: test.skip(!hasGlb)).
+          # Publishing the third-party sample GLBs to a public release is a licensing
+          # decision, not a CI decision, so an absent release WARNS instead of failing.
+          if gh release view ci-assets-v1 >/dev/null 2>&1; then
+            gh release download ci-assets-v1 --dir apps/web/public/avatars --pattern '*.glb'
+          else
+            echo '::notice title=avatar assets::release ci-assets-v1 not present; continuing with the committed preset GLB (sample-dependent specs self-skip)'
+          fi
 
       - name: Run E2E backbone (excludes @real/@visual/@security)
         run: pnpm -C apps/web test:e2e:ci
