@@ -16,6 +16,7 @@
 #    PLIVO_AUTH_TOKEN, PLIVO_VERIFY_APP_UUID and flip OTP_VENDOR below.)
 # Optional (graceful no-op when absent): GEMINI_API_KEY, QDRANT_URL,
 #   QDRANT_API_KEY, CARTESIA_API_KEY, CARTESIA_VOICE_ID, LIVEAVATAR_API_KEY.
+# Owner-test Aria v0.5 endpoint secret: ARIA_HF_INFERENCE_TOKEN.
 # DEV_SHARED_SECRET is NOT set in prod (dev gate stays dev-only).
 
 name = "aria-worker"
@@ -39,6 +40,12 @@ run_worker_first = ["/api/*", "/v1/*", "/healthz", "/.well-known/*"]
 ENV = "production"
 OPENAI_COMPAT_BASE_URL = "https://api.deepseek.com"
 OPENAI_COMPAT_MODEL = "deepseek-chat"
+ARIA_CHAT_ENABLED = "true"
+ARIA_HF_ENDPOINT_URL = "https://eywnbw994ao4smnq.us-east-1.aws.endpoints.huggingface.cloud"
+ARIA_HF_MODEL = "sifterchief/aria-qwen38-27b-v05-merged"
+ARIA_HF_TIMEOUT_MS = "120000"
+# Set to the owner/tester auth uid before enabling ARIA_CHAT_ENABLED.
+# ARIA_OWNER_UIDS = "owner-auth-uid"
 # CORS allowlist (C1): EXACT prod origins only. Preflight rejects localhost here.
 # Single-origin deploy → same-origin calls need no CORS; this value satisfies preflight
 # and future-proofs any cross-origin client. Custom domain adds here later, no redeploy.
